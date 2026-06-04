@@ -1,0 +1,41 @@
+# Unity 3D formats
+*.3df
+*.3dm
+*.3ds
+*.max
+*.obj
+*.fbx
+*.mb
+*.ma
+
+# Audio formats
+*.wav
+*.mp3
+*.ogg
+*.aif
+*.flac
+
+# Image formats
+*.png
+*.jpg
+*.jpeg
+*.tga
+*.psd
+*.tif
+*.tiff
+*.iff
+*.gif
+
+# Document formats
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+
+# Unity assets
+*.asset
+*.unity
+
+# Git LFS markers
+filter=lfs diff=lfs merge=lfs -text
