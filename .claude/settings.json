@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__rider-code-intel__get_file_errors",
+      "mcp__rider-code-intel__search_symbol",
+      "mcp__rider-code-intel__find_usages",
+      "mcp__rider-code-intel__find_implementations",
+      "mcp__rider-code-intel__go_to_definition",
+      "mcp__rider-code-intel__get_symbol_info",
+      "mcp__rider-code-intel__list_symbols_in_file",
+      "mcp__rider-code-intel__browse_namespace",
+      "mcp__rider-code-intel__get_solution_structure",
+      "mcp__rider-code-intel__list_solutions"
+    ]
+  }
+}
