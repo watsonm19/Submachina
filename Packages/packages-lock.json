@@ -1,5 +1,11 @@
 {
   "dependencies": {
+    "com.mibdev.fullscreen-editor": {
+      "version": "file:com.mibdev.fullscreen-editor",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "com.unity.2d.animation": {
       "version": "13.0.5",
       "depth": 0,
