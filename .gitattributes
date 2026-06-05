@@ -33,9 +33,28 @@
 *.xls
 *.xlsx
 
-# Unity assets
-*.asset
-*.unity
+# Unity assets (Large binary files)
+*.asset filter=lfs diff=lfs merge=lfs -text
+*.unity filter=lfs diff=lfs merge=lfs -text
+*.prefab filter=lfs diff=lfs merge=lfs -text
+*.controller filter=lfs diff=lfs merge=lfs -text
+*.anim filter=lfs diff=lfs merge=lfs -text
+*.overrideController filter=lfs diff=lfs merge=lfs -text
+*.physicMaterial filter=lfs diff=lfs merge=lfs -text
+*.physicsMaterial2D filter=lfs diff=lfs merge=lfs -text
 
-# Git LFS markers
-filter=lfs diff=lfs merge=lfs -text
+# Image formats
+*.png filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.tga filter=lfs diff=lfs merge=lfs -text
+*.psd filter=lfs diff=lfs merge=lfs -text
+
+# Audio formats
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.ogg filter=lfs diff=lfs merge=lfs -text
+
+# Code files (Make sure these stay as normal text, NOT LFS)
+*.cs text eol=lf
+*.json text eol=lf
