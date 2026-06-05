@@ -177,6 +177,9 @@ sysinfo.txt
 *.unitypackage
 *.app
 
+# Odin ships demos as .unitypackage assets inside Assets/ — keep them with their .meta files
+!/Assets/Plugins/Sirenix/Demos/*.unitypackage
+
 # Crashlytics generated file
 
 # Packed Addressables
