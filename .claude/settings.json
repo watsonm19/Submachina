@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "mcp__unity-synaptic",
       "mcp__rider-code-intel__get_file_errors",
       "mcp__rider-code-intel__search_symbol",
       "mcp__rider-code-intel__find_usages",

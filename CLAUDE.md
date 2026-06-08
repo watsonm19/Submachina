@@ -1,6 +1,6 @@
 ### --- Overview ---
 - This is a Unity 6.3 project.
-- Our custom c# code is found in Assets/Scripts
+- Our custom C# code is found in Assets/Scripts. Assets/Scripts/Core is a namespace for generic, reusable code and systems. Assets/Scripts/Gameplay is specific to the gameplay systems that apply only to this project.
 - The project is a 2D game that is still in early development about descending underwater while gathering resources, encountering enemies, and building a modular submarine.
 - Look for a context.md in some folder roots for more information about that specific system and interactions it has with other systems.
 - Create or add to context.md files as needed to document the systems and interactions at a high level to help understand the project.
@@ -43,3 +43,8 @@
 - i'M USING More Mountains "Feel" asset for game juice and effects
 - I'm using DOTeen Pro for some tweeing and animations, but for simple things it's often better to code them without it than to introduce a dependency, but where DOTween may provide substantial benefit, particularly for tweaking and experimentation in the editor, you can use it.
 - I'm using TextMeshPro text rendering.
+
+### --- Custom Editor Utilities ---
+- **Screenshot capture** — `Core.Editor.EditorCapture` (`Assets/Scripts/Core/Editor/EditorCapture.cs`). Renders a camera to a PNG via URP render requests in edit mode: deterministic, no Play-mode transition. **Prefer this over the `unity-synaptic` MCP screenshot tools**, which can return blank/cleared buffers.
+  - To verify visual output yourself, call it from `run_csharp`: `Core.Editor.EditorCapture.Capture(Camera.main, 1920, 1080)` — returns the saved asset path (defaults to `Assets/Captures/`), then Read the PNG. Overload takes an explicit path: `Capture(cam, w, h, "Assets/Foo/shot.png")`.
+  - Menu equivalents for the developer: `Tools/Custom/Capture Game Camera` and `Tools/Custom/Capture Scene View`.
