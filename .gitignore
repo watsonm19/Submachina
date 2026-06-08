@@ -190,3 +190,10 @@ sysinfo.txt
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 
 # End of https://www.toptal.com/developers/gitignore/api/unity,jetbrains
+
+# Not committing AssetInventory for now, since it's fairly locally specific.s
+AssetInventory
+AssetInventory.meta
+
+# Synaptic AI Pro MCP Server
+Assets/Synaptic AI Pro/MCPServer/node_modules/
