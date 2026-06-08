@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 50564d644865448689d2fba4c50707c4
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/game-templates-improvement-plan.txt
+  uploadId: 920982

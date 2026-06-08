@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: a97609946080146e6878c24356ab4b20
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Shaders/Sky/SynapticSkyPro.shader
+  uploadId: 920982

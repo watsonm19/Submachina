@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 7c8f3e5a9b2d4f1c8e6a3d5b7f9e1c4a
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Editor/NexusCinemachineHelper.cs
+  uploadId: 920982

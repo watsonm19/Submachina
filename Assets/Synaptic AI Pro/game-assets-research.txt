@@ -1,0 +1,340 @@
+# ゲームテンプレート用アセット調査結果
+# 調査日: 2025-01-09
+
+============================================================
+## 概要
+============================================================
+
+ゲームテンプレートの見た目を向上させるため、同梱可能なアセットを調査。
+主にCC0（パブリックドメイン）ライセンスのアセットを中心に選定。
+
+============================================================
+## 1. プレイヤーキャラクター
+============================================================
+
+### 1.1 自作キャラクター（同梱OK）
+場所: /Users/macbookpro/Desktop/キャラクター
+
+| ファイル名 | サイズ | 用途 |
+|-----------|--------|------|
+| しののめゆう | 16.0 MB | メインキャラ候補 |
+| 主人公ちゃん | 15.6 MB | メインキャラ候補 |
+
+### 1.2 ニコニ立体ちゃん（アリシア・ソリッド）
+URL: https://3d.nicovideo.jp/alicia/
+
+| 項目 | 内容 |
+|------|------|
+| 正式名称 | ニコニ立体ちゃん（本名: アリシア・ソリッド） |
+| 商用利用 | 個人・非法人団体のみOK |
+| 法人利用 | NG |
+| 表記 | 不要 |
+| 改変 | OK |
+| 配布形式 | FBX, MMD, Unity Package, VRM |
+
+注意: Synaptic AIが法人化した場合は使用不可
+
+### 1.3 UniVRM
+URL: https://github.com/vrm-c/UniVRM
+ライセンス: MIT（同梱・再配布OK）
+用途: VRMファイルをUnityで読み込むためのSDK
+
+============================================================
+## 2. 敵キャラクター（全てCC0）
+============================================================
+
+### 2.1 Quaternius - Ultimate Monsters Pack
+URL: https://quaternius.com/
+Sketchfab: https://sketchfab.com/3d-models/ultimate-monsters-pack-fd72e114d119488da71fe3a16f216c4f
+
+| 項目 | 内容 |
+|------|------|
+| モデル数 | 50体 |
+| アニメーション | attack, death, running, walking等 |
+| 形式 | FBX, OBJ, glTF, Blend |
+| ライセンス | CC0（完全フリー） |
+| 用途 | RPG, アクション, ファンタジー全般 |
+
+### 2.2 Quaternius - LowPoly Animated Monsters
+URL: https://quaternius.itch.io/lowpoly-animated-monsters
+
+| 項目 | 内容 |
+|------|------|
+| アニメーション | punch, attack, jump, flying, walk等 |
+| 形式 | FBX, OBJ, Blend |
+| ライセンス | CC0 |
+| スタイル | ローポリ |
+
+### 2.3 Quaternius - Ultimate Platformer Pack
+URL: https://quaternius.itch.io/ultimate-platformer-pack
+
+| 項目 | 内容 |
+|------|------|
+| 敵の数 | 4種類（アニメーション付き） |
+| 追加内容 | モジュラープラットフォーム、ステージ素材 |
+| 形式 | FBX, OBJ, glTF, Blend |
+| ライセンス | CC0 |
+| 用途 | 2.5D/3Dプラットフォーマー |
+
+============================================================
+## 3. 武器（全てCC0）
+============================================================
+
+### 3.1 Quaternius - LowPoly Medieval Weapons
+URL: https://quaternius.itch.io/lowpoly-medieval-weapons
+
+| 項目 | 内容 |
+|------|------|
+| モデル数 | 22種類 |
+| 内容 | 剣、斧、弓、ハンマー、盾 |
+| 形式 | FBX, OBJ, Blend |
+| ライセンス | CC0 |
+| 評価 | ⭐ 5.0 |
+| 用途 | RPG, ファンタジー, 中世系 |
+
+### 3.2 Quaternius - 50+ LowPoly Guns
+URL: https://quaternius.itch.io/50-lowpoly-guns
+
+| 項目 | 内容 |
+|------|------|
+| モデル数 | 50種類以上 |
+| 内容 | AK-47, M4, ピストル, ショットガン, スナイパー |
+| アクセサリ | スコープ, サプレッサー |
+| 形式 | FBX, OBJ, Blend |
+| ライセンス | CC0 |
+| 評価 | ⭐ 5.0 (15件) |
+| 用途 | FPS, TPS, シューター |
+
+### 3.3 Kenney - Blaster Kit
+URL: https://kenney.nl/assets/blaster-kit
+
+| 項目 | 内容 |
+|------|------|
+| ファイル数 | 40 |
+| 内容 | SF系ブラスター、クレート、サイレンサー、投擲物、スモーク |
+| 特徴 | アニメーション付き |
+| ライセンス | CC0 |
+| 用途 | SF, スペースシューター |
+
+============================================================
+## 4. 環境・地形（CC0中心）
+============================================================
+
+### 4.1 Quaternius - Stylized Nature MegaKit ★おすすめ
+URL: https://quaternius.itch.io/stylized-nature-megakit
+
+| 項目 | 内容 |
+|------|------|
+| モデル数 | 110+（無料版81、Pro版110+） |
+| 内容 | 木40種, 植物・花35種, 岩27種, 草・茂み |
+| スタイル | ジブリ風スタイライズド |
+| 形式 | FBX, OBJ, glTF |
+| ライセンス | CC0 |
+| 評価 | ⭐ 5.0 (62件) |
+
+価格:
+- Standard（無料）: 81アセット、99MB
+- Pro（$9.99）: 全110+モデル、172MB
+- Source（$14.99）: Unity/Unreal/Godotプロジェクト付き、684MB
+
+### 4.2 Quaternius - Medieval Village MegaKit
+URL: https://quaternius.itch.io/medieval-village-megakit
+
+| 項目 | 内容 |
+|------|------|
+| モデル数 | 300+（無料版170、Pro版300+） |
+| 内容 | 壁、床、階段、屋根、モジュラー建築パーツ |
+| 特徴 | グリッドベース、組み合わせ自由 |
+| 形式 | FBX, OBJ, glTF |
+| ライセンス | CC0 |
+| 評価 | ⭐ 5.0 (23件) |
+
+価格:
+- Standard（無料）: 170アセット
+- Pro（$9.99）: 全300+モデル
+- Source（$14.99）: エンジンプロジェクト付き
+
+### 4.3 Quaternius - その他環境パック
+- Textured LowPoly Trees: 木のコレクション
+- 150+ LowPoly Nature Models: 包括的な自然アセット
+- LowPoly Farm Buildings: 農場建物
+- LowPoly Modular Street: 都市環境
+- Modular Sci-Fi MegaKit: SF環境（270+パーツ）
+- LowPoly Modular Dungeon Pack: ダンジョン
+
+### 4.4 Kenney - 環境系パック
+URL: https://kenney.nl/assets
+
+| パック名 | 内容 |
+|----------|------|
+| Fantasy Town Kit | ファンタジー街並み |
+| Graveyard Kit | 墓地環境（90アセット） |
+| City Kit (複数) | 都市環境（商業、工業、住宅、道路） |
+| Minigolf Kit | ミニゴルフ環境 |
+| Modular Dungeon Kit | ダンジョン |
+
+全てCC0ライセンス
+
+### 4.5 Unity Asset Store（無料）
+注意: Asset Storeアセットは再配布に制限がある場合が多い
+
+| アセット | 用途 |
+|----------|------|
+| Terrain Sample Asset Pack | 地形サンプル |
+| 3D Realistic Terrain Free | リアル地形 |
+| Low-Poly Simple Nature Pack | ローポリ自然 |
+| Free Low Poly Nature Forest | 森林環境 |
+
+### 4.6 OpenGameArt - CC0 Nature
+URL: https://opengameart.org/content/cc0-nature
+
+100+の自然系3Dモデルのキュレーションリスト
+内容: 木、植物、草、岩、洞窟、砂漠など
+注意: 個別アセットのライセンス確認が必要
+
+============================================================
+## 5. 既に同梱済みのアセット
+============================================================
+
+### 5.1 Kenney Textures
+場所: Assets/Synaptic AI Pro/Resources/Textures/Kenney/
+ライセンス: CC0
+内容: 地形・建物用テクスチャ
+
+============================================================
+## 6. 推奨同梱構成
+============================================================
+
+```
+Synaptic AI Pro/
+├── Templates/
+│   ├── Characters/
+│   │   ├── Player/
+│   │   │   ├── しののめゆう.vrm        # 自作
+│   │   │   ├── 主人公ちゃん.vrm        # 自作
+│   │   │   └── Alicia.vrm              # ニコニ立体ちゃん（非法人のみ）
+│   │   └── Enemies/                     # Quaternius CC0
+│   │       ├── Slime.fbx
+│   │       ├── Skeleton.fbx
+│   │       ├── Ghost.fbx
+│   │       └── Goblin.fbx
+│   │
+│   ├── Weapons/
+│   │   ├── Medieval/                    # Quaternius CC0
+│   │   │   ├── Sword.fbx
+│   │   │   ├── Axe.fbx
+│   │   │   ├── Bow.fbx
+│   │   │   └── Shield.fbx
+│   │   ├── Modern/                      # Quaternius CC0
+│   │   │   ├── Pistol.fbx
+│   │   │   ├── Rifle.fbx
+│   │   │   ├── Shotgun.fbx
+│   │   │   └── Sniper.fbx
+│   │   └── SciFi/                       # Kenney CC0
+│   │       ├── Blaster.fbx
+│   │       └── LaserRifle.fbx
+│   │
+│   ├── Environment/
+│   │   ├── Nature/                      # Quaternius CC0
+│   │   │   ├── Trees/
+│   │   │   ├── Plants/
+│   │   │   ├── Rocks/
+│   │   │   └── Grass/
+│   │   ├── Medieval/                    # Quaternius CC0
+│   │   │   ├── Buildings/
+│   │   │   ├── Props/
+│   │   │   └── Walls/
+│   │   └── SciFi/                       # Quaternius/Kenney CC0
+│   │       └── Props/
+│   │
+│   ├── Scenes/
+│   │   ├── CharacterSelect.unity        # キャラ選択画面
+│   │   ├── FPS_Template.unity
+│   │   ├── Platformer_Template.unity
+│   │   ├── RPG_Template.unity
+│   │   ├── Racing_Template.unity
+│   │   └── Puzzle_Template.unity
+│   │
+│   └── UniVRM/                          # MIT
+│       └── ...
+│
+└── Resources/
+    └── Textures/
+        └── Kenney/                      # CC0（既存）
+```
+
+============================================================
+## 7. ライセンスサマリー
+============================================================
+
+| アセット | ライセンス | 商用 | 再配布 | クレジット |
+|----------|-----------|------|--------|-----------|
+| 自作キャラ | 自作 | OK | OK | 不要 |
+| ニコニ立体ちゃん | 独自 | 非法人のみ | 注意 | 不要 |
+| Quaternius全般 | CC0 | OK | OK | 不要 |
+| Kenney全般 | CC0 | OK | OK | 不要 |
+| UniVRM | MIT | OK | OK | 要（ファイル内） |
+
+============================================================
+## 8. ダウンロードリンク一覧
+============================================================
+
+### 必須
+- UniVRM: https://github.com/vrm-c/UniVRM/releases
+
+### キャラクター
+- ニコニ立体ちゃん: https://3d.nicovideo.jp/works/td32797
+
+### 敵（Quaternius）
+- Ultimate Monsters: https://quaternius.com/
+- Animated Monsters: https://quaternius.itch.io/lowpoly-animated-monsters
+
+### 武器（Quaternius）
+- Medieval Weapons: https://quaternius.itch.io/lowpoly-medieval-weapons
+- 50+ Guns: https://quaternius.itch.io/50-lowpoly-guns
+
+### 武器（Kenney）
+- Blaster Kit: https://kenney.nl/assets/blaster-kit
+
+### 環境（Quaternius）
+- Nature MegaKit: https://quaternius.itch.io/stylized-nature-megakit
+- Medieval Village: https://quaternius.itch.io/medieval-village-megakit
+
+### 環境（Kenney）
+- Fantasy Town: https://kenney.nl/assets/fantasy-town-kit
+- Graveyard: https://kenney.nl/assets/graveyard-kit
+
+============================================================
+## 9. 実装優先度
+============================================================
+
+### Phase 1: 基本同梱（v1.2.0）
+- [ ] UniVRM導入
+- [ ] 自作キャラ2体（VRM変換）
+- [ ] ニコニ立体ちゃん
+- [ ] Quaternius敵5体
+- [ ] Quaternius武器（剣、銃各5種）
+- [ ] キャラ選択シーン作成
+
+### Phase 2: 環境強化（v1.2.1）
+- [ ] Stylized Nature（無料版81アセット）
+- [ ] Medieval Village（無料版170アセット）
+- [ ] 各テンプレートにサンプルフィールド追加
+
+### Phase 3: 完全版（v1.3.0）
+- [ ] Pro版環境アセット購入・追加
+- [ ] 全6テンプレートのフルリニューアル
+- [ ] デモシーン作成
+
+============================================================
+## 10. 備考
+============================================================
+
+- QuaterniusとKenneyはCC0なので、クレジット表記は法的には不要だが、
+  READMEやクレジット画面で感謝を示すのが望ましい
+- ニコニ立体ちゃんは法人化した場合に使用不可になるため、
+  将来的には自作キャラのみに切り替える計画を立てておく
+- Unity Asset Storeの無料アセットは再配布制限があるため、
+  テンプレートに同梱する場合は避けるか、ユーザーに別途DL指示
+
+============================================================

@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 1310fcc8eeee9473aab068335ceacef6
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Shaders/Water/SynapticWaterPro.shader
+  uploadId: 920982

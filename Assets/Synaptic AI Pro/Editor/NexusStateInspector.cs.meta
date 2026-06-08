@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 9322b6d5d3a284616bffe8a0ce6bc417
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Editor/NexusStateInspector.cs
+  uploadId: 920982

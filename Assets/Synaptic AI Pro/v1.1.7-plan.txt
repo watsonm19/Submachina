@@ -1,0 +1,641 @@
+=====================================
+Synaptic AI Pro v1.1.7 開発計画
+=====================================
+
+## 現在の v1.1.7 (完了済み)
+- execute_menu_item Tool
+- InstanceID Support
+- Start MCP Server Menu (パス空白対応、ポート重複チェック)
+- MCP Auto-Retry System (30リトライ、最大5分)
+
+=====================================
+追加予定1: ボーン基盤システム（必須）
+=====================================
+
+## 目的
+ボーンの認識・操作・階層理解を可能にする基盤。
+これがあれば「衣装フィット」「アニメーション制作」両方が可能に。
+
+## ボーン基盤ツール (10個)
+
+### 1. unity_get_skeleton_hierarchy
+スケルトン全体の階層構造を取得
+```
+入力: gameObjectName
+出力: {
+  rootBone: "Armature",
+  boneCount: 65,
+  hierarchy: {
+    "Hips": {
+      localPosition: [0, 1, 0],
+      localRotation: [0, 0, 0, 1],
+      children: ["Spine", "LeftUpperLeg", "RightUpperLeg"]
+    },
+    "Spine": {
+      parent: "Hips",
+      children: ["Chest"],
+      ...
+    }
+  },
+  isHumanoid: true,
+  humanoidMappings: {  // Humanoidの場合
+    "Hips": "Hips",
+    "Spine": "Spine",
+    "LeftHand": "Hand_L",  // 実際のボーン名との対応
+    ...
+  }
+}
+```
+
+### 2. unity_find_bones
+名前やパターンでボーンを検索
+```
+入力: {
+  gameObjectName: "Avatar",
+  pattern: "Hand",        // 部分一致
+  // または
+  regex: "^Left.*",       // 正規表現
+  // または
+  humanoidBone: "LeftHand" // Humanoidマッピングから
+}
+出力: {
+  matches: [
+    { name: "LeftHand", path: "Armature/Hips/Spine/.../LeftHand" },
+    { name: "RightHand", path: "..." }
+  ]
+}
+```
+
+### 3. unity_get_bone_info
+特定ボーンの詳細情報
+```
+入力: gameObjectName, boneName
+出力: {
+  name: "LeftHand",
+  path: "Armature/Hips/Spine/Chest/LeftShoulder/LeftArm/LeftForeArm/LeftHand",
+  parent: "LeftForeArm",
+  children: ["LeftHandIndex1", "LeftHandMiddle1", ...],
+  localPosition: [0.25, 0, 0],
+  localRotation: [0, 0, 0, 1],
+  worldPosition: [1.5, 1.2, 0],
+  worldRotation: [...],
+  humanoidMapping: "LeftHand"  // Humanoidの場合
+}
+```
+
+### 4. unity_set_bone_transform
+ボーンの位置/回転を設定
+```
+入力: {
+  gameObjectName: "Avatar",
+  boneName: "LeftHand",
+  localPosition: [0.25, 0, 0],  // オプション
+  localRotation: [0, 45, 0],    // オイラー角 or クォータニオン
+  worldPosition: [...],         // ワールド座標指定も可
+  worldRotation: [...]
+}
+```
+
+### 5. unity_get_bone_chain
+ボーンチェーン（連鎖）を取得
+```
+入力: {
+  gameObjectName: "Avatar",
+  startBone: "LeftShoulder",
+  endBone: "LeftHand"
+  // または
+  startBone: "Hips",
+  depth: 3  // 3階層下まで
+}
+出力: {
+  chain: ["LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand"],
+  totalLength: 0.65,  // メートル
+  transforms: [...]
+}
+```
+
+### 6. unity_copy_bone_pose
+ボーンのポーズをコピー
+```
+入力: {
+  sourceObject: "Avatar_A",
+  targetObject: "Avatar_B",
+  boneMapping: "auto",  // 自動マッピング or 手動指定
+  bones: ["all"]        // または特定ボーンのみ
+}
+```
+
+### 7. unity_reset_bone_pose
+ボーンをT-Pose/A-Pose/バインドポーズにリセット
+```
+入力: {
+  gameObjectName: "Avatar",
+  pose: "bind"  // "bind", "tpose", "apose"
+  bones: ["all"]  // または特定ボーンのみ
+}
+```
+
+### 8. unity_mirror_bone_pose
+左右のポーズを反転コピー
+```
+入力: {
+  gameObjectName: "Avatar",
+  direction: "left_to_right"  // or "right_to_left"
+}
+```
+
+### 9. unity_get_humanoid_muscles
+Humanoidのマッスル値を取得
+```
+入力: gameObjectName
+出力: {
+  muscles: {
+    "LeftArm.Arm Down-Up": 0.5,
+    "LeftArm.Arm Front-Back": -0.2,
+    "Spine Front-Back": 0.1,
+    ...
+  }
+}
+```
+
+### 10. unity_set_humanoid_muscles
+Humanoidのマッスル値を設定
+```
+入力: {
+  gameObjectName: "Avatar",
+  muscles: {
+    "LeftArm.Arm Down-Up": 0.8,
+    "Spine Front-Back": 0.3
+  }
+}
+```
+
+=====================================
+追加予定2: アニメーション制作システム
+=====================================
+
+## 目的
+ボーン基盤を使ってアニメーションを作成・編集
+
+## アニメーション制作ツール (10個)
+
+### 1. unity_create_animation_clip
+新規アニメーションクリップを作成
+```
+入力: {
+  name: "Walk",
+  savePath: "Assets/Animations/Walk.anim",
+  length: 1.0,  // 秒
+  frameRate: 30,
+  looping: true
+}
+```
+
+### 2. unity_add_keyframe
+キーフレームを追加
+```
+入力: {
+  clipPath: "Assets/Animations/Walk.anim",
+  time: 0.5,  // 秒
+  property: "LeftUpperLeg/localRotation",
+  value: [30, 0, 0],  // オイラー角
+  // または
+  bone: "LeftUpperLeg",
+  attribute: "rotation",
+  value: [30, 0, 0]
+}
+```
+
+### 3. unity_add_pose_keyframe
+現在のポーズ全体をキーフレームに
+```
+入力: {
+  gameObjectName: "Avatar",
+  clipPath: "Assets/Animations/Walk.anim",
+  time: 0.0,
+  bones: ["all"]  // または特定ボーンのみ
+}
+```
+
+### 4. unity_get_animation_curves
+アニメーションカーブを取得
+```
+入力: clipPath
+出力: {
+  curves: [
+    {
+      path: "LeftUpperLeg",
+      property: "localRotation.x",
+      keyframes: [
+        { time: 0, value: 0, inTangent: 0, outTangent: 0 },
+        { time: 0.5, value: 30, ... }
+      ]
+    }
+  ]
+}
+```
+
+### 5. unity_set_animation_curve
+アニメーションカーブを編集
+```
+入力: {
+  clipPath: "Assets/Animations/Walk.anim",
+  path: "LeftUpperLeg",
+  property: "localRotation.x",
+  keyframes: [...]
+}
+```
+
+### 6. unity_preview_animation
+アニメーションをプレビュー（指定時間のポーズを適用）
+```
+入力: {
+  gameObjectName: "Avatar",
+  clipPath: "Assets/Animations/Walk.anim",
+  time: 0.5,
+  // または
+  frame: 15
+}
+```
+
+### 7. unity_blend_animations
+複数アニメーションをブレンド
+```
+入力: {
+  gameObjectName: "Avatar",
+  animations: [
+    { clip: "Idle", weight: 0.3 },
+    { clip: "Walk", weight: 0.7 }
+  ]
+}
+```
+
+### 8. unity_retarget_animation
+アニメーションを別のアバターに転送
+```
+入力: {
+  sourceAvatar: "Avatar_A",
+  targetAvatar: "Avatar_B",
+  sourceClip: "Assets/Animations/Walk.anim",
+  outputPath: "Assets/Animations/Walk_Retargeted.anim",
+  boneMapping: "auto"
+}
+```
+
+### 9. unity_create_animation_from_poses
+複数ポーズからアニメーションを生成
+```
+入力: {
+  gameObjectName: "Avatar",
+  poses: [
+    { name: "Pose1", time: 0.0 },
+    { name: "Pose2", time: 0.5 },
+    { name: "Pose3", time: 1.0 }
+  ],
+  outputPath: "Assets/Animations/Generated.anim",
+  interpolation: "smooth"  // "linear", "smooth", "step"
+}
+```
+
+### 10. unity_bake_animation
+アニメーションをベイク（全フレームにキーフレーム生成）
+```
+入力: {
+  clipPath: "Assets/Animations/Walk.anim",
+  outputPath: "Assets/Animations/Walk_Baked.anim",
+  frameRate: 30
+}
+```
+
+=====================================
+追加予定3: 衣装フィッティング機能
+=====================================
+
+## 背景
+- VRChat界隈で「もちふぃったー」(¥2,500) が人気
+- しかし「変換プロファイル」が必要で限定的
+- Synaptic AIなら自然言語で柔軟に対応可能
+
+## 新規ツール (5-7個)
+
+### 1. unity_analyze_armature
+ボーン構造を解析して一覧化
+```
+入力: gameObjectName (アバターまたは衣装)
+出力: {
+  boneCount: 65,
+  hierarchy: "Hips > Spine > Chest > ...",
+  boneNames: ["Hips", "Spine", "Chest", ...],
+  isHumanoid: true
+}
+```
+
+### 2. unity_map_bones
+2つのアーマチュア間でボーンをマッピング
+```
+入力: sourceArmature, targetArmature
+出力: {
+  mappings: {
+    "Hips": "Hips",
+    "Spine": "Spine",
+    "Chest_Upper": "Chest",  // 名前違いも推測
+    ...
+  },
+  unmapped: ["ExtraBone1", "ExtraBone2"],
+  confidence: 0.95
+}
+```
+
+### 3. unity_transfer_mesh_weights
+メッシュのボーンウェイトを転送
+```
+入力: sourceMesh, targetArmature, boneMapping
+出力: {
+  success: true,
+  verticesProcessed: 12450,
+  bonesRemapped: 65
+}
+```
+
+### 4. unity_fit_clothing_to_avatar (統合ツール)
+衣装をアバターにフィットさせる（自動処理）
+```
+入力: clothingObject, targetAvatar, options
+options: {
+  adjustScale: true,
+  transferWeights: true,
+  preserveShapeKeys: true
+}
+出力: {
+  success: true,
+  fittedObject: "Clothing_Fitted",
+  warnings: ["ChestBone slightly misaligned"]
+}
+```
+
+### 5. unity_adjust_clothing_fit
+フィット後の微調整
+```
+入力: clothingObject, adjustments
+adjustments: {
+  "Chest": { scale: 1.1, offset: [0, 0.02, 0] },
+  "Hips": { scale: 0.95 }
+}
+```
+
+### 6. unity_create_clothing_prefab
+フィット済み衣装をプレハブ化
+```
+入力: clothingObject, prefabPath, includeAvatar
+出力: {
+  prefabPath: "Assets/Prefabs/Avatar_WithClothing.prefab"
+}
+```
+
+### 7. unity_detect_mesh_clipping (オプション)
+メッシュの貫通箇所を検出
+```
+入力: meshA, meshB
+出力: {
+  clippingAreas: [
+    { bone: "Chest", severity: "high", vertices: 234 },
+    { bone: "LeftArm", severity: "low", vertices: 12 }
+  ]
+}
+```
+
+=====================================
+実装アプローチ
+=====================================
+
+## Unity側 (C#)
+
+### ボーンマッピングロジック
+```csharp
+// Humanoid標準ボーン名でマッチング
+Dictionary<string, string> StandardBoneNames = new() {
+    {"Hips", "Hips"}, {"Spine", "Spine"},
+    {"Chest", "Chest"}, {"UpperChest", "Chest_Upper"},
+    // ... VRChat標準ボーン名も含む
+};
+
+// 類似度スコアでマッチング
+float GetBoneNameSimilarity(string a, string b) {
+    // Levenshtein距離 + 部分一致スコア
+}
+```
+
+### ウェイト転送ロジック
+```csharp
+void TransferBoneWeights(Mesh source, Mesh target, Dictionary<string, string> boneMap) {
+    var sourceWeights = source.boneWeights;
+    var targetWeights = new BoneWeight[target.vertexCount];
+
+    // 最近傍頂点からウェイトをコピー
+    for (int i = 0; i < target.vertexCount; i++) {
+        int nearestSourceVertex = FindNearestVertex(target.vertices[i], source.vertices);
+        targetWeights[i] = RemapBoneWeight(sourceWeights[nearestSourceVertex], boneMap);
+    }
+
+    target.boneWeights = targetWeights;
+}
+```
+
+=====================================
+もちふぃったーとの差別化ポイント
+=====================================
+
+| 機能 | もちふぃったー | Synaptic AI |
+|------|--------------|-------------|
+| プロファイル | 必要 | 不要（AI解析） |
+| 対応アバター | 限定 | 汎用 |
+| 処理場所 | Blender経由 | Unity内完結 |
+| カスタマイズ | GUI操作 | 自然言語 |
+| 微調整 | 限定的 | 「胸だけ大きく」等 |
+| 価格 | ¥2,500 | Synaptic Pro内包 |
+| 処理時間 | 5-60分 | 数秒〜数分 |
+
+=====================================
+ユースケース例
+=====================================
+
+## ボーン操作
+
+### ボーン確認
+```
+User: 「このアバターのボーン構造を見せて」
+
+Claude:
+1. unity_get_skeleton_hierarchy で全体構造取得
+2. 階層ツリーとボーン数を報告
+```
+
+### 特定ボーン検索
+```
+User: 「左手のボーンを探して」
+
+Claude:
+1. unity_find_bones で pattern: "Left" + "Hand" 検索
+2. マッチしたボーンとパスを報告
+```
+
+### ポーズ調整
+```
+User: 「左腕を上げて」
+
+Claude:
+1. unity_find_bones で humanoidBone: "LeftUpperArm" 取得
+2. unity_set_bone_transform で rotation 調整
+```
+
+## アニメーション制作
+
+### 基本アニメーション
+```
+User: 「手を振るアニメーションを作って」
+
+Claude:
+1. unity_create_animation_clip で新規クリップ作成
+2. unity_set_bone_transform で開始ポーズ設定
+3. unity_add_pose_keyframe で 0秒にキーフレーム
+4. unity_set_bone_transform で手を上げたポーズ設定
+5. unity_add_pose_keyframe で 0.5秒にキーフレーム
+6. unity_set_bone_transform で手を下げたポーズ設定
+7. unity_add_pose_keyframe で 1秒にキーフレーム
+8. 完成報告
+```
+
+### 歩行サイクル
+```
+User: 「歩行アニメーションを作って」
+
+Claude:
+1. unity_create_animation_clip (looping: true)
+2. 4つのキーポーズを作成:
+   - 0.0s: 右足前
+   - 0.25s: 通過
+   - 0.5s: 左足前
+   - 0.75s: 通過
+3. unity_add_pose_keyframe で各ポーズをキーフレーム化
+4. ループ設定確認
+```
+
+### アニメーション転送
+```
+User: 「このアニメーションを別のアバターに適用して」
+
+Claude:
+1. unity_get_skeleton_hierarchy で両方のボーン構造確認
+2. unity_retarget_animation で転送実行
+3. プレビューして確認
+```
+
+## 衣装フィッティング
+
+### 基本フロー
+```
+User: 「この衣装をアバターにフィットさせて」
+
+Claude:
+1. unity_get_skeleton_hierarchy で両方のボーン構造を解析
+2. unity_map_bones でボーンマッピング作成
+3. unity_fit_clothing_to_avatar で自動フィット
+4. 結果を報告
+
+User: 「胸の部分がきついから少し余裕を持たせて」
+
+Claude:
+5. unity_adjust_clothing_fit で微調整
+```
+
+### 高度なフロー
+```
+User: 「この衣装、3サイズ（S/M/L）のバリエーション作って」
+
+Claude:
+1. フィット実行
+2. unity_adjust_clothing_fit で S(-10%), M(基準), L(+10%) 作成
+3. unity_create_clothing_prefab で各プレハブ化
+```
+
+=====================================
+開発優先度
+=====================================
+
+## Phase 0: ボーン基盤（最優先）
+- [ ] unity_get_skeleton_hierarchy
+- [ ] unity_find_bones
+- [ ] unity_get_bone_info
+- [ ] unity_set_bone_transform
+- [ ] unity_get_bone_chain
+
+## Phase 1: ボーン操作
+- [ ] unity_copy_bone_pose
+- [ ] unity_reset_bone_pose
+- [ ] unity_mirror_bone_pose
+- [ ] unity_get_humanoid_muscles
+- [ ] unity_set_humanoid_muscles
+
+## Phase 2: アニメーション基盤
+- [ ] unity_create_animation_clip
+- [ ] unity_add_keyframe
+- [ ] unity_add_pose_keyframe
+- [ ] unity_preview_animation
+
+## Phase 3: アニメーション拡張
+- [ ] unity_get_animation_curves
+- [ ] unity_set_animation_curve
+- [ ] unity_blend_animations
+- [ ] unity_retarget_animation
+- [ ] unity_create_animation_from_poses
+- [ ] unity_bake_animation
+
+## Phase 4: 衣装フィット
+- [ ] unity_analyze_armature (Phase 0のツールで代替可能かも)
+- [ ] unity_map_bones
+- [ ] unity_transfer_mesh_weights
+- [ ] unity_fit_clothing_to_avatar
+- [ ] unity_adjust_clothing_fit
+- [ ] unity_create_clothing_prefab
+- [ ] unity_detect_mesh_clipping
+
+=====================================
+想定工数
+=====================================
+
+- Phase 0: 3-4日 (最重要基盤)
+- Phase 1: 2-3日
+- Phase 2: 3-4日
+- Phase 3: 3-4日
+- Phase 4: 3-4日
+- テスト/調整: 3-4日
+- 合計: 約3-4週間
+
+## バージョン分割案
+- v1.1.7: Phase 0 + Phase 1 (ボーン基盤)
+- v1.1.8: Phase 2 + Phase 3 (アニメーション)
+- v1.1.9: Phase 4 (衣装フィット)
+
+=====================================
+ツール数サマリー
+=====================================
+
+| カテゴリ | ツール数 |
+|---------|---------|
+| ボーン基盤 | 10 |
+| アニメーション | 10 |
+| 衣装フィット | 7 |
+| 合計 | 27 |
+
+現在: 350ツール → v1.1.9完了後: 377ツール
+
+=====================================
+注意点
+=====================================
+
+1. SkinnedMeshRendererのみ対応（MeshRendererは対象外）
+2. Humanoidリグ推奨（Generic対応は限定的）
+3. シェイプキー（BlendShape）は別途保持が必要
+4. VRChat SDKとの互換性確認必要
+5. AnimationClip作成はエディタAPI必要（ランタイム不可）
+6. Humanoidマッスル操作はAnimator/Avatar必須

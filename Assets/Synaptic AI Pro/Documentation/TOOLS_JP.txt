@@ -1,0 +1,779 @@
+# Synaptic AI Pro - ツールリファレンス (350ツール)
+
+Synaptic AI Pro for Unity で利用可能な全MCPツールの完全リファレンスです。
+
+---
+
+## 実用的な指示例
+
+AIに自然言語で指示するだけで、複数のツールが自動的に連携して実行されます。
+
+### ゲーム制作
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「3Dプラットフォーマーゲームのプロトタイプを作って」 | `create_game_template`, `create_gameobject`, `setup_physics`, `create_virtual_camera` |
+| 「FPSゲームの基本セットアップをして」 | `quick_prototype`, `create_game_controller`, `setup_input_system` |
+| 「RPGのインベントリシステムを作って」 | `setup_inventory_system`, `create_ui`, `create_script` |
+| 「レースゲームのコースを作って」 | `create_terrain`, `place_objects`, `create_dolly_track` |
+| 「パズルゲームのグリッドを作って」 | `create_ui_grid`, `create_state_machine`, `place_objects` |
+
+### シーン構築
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「森の中の夜のシーンを作って」 | `create_terrain`, `place_objects`, `create_time_of_day`, `setup_lighting_preset` |
+| 「雨の降る街のシーンを作って」 | `create_rain_effect`, `setup_volumetric_fog`, `create_audio_source`, `setup_lighting` |
+| 「宇宙空間のシーンを作って、星と惑星を配置して」 | `create_skybox_from_image`, `place_objects`, `setup_lighting_preset`, `create_lens_flare` |
+| 「水中のシーンを作って」 | `create_ocean_system`, `setup_post_processing`, `create_caustics`, `setup_color_grading` |
+| 「砂漠の昼間のシーンを作って」 | `create_terrain`, `setup_lighting_preset`, `create_wind_effect`, `setup_volumetric_fog` |
+
+### カメラワーク
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「プレイヤーを追いかける三人称カメラを作って」 | `create_freelook_camera`, `setup_cinemachine_brain` |
+| 「カットシーン用のカメラパスを作って」 | `create_dolly_track`, `create_virtual_camera`, `create_timeline` |
+| 「複数のキャラクターを映すカメラを作って」 | `create_target_group`, `create_virtual_camera`, `add_target_to_group` |
+| 「壁を貫通しないカメラを設定して」 | `create_virtual_camera`, `add_collider_extension`, `add_confiner_extension` |
+| 「爆発時にカメラを揺らして」 | `create_impulse_source`, `add_impulse_listener` |
+| 「会話シーン用に2人のキャラを映すカメラを作って」 | `create_target_group`, `create_clear_shot_camera` |
+
+### ライティング・天候
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「24時間の昼夜サイクルを作って」 | `create_time_of_day`, `create_skybox_blend`, `setup_lighting_scenarios` |
+| 「夕焼けのライティングにして」 | `setup_lighting_preset`, `setup_color_grading`, `create_lens_flare` |
+| 「雷雨を作って稲妻も光らせて」 | `create_thunderstorm`, `create_lightning_effect`, `create_screen_shake` |
+| 「霧の出た早朝のシーンを作って」 | `setup_volumetric_fog`, `setup_lighting_preset`, `create_time_of_day` |
+| 「スタジオライティングをセットアップして」 | `setup_lighting_preset`, `setup_reflection_probe`, `create_light_probe_group` |
+
+### VFX・エフェクト
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「炎のパーティクルエフェクトを作って」 | `create_vfx_graph`, `vfx_create_preset` |
+| 「魔法のエフェクトを作って（青い光とパーティクル）」 | `create_visual_effect`, `create_particle_preset`, `setup_post_processing` |
+| 「ブルームとビネットを追加して映画的な見た目にして」 | `create_bloom`, `create_vignette_effect`, `setup_color_grading` |
+| 「キャラクターがダメージを受けた時の画面エフェクトを作って」 | `create_screen_shake`, `create_chromatic_aberration`, `create_vignette_effect` |
+| 「剣を振った時のトレイルエフェクトを作って」 | `create_vfx_graph`, `vfx_add_context`, `vfx_add_block` |
+| 「被写界深度で背景をぼかして」 | `create_depth_of_field`, `setup_post_processing` |
+
+### UI
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「HPバーとマナバーのUIを作って」 | `create_ui`, `setup_ui_animation`, `set_ui_colors` |
+| 「メインメニュー画面を作って」 | `create_ui`, `create_ui_grid`, `setup_ui_animation`, `apply_ui_theme` |
+| 「ダイアログボックスを作って」 | `create_ui_dialog`, `setup_ui_animation` |
+| 「モバイル用のジョイスティックUIを作って」 | `create_ui`, `setup_safe_area`, `setup_touch_effects` |
+| 「インベントリのグリッドUIを作って」 | `create_ui_grid`, `setup_scroll_view`, `create_drag_drop` |
+| 「通知ポップアップシステムを作って」 | `create_ui_notification`, `setup_ui_animation` |
+| 「レスポンシブなUIレイアウトを作って」 | `create_responsive_ui`, `setup_ui_anchors`, `setup_safe_area` |
+
+### オーディオ
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「BGMシステムを作って、イントロとループを設定して」 | `create_adaptive_music`, `create_audio_mixer` |
+| 「3D空間オーディオを設定して」 | `create_audio_source`, `setup_3d_audio`, `setup_audio_occlusion` |
+| 「洞窟のリバーブを設定して」 | `create_reverb_zones`, `setup_audio_effects` |
+| 「足音のランダムバリエーションを作って」 | `create_sound_pools`, `setup_audio_triggers` |
+| 「オーディオビジュアライザーを作って」 | `create_audio_visualization`, `create_vfx_graph` |
+
+### AI・キャラクター
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「敵AIを作って、プレイヤーを追いかけて攻撃するようにして」 | `create_goap_agent`, `create_goap_action`, `define_goap_goal` |
+| 「NPCのパトロール行動を作って」 | `setup_behavior_tree`, `create_ai_pathfinding`, `setup_navmesh` |
+| 「村人AIを作って（巡回、会話、逃走）」 | `create_goap_template`, `setup_goap_world_state` |
+| 「ボスAIを作って複数の攻撃パターンを持たせて」 | `create_state_machine`, `create_goap_agent`, `create_animation` |
+
+### アニメーション
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「キャラクターのアイドル→歩行→走行のアニメーション遷移を作って」 | `create_animator_controller`, `add_animation_state`, `add_animation_transition` |
+| 「ブレンドツリーで移動アニメーションを作って」 | `setup_blend_tree`, `setup_advanced_blend_tree` |
+| 「攻撃アニメーションにヒットエフェクトのイベントを追加して」 | `create_animation_event`, `create_visual_effect` |
+| 「Mixamoのアニメーションをインポートして設定して」 | `import_mixamo_animation`, `setup_avatar`, `retarget_animation` |
+
+### マテリアル・シェーダー
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「原神風の水面シェーダーを作って」 | `create_water_material`, `create_ocean_system` |
+| 「トゥーンシェーダーのキャラクターマテリアルを作って」 | `create_toon_material`, `create_shader_graph` |
+| 「発光するマテリアルを作って」 | `create_advanced_material`, `set_material_property` |
+| 「ディゾルブエフェクトを作って」 | `create_shader_graph`, `trigger_dissolve` |
+| 「ホログラムシェーダーを作って」 | `create_shader_graph`, `create_shader_property_animator` |
+
+### スクリプト
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「プレイヤーの移動スクリプトを作って」 | `create_script`, `read_script`, `modify_script` |
+| 「このスクリプトにジャンプ機能を追加して」 | `read_script`, `add_script_method`, `modify_script` |
+| 「コード内の"Player"を"Character"に全置換して」 | `grep_scripts`, `modify_script` |
+| 「このスクリプトの品質を分析して」 | `analyze_script`, `check_best_practices` |
+
+### プロジェクト管理
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「プロジェクトの未使用アセットを見つけて」 | `find_unused_assets`, `analyze_dependencies` |
+| 「テクスチャを一括最適化して」 | `optimize_textures_batch`, `auto_atlas_textures` |
+| 「アセットを種類別にフォルダ整理して」 | `auto_organize_folders`, `batch_rename` |
+| 「ビルドサイズを見積もって」 | `estimate_build_size`, `performance_report` |
+| 「欠落参照を見つけて」 | `find_missing_references`, `analyze_dependencies` |
+
+### デバッグ・テスト
+
+| 指示例 | 使用されるツール |
+|--------|------------------|
+| 「コンソールのエラーを分析して」 | `analyze_console_logs`, `console` |
+| 「ゲーム速度を半分にして」 | `control_game_speed` |
+| 「パフォーマンスプロファイルを取得して」 | `profile_performance`, `analyze_draw_calls` |
+| 「シーンにデバッグ用の線を描画して」 | `debug_draw` |
+| 「ユニットテストを実行して」 | `run_tests` |
+
+### 複合的な指示例
+
+**シーン・環境設定系**
+- 「ホラーゲーム用のライティングにして。暗めの環境光、点滅するPoint Light、霧を追加して」
+- 「夕焼けのシーンを作って。オレンジ色のDirectional Light、レンズフレア、暖色系のポストプロセス」
+- 「雨のシーンにして。雨パーティクル、地面に波紋エフェクト、雨音の3Dオーディオを追加」
+- 「Assets/Prefabs/にあるTree_01を10個ランダムに配置して。Y=0の平面上に」
+- 「Cubeを5x5のグリッド状に並べて。間隔2m、Groundというマテリアルを適用して」
+
+**キャラクター・AI系**
+- 「Playerという名前のCubeを作って、WASDで移動、Spaceでジャンプできるようにして。移動速度5、ジャンプ力8で」
+- 「Enemyを作って、Playerを見つけたら追いかけて、近づいたら攻撃する。見失ったら元の位置に戻るAIにして」
+- 「商人NPCを作って。プレイヤーが近づいたら挨拶、話しかけたらショップUI表示、離れたらお辞儀するようにして」
+- 「パトロールする警備員を作って。ウェイポイントを巡回、プレイヤーを見つけたら警報、追跡、見失ったら巡回に戻る」
+
+**カメラ系**
+- 「Playerを追いかけるカメラを作って。距離5m、高さ2m、壁があったら自動で回り込むようにして」
+- 「ボス戦用のカメラを作って。PlayerとBossの両方をフレームに収めて、距離に応じてズームして」
+- 「カットシーン用のカメラを作って。PointAからPointBまで5秒かけて移動、途中でCharacterを見るようにして」
+- 「FPSカメラを作って。マウスで視点操作、感度0.5、Y軸反転なし、上下の角度制限-60〜60度」
+
+**エフェクト系**
+- 「剣を振った時のエフェクトを作って。白い軌跡、ヒット時に火花、敵に当たったら画面を0.1秒揺らして」
+- 「魔法の詠唱エフェクトを作って。足元に青い魔法陣、周囲に浮かぶ光の粒子、詠唱完了時にフラッシュ」
+- 「爆発エフェクトを作って。炎、煙、破片、衝撃波、2m以内のオブジェクトを吹き飛ばす」
+- 「回復エフェクトを作って。キャラクターの周りに緑の光、上昇するパーティクル、完了時に輪が広がる」
+
+**UI系**
+- 「HPバーを作って。左上に配置、赤いバー、ダメージで減少アニメーション、20%以下で点滅」
+- 「ダメージ数字を作って。敵の頭上に表示、赤い文字、上に浮かんで消える、クリティカルは黄色で大きく」
+- 「ポーズメニューを作って。続ける、設定、タイトルに戻るボタン。ESCで開閉、開いてる間はゲーム停止」
+- 「ミニマップを作って。右上に配置、プレイヤーは白い矢印、敵は赤い点、回転は固定で上が北」
+
+**オーディオ系**
+- 「足音システムを作って。歩く/走るで音量変化、地面の素材で音が変わる（草、石、木、金属）」
+- 「BGMを作って。タイトルはBGM_Title、バトルはBGM_Battle、フェードで切り替え、バトル終了で戻る」
+- 「環境音を作って。森は鳥、川のせせらぎ、風。洞窟は反響、水滴。エリアで自動切り替え」
+
+**アニメーション系**
+- 「キャラクターのアニメーターを作って。待機、歩行、走行、ジャンプ、着地。SpeedとIsGroundedで制御」
+- 「攻撃コンボを作って。クリック1回で斬り1、連打で斬り2→斬り3。2秒操作なしでリセット」
+- 「ドアのアニメーションを作って。プレイヤーが近づいて開くボタンで開閉、開くのに1秒、閉まるのに0.5秒」
+
+**天候・時間系**
+- 「天候システムを作って。晴れ→曇り→雨→雷雨がランダムで変わる。各天候は5分〜15分続く」
+- 「昼夜サイクルを作って。1時間で1日経過、朝6時に日の出、18時に日没、夜は街灯が点く」
+- 「雨を降らせて。パーティクル、地面に波紋、濡れた地面の反射、雨音、屋内では聞こえない」
+
+**デバッグ・開発系**
+- 「コンソールのエラーを全部見せて、原因と修正方法を教えて」
+- 「このシーンのパフォーマンスを分析して。ドローコール、バッチ、FPSを教えて」
+- 「Player.csを見せて、UpdateメソッドのGetInputの部分を新しいInput Systemに書き換えて」
+- 「プロジェクト内で"OnTriggerEnter"を使ってるスクリプトを全部リストして」
+
+---
+
+## 目次
+- [GameObject (11ツール)](#gameobject)
+- [Transform (4ツール)](#transform)
+- [Camera (13ツール)](#camera)
+- [Cinemachine (9ツール)](#cinemachine)
+- [Lighting (10ツール)](#lighting)
+- [Material (9ツール)](#material)
+- [Shader (13ツール)](#shader)
+- [VFX (41ツール)](#vfx)
+- [Animation (14ツール)](#animation)
+- [Audio (14ツール)](#audio)
+- [Physics (6ツール)](#physics)
+- [UI (15ツール)](#ui)
+- [Scene (10ツール)](#scene)
+- [Input (13ツール)](#input)
+- [Weather (9ツール)](#weather)
+- [TimeOfDay (4ツール)](#timeofday)
+- [GOAP AI (10ツール)](#goap-ai)
+- [AI (3ツール)](#ai)
+- [GameSystems (5ツール)](#gamesystems)
+- [Scripting (9ツール)](#scripting)
+- [Editor (8ツール)](#editor)
+- [Screenshot (4ツール)](#screenshot)
+- [Monitoring (10ツール)](#monitoring)
+- [AssetManagement (12ツール)](#assetmanagement)
+- [Optimization (7ツール)](#optimization)
+- [Batch (5ツール)](#batch)
+- [Build (4ツール)](#build)
+- [Package (3ツール)](#package)
+- [Debug (6ツール)](#debug)
+- [Timeline (2ツール)](#timeline)
+- [Utility (26ツール)](#utility)
+- [Other (42ツール)](#other)
+
+---
+
+## GameObject
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_gameobject` | Unityシーンに新しいGameObjectを作成 |
+| `unity_update_gameobject` | 既存のGameObjectのプロパティを更新 |
+| `unity_delete_gameobject` | シーンからGameObjectを削除 |
+| `unity_add_component` | GameObjectにコンポーネントを追加 |
+| `unity_update_component` | コンポーネントのプロパティを更新 |
+| `unity_set_active_scene` | マルチシーン編集でアクティブシーンを設定 |
+| `unity_get_gameobjects_list` | フィルタ付きでGameObjectリストを取得 |
+| `unity_get_gameobject_detail` | 特定のGameObjectの詳細情報を取得 |
+| `unity_duplicate_gameobject` | 既存のGameObjectを複製 |
+| `unity_find_gameobjects_by_component` | 特定のコンポーネントを持つ全GameObjectを検索 |
+| `unity_get_gameobject_details` | GameObjectの詳細情報を取得 |
+
+---
+
+## Transform
+
+| ツール | 説明 |
+|--------|------|
+| `unity_set_transform` | GameObjectの位置、回転、スケールを設定 |
+| `unity_vfx_remove_block` | VFXコンテキストからブロックを削除 |
+| `unity_remove_package` | インストール済みUnityパッケージを削除 |
+| `unity_move_asset` | アセットを別のフォルダに移動 |
+
+---
+
+## Camera
+
+| ツール | 説明 |
+|--------|------|
+| `unity_setup_camera` | シーンにカメラをセットアップ |
+| `unity_create_virtual_camera` | フォロー/ルックアットターゲット付きCinemachine仮想カメラを作成 |
+| `unity_create_freelook_camera` | 三人称オービット用FreeLookカメラを作成 |
+| `unity_update_virtual_camera` | 既存のCinemachine仮想カメラの設定を更新 |
+| `unity_create_state_driven_camera` | Animator状態に連動するState-Drivenカメラを作成 |
+| `unity_create_clear_shot_camera` | 障害物回避付きClear Shotカメラを作成 |
+| `unity_create_blend_list_camera` | 優先度付き子カメラを管理するBlend Listカメラを作成 |
+| `unity_set_camera_priority` | Cinemachine仮想カメラの優先度を変更 |
+| `unity_set_camera_enabled` | Cinemachine仮想カメラを有効/無効化 |
+| `unity_create_mixing_camera` | 複数の子カメラをブレンドするMixingカメラを作成 |
+| `unity_update_camera_target` | CinemachineカメラのFollow/LookAtターゲットを更新 |
+| `unity_get_active_camera_info` | 現在アクティブなCinemachine仮想カメラの情報を取得 |
+| `unity_get_camera_info` | シーン内のカメラ情報を取得 |
+
+---
+
+## Cinemachine
+
+| ツール | 説明 |
+|--------|------|
+| `unity_setup_cinemachine_brain` | カメラにCinemachine Brainをセットアップ |
+| `unity_create_dolly_track` | ウェイポイント付きDolly Trackを作成 |
+| `unity_add_confiner_extension` | カメラ移動を制限するConfiner拡張を追加 |
+| `unity_create_impulse_source` | カメラシェイク用Impulse Sourceを作成 |
+| `unity_add_impulse_listener` | シェイク受信用Impulse Listener拡張を追加 |
+| `unity_create_target_group` | 複数ターゲット管理用Target Groupを作成 |
+| `unity_update_brain_blend_settings` | Cinemachine Brainのデフォルトブレンド設定を更新 |
+| `unity_setup_blend_tree` | スムーズなアニメーション遷移用Blend Treeを作成 |
+| `unity_setup_advanced_blend_tree` | 複雑なBlend Treeを作成 |
+
+---
+
+## Lighting
+
+| ツール | 説明 |
+|--------|------|
+| `unity_setup_lighting` | 拡張オプションとプリセットでライティングをセットアップ |
+| `unity_setup_lighting_preset` | プロフェッショナルなライティングプリセットを適用 |
+| `unity_setup_reflection_probe` | リアルな反射用Reflection Probeをセットアップ |
+| `unity_create_light_probe_group` | 動的GI用Light Probe Groupを作成 |
+| `unity_setup_volumetric_fog` | 大気的なボリュメトリックフォグを作成 |
+| `unity_create_lightning_effect` | フラッシュエフェクト付き雷を作成 |
+| `unity_create_skybox_blend` | 昼と夜のSkyboxをブレンド |
+| `unity_create_skybox_from_image` | パノラマ/HDRI画像または6面画像からSkyboxを作成 |
+| `unity_setup_lighting_scenarios` | 異なるムード用ライティングシナリオを作成 |
+| `unity_get_lighting_info` | シーン内のライト情報を取得 |
+
+---
+
+## Material
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_material` | 新しいマテリアルを作成 |
+| `unity_setup_material` | PBRプロパティでマテリアルを作成/変更 |
+| `unity_create_advanced_material` | 高度な設定とテクスチャ付きマテリアルを作成 |
+| `unity_create_material_property_block` | インスタンスを作成せずにマテリアルプロパティを変更 |
+| `unity_vfx_set_color_gradient` | ColorOverLifeブロックにカラーグラデーションを設定 |
+| `unity_set_material_property` | 既存マテリアルのプロパティを変更 |
+| `unity_get_material_properties` | マテリアルの全プロパティと値を取得 |
+| `unity_get_material_details` | マテリアルの詳細情報を取得 |
+| `unity_get_material_info` | シーンで使用されているマテリアル情報を取得 |
+
+---
+
+## Shader
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_shader_property_animator` | カラー、float、vectorなどのシェーダープロパティをアニメーション |
+| `unity_animate_shader_texture` | スクロール、フリップブック、回転テクスチャアニメーションを作成 |
+| `unity_create_shader_gradient` | マテリアルにグラデーションエフェクトを適用 |
+| `unity_create_shader_graph` | 自然言語でShader Graphを作成 |
+| `unity_create_water_material` | 原神品質の物理ベース反射付きウォーターを作成 |
+| `unity_create_toon_material` | スタイライズドなトゥーン/セルシェードマテリアルを作成 |
+| `unity_create_hair_material` | リアル/スタイライズドな髪マテリアルを作成 |
+| `unity_create_eye_material` | リアル/スタイライズドな目マテリアルを作成 |
+| `unity_fix_urp_particle_shaders` | URP互換性のためパーティクルマテリアルを修正 |
+| `unity_read_shader` | .shaderファイルの内容を読み取り |
+| `unity_modify_shader` | 既存の.shaderファイルを変更 |
+| `unity_analyze_shader` | シェーダーの構造を分析 |
+| `unity_read_shader_graph` | Unity ShaderGraphファイルを読み取り/解析 |
+
+---
+
+## VFX
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_visual_effect` | パーティクル、ライトを組み合わせた複雑なビジュアルエフェクトを作成 |
+| `unity_create_decal` | ディテール用デカルプロジェクションを作成 |
+| `unity_setup_color_grading` | 映画的なカラーグレーディングを適用 |
+| `unity_create_lens_flare` | リアルなレンズフレアエフェクトを作成 |
+| `unity_create_screen_shake` | ドラマチックなスクリーンシェイクを適用 |
+| `unity_create_screen_fade` | フェードイン/アウトトランジションを作成 |
+| `unity_create_vignette_effect` | 映画的なビネットフレーミングを追加 |
+| `unity_create_chromatic_aberration` | レンズ歪みと色分離を追加 |
+| `unity_vfx_set_spawn_rate` | VFX Graphのスポーンレートを設定 |
+| `unity_vfx_list_blocks` | VFX Graph内の全コンテキストとブロックをリスト |
+| `unity_vfx_get_block_info` | VFXブロックの詳細情報を取得 |
+| `unity_create_bloom` | 自動生成シェーダー付きブルームエフェクトを作成 |
+| `unity_create_film_grain` | フィルムグレインエフェクトを作成 |
+| `unity_create_motion_blur` | モーションブラーエフェクトを作成 |
+| `unity_create_depth_of_field` | 被写界深度エフェクトを作成 |
+| `unity_create_lens_distortion` | レンズディストーションエフェクトを作成 |
+| `unity_setup_urp_settings` | Universal Render Pipeline設定を構成 |
+| `unity_setup_hdrp_settings` | High Definition Render Pipeline設定を構成 |
+| `unity_setup_post_processing` | ポストプロセッシングエフェクトスタックを構成 |
+| `unity_create_vfx_graph` | 高度な機能付きVFXパーティクルエフェクトを作成 |
+| `unity_set_vfx_property` | VFX Graphの公開プロパティを変更 |
+| `unity_get_vfx_properties` | VFX Graphの全公開プロパティを取得 |
+| `unity_trigger_vfx_event` | VFX Graphにイベント送信（再生、停止、カスタム） |
+| `unity_vfx_create` | 新しいVFX Graphアセットを作成 |
+| `unity_vfx_add_context` | コンテキスト（Spawn、Initialize、Update、Output）を追加 |
+| `unity_vfx_add_block` | コンテキストにブロックを追加 |
+| `unity_vfx_add_operator` | VFX Graphにオペレーターノードを追加 |
+| `unity_vfx_link_contexts` | 2つのコンテキストをリンク |
+| `unity_vfx_get_structure` | VFX Graphの構造を取得 |
+| `unity_vfx_compile` | VFX Graphをコンパイルして保存 |
+| `unity_vfx_get_available_types` | 利用可能な全コンテキスト、ブロック、オペレータータイプをリスト |
+| `unity_vfx_add_parameter` | VFX Graphに公開パラメータを追加 |
+| `unity_vfx_connect_slots` | 出力スロットを入力スロットに接続 |
+| `unity_vfx_set_attribute` | SetAttributeブロックに属性値を設定 |
+| `unity_vfx_create_preset` | プリセットから完全なVFX Graphを作成 |
+| `unity_vfx_configure_output` | VFX出力コンテキスト設定を構成 |
+| `unity_read_vfx_graph` | 既存のVFX Graphを読み取り/分析 |
+| `unity_modify_vfx_graph` | 既存のVFX Graphアセットを変更 |
+| `unity_analyze_vfx_graph` | VFX Graphアセット構造を分析 |
+| `unity_vfx_set_output` | VFX Graphの出力コンテキスト設定を設定 |
+| `unity_vfx_set_block_value` | VFXブロックに値を設定 |
+
+---
+
+## Animation
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_animation` | GameObject用アニメーションを作成 |
+| `unity_create_animator_controller` | 新しいAnimator Controllerを作成 |
+| `unity_add_animation_state` | Animator Controllerに新しいステートを追加 |
+| `unity_create_animation_clip` | サンプルカーブ付きアニメーションクリップを作成 |
+| `unity_add_animation_transition` | アニメーションステート間のトランジションを作成 |
+| `unity_setup_animation_layer` | アニメーションレイヤーを追加/構成 |
+| `unity_create_animation_event` | アニメーションクリップにイベントを追加 |
+| `unity_bake_animation` | ランタイムアニメーションをアニメーションクリップにベイク |
+| `unity_import_mixamo_animation` | Mixamoからアニメーションをインポート/セットアップ |
+| `unity_organize_animation_assets` | アニメーションファイルを適切なフォルダ構造に整理 |
+| `unity_create_animation_layer_mask` | アニメーションレイヤー用アバターマスクを作成 |
+| `unity_retarget_animation` | アニメーションを別のアバターにリターゲット |
+| `unity_analyze_animation_performance` | アニメーションパフォーマンスを分析/最適化 |
+| `unity_get_animation_details` | アニメーションクリップの詳細情報を取得 |
+
+---
+
+## Audio
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_audio_mixer` | オーディオミキサーを作成 |
+| `unity_create_audio_source` | AudioSourceコンポーネントを作成/構成 |
+| `unity_setup_3d_audio` | 3D空間オーディオ設定を構成 |
+| `unity_create_audio_clip` | オーディオファイルをインポートまたはプロシージャルオーディオクリップを作成 |
+| `unity_setup_audio_effects` | オーディオエフェクトを追加/構成 |
+| `unity_create_reverb_zones` | オーディオリバーブゾーンを作成 |
+| `unity_setup_audio_occlusion` | オーディオオクルージョンを構成 |
+| `unity_create_adaptive_music` | イントロ+ループミュージックシステムを作成 |
+| `unity_setup_audio_triggers` | イベントベースオーディオトリガーを構成 |
+| `unity_create_sound_pools` | サウンドバリエーションプールを作成 |
+| `unity_create_audio_mixing` | リアルタイムオーディオミキシングとダッキングをセットアップ |
+| `unity_setup_spatial_audio` | VR/AR用高度な空間オーディオを構成 |
+| `unity_create_audio_visualization` | オーディオに反応するビジュアルエフェクトを作成 |
+| `unity_get_audio_details` | オーディオクリップの詳細情報を取得 |
+
+---
+
+## Physics
+
+| ツール | 説明 |
+|--------|------|
+| `unity_setup_physics` | GameObjectまたはグローバルの物理設定をセットアップ |
+| `unity_setup_navmesh` | ナビゲーションメッシュをセットアップ |
+| `unity_add_collider_extension` | 障害物回避用Collider拡張を追加 |
+| `unity_get_physics_settings` | Unity物理設定を取得 |
+| `unity_get_physics_info` | シーン内の物理オブジェクト情報を取得 |
+| `unity_setup_ui_navigation` | UIナビゲーションシステムを作成 |
+
+---
+
+## UI
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_ui` | UnityでUI要素を作成 |
+| `unity_capture_ui_element` | 名前で特定のUI要素をキャプチャ |
+| `unity_setup_ui_anchors` | アンカーとピボットを自動セットアップ |
+| `unity_setup_ui_animation` | UIアニメーションをセットアップ（フェード、スケール、スライド） |
+| `unity_create_ui_grid` | UIグリッドレイアウトを作成 |
+| `unity_create_ui_notification` | 通知システムを作成 |
+| `unity_create_ui_dialog` | モーダルダイアログを作成 |
+| `unity_optimize_ui_canvas` | パフォーマンス用にCanvasを最適化 |
+| `unity_apply_ui_theme` | UI要素に完全なテーマを適用 |
+| `unity_set_ui_colors` | UI要素の色を設定 |
+| `unity_style_ui_elements` | UI要素にスタイリングを適用 |
+| `unity_add_ui_effects` | UI要素にビジュアルエフェクトを追加 |
+| `unity_get_ui_info` | シーン内のUI要素情報を取得 |
+| `unity_setup_ui_canvas` | 異なるレンダーモードでUI Canvasを構成 |
+| `unity_set_ui_anchor` | UI要素のアンカープリセットを設定 |
+
+---
+
+## Scene
+
+| ツール | 説明 |
+|--------|------|
+| `unity_manage_scene` | シーン管理操作 |
+| `unity_load_scene` | エディタモードでシーンをロード |
+| `unity_unload_scene` | エディタからシーンをアンロード |
+| `unity_list_all_scenes` | プロジェクト内の全シーンファイルをリスト |
+| `unity_add_scene_to_build` | Build Settingsにシーンを追加/削除 |
+| `unity_get_scene_info` | 包括的なシーン情報を取得 |
+| `unity_get_scene_summary` | 軽量なシーン概要を取得 |
+| `unity_get_scene_changes_since` | タイムスタンプ以降のシーン変更を取得 |
+| `unity_capture_scene_view` | Scene Viewのスクリーンショットをキャプチャ |
+| `unity_pause_scene` | シーンビューを一時停止/再開 |
+
+---
+
+## Input
+
+| ツール | 説明 |
+|--------|------|
+| `unity_setup_custom_input` | カスタム入力アクションとバインディングを構成 |
+| `unity_create_gesture_recognition` | タッチまたはモーション用ジェスチャー認識をセットアップ |
+| `unity_setup_haptic_feedback` | ハプティック/バイブレーションフィードバックを構成 |
+| `unity_create_input_validation` | 入力検証システムを作成 |
+| `unity_setup_accessibility_input` | 入力用アクセシビリティ機能を構成 |
+| `unity_create_input_recording` | 入力記録/再生をセットアップ |
+| `unity_setup_multitouch` | マルチタッチ入力処理を構成 |
+| `unity_create_pinch_zoom` | ピンチトゥズーム機能をセットアップ |
+| `unity_setup_swipe_detection` | スワイプジェスチャー検出を構成 |
+| `unity_create_drag_drop` | ドラッグ＆ドロップ機能をセットアップ |
+| `unity_setup_touch_effects` | タッチ用ビジュアルエフェクトを構成 |
+| `unity_get_input_settings` | Unity入力設定を取得 |
+| `unity_setup_input_system` | テンプレート付きUnity Input Systemをセットアップ |
+
+---
+
+## Weather
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_terrain` | Unityでテレインを作成 |
+| `unity_modify_terrain` | テレインの高さまたはテクスチャを変更 |
+| `unity_create_weather_system` | 完全な天候システムを作成 |
+| `unity_set_weather_preset` | 異なる天候プリセットにトランジション |
+| `unity_create_rain_effect` | リアルな雨エフェクトを作成 |
+| `unity_create_snow_effect` | 降雪エフェクトを作成 |
+| `unity_create_wind_effect` | オブジェクトに影響する風エフェクトを作成 |
+| `unity_create_thunderstorm` | 完全な雷雨を作成 |
+| `unity_get_terrain_info` | テレイン情報を取得 |
+
+---
+
+## TimeOfDay
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_time_of_day` | 動的な昼夜サイクルを作成 |
+| `unity_set_time_of_day` | 昼夜サイクルの特定の時間を設定 |
+| `unity_create_day_night_preset` | プリセットライティング条件を適用 |
+| `unity_create_time_event` | 特定の時間にトリガーされるイベントを作成 |
+
+---
+
+## GOAP AI
+
+| ツール | 説明 |
+|--------|------|
+| `unity_setup_behavior_tree` | ビヘイビアツリーAIシステムをセットアップ |
+| `unity_define_goap_goal` | GOAPエージェントのゴールを定義 |
+| `unity_create_goap_action` | GOAPエージェントのアクションを作成 |
+| `unity_generate_goap_action_set` | エージェントタイプに基づきアクションセットを自動生成 |
+| `unity_setup_goap_world_state` | GOAPプランニング用ワールドステートを構成 |
+| `unity_debug_goap_decisions` | GOAP判断を可視化/デバッグ |
+| `unity_optimize_goap_performance` | GOAPエージェントパフォーマンスを最適化 |
+| `unity_create_goap_agent` | GOAP AIエージェントを作成 |
+| `unity_define_behavior_language` | 自然言語でAIビヘイビアを定義 |
+| `unity_create_goap_template` | プロフェッショナルテンプレートからGOAP AIを作成 |
+
+---
+
+## AI
+
+| ツール | 説明 |
+|--------|------|
+| `unity_setup_ml_agent` | 機械学習エージェントをセットアップ |
+| `unity_create_neural_network` | ニューラルネットワークシステムを作成 |
+| `unity_create_ai_pathfinding` | A*アルゴリズムでAIパスファインディングを作成 |
+
+---
+
+## GameSystems
+
+| ツール | 説明 |
+|--------|------|
+| `unity_create_game_controller` | 異なるゲームタイプ用プレイヤーコントローラーを作成 |
+| `unity_create_state_machine` | キャラクターまたはゲーム状態用ステートマシンを作成 |
+| `unity_setup_inventory_system` | UI付きインベントリシステムを作成 |
+| `unity_create_game_template` | 完全なゲームテンプレートを作成 |
+| `unity_quick_prototype` | 素早くプレイ可能なプロトタイプを作成 |
+
+---
+
+## Scripting
+
+| ツール | 説明 |
+|--------|------|
+| `unity_grep_scripts` | スクリプトファイル全体でパターンを検索 |
+| `unity_read_script_range` | スクリプトの特定行範囲を読み取り |
+| `unity_list_script_files` | globパターンサポート付きでスクリプトファイルをリスト |
+| `unity_analyze_script` | 品質問題のための包括的なスクリプト分析 |
+| `unity_modify_script` | 既存のUnityスクリプトを編集 |
+| `unity_edit_script_line` | Unityスクリプトの特定行を編集 |
+| `unity_add_script_method` | Unityスクリプトに新しいメソッドを追加 |
+| `unity_update_script_variable` | 変数宣言または値を更新 |
+| `unity_read_script` | Unityスクリプトファイルの内容を読み取り |
+
+---
+
+## Editor
+
+| ツール | 説明 |
+|--------|------|
+| `unity_force_refresh_assets` | Unityにアセットデータベースの更新を強制 |
+| `unity_invoke_context_menu` | コンポーネントの[ContextMenu]メソッドを呼び出し |
+| `unity_execute_menu_item` | Unity Editorメニュー項目を実行 |
+| `unity_get_inspector_info` | 詳細なインスペクター情報を取得 |
+| `unity_get_selected_object_info` | 現在選択中のGameObject情報を取得 |
+| `unity_get_component_details` | 特定コンポーネントの詳細を取得 |
+| `unity_console` | Unityコンソールログ操作 |
+| `unity_analyze_console_logs` | Unityコンソールログの詳細分析 |
+
+---
+
+## Screenshot
+
+| ツール | 説明 |
+|--------|------|
+| `unity_capture_game_view` | Canvas/UI含むGame Viewをキャプチャ |
+| `unity_capture_region` | 特定の領域をキャプチャ |
+| `unity_get_screenshot_result` | スクリーンショットキャプチャ結果を取得 |
+| `unity_capture_grid` | Game Viewをグリッドとして分割キャプチャ |
+
+---
+
+## Monitoring
+
+| ツール | 説明 |
+|--------|------|
+| `unity_get_operation_history` | Unity操作履歴を取得 |
+| `unity_create_checkpoint` | 後で復元するチェックポイントを作成 |
+| `unity_restore_checkpoint` | 以前に作成したチェックポイントを復元 |
+| `unity_monitor_play_state` | Unityプレイモード状態変更を監視 |
+| `unity_monitor_file_changes` | プロジェクト内のファイル変更を監視 |
+| `unity_monitor_compile` | スクリプトコンパイルイベントを監視 |
+| `unity_subscribe_events` | Unityイベントを購読 |
+| `unity_get_events` | 最近のUnityイベントを取得 |
+| `unity_get_monitoring_status` | 現在の監視状態を取得 |
+| `unity_monitor_runtime_errors` | リアルタイムランタイムエラー監視 |
+
+---
+
+## AssetManagement
+
+| ツール | 説明 |
+|--------|------|
+| `unity_get_asset_dependencies` | アセットの全依存関係を取得 |
+| `unity_check_folder` | フォルダの存在を確認 |
+| `unity_create_folder` | 新しいフォルダを作成 |
+| `unity_list_folders` | パス内のフォルダをリスト |
+| `unity_cleanup_empty_objects` | シーンから空のGameObjectを削除 |
+| `unity_rename_asset` | アセットファイルの名前を変更 |
+| `unity_delete_asset` | プロジェクトからアセットを削除 |
+| `unity_create_project_snapshot` | プロジェクト状態のスナップショットを作成 |
+| `unity_analyze_dependencies` | アセット依存関係を分析/可視化 |
+| `unity_export_project_structure` | プロジェクトフォルダ構造をエクスポート |
+| `unity_validate_naming_conventions` | アセットが命名規則に従っているか確認 |
+| `unity_auto_organize_folders` | アセットを自動的にフォルダに整理 |
+
+---
+
+## Optimization
+
+| ツール | 説明 |
+|--------|------|
+| `unity_optimize_textures_batch` | テクスチャインポート設定を一括最適化 |
+| `unity_analyze_draw_calls` | ドローコール最適化機会を分析 |
+| `unity_estimate_build_size` | 異なるプラットフォーム用ビルドサイズを推定 |
+| `unity_performance_report` | 包括的なパフォーマンスレポートを生成 |
+| `unity_generate_lod` | LODグループを自動生成 |
+| `unity_auto_atlas_textures` | テクスチャアトラスを自動作成 |
+| `unity_check_best_practices` | ベストプラクティス準拠のためスクリプトを分析 |
+
+---
+
+## Batch
+
+| ツール | 説明 |
+|--------|------|
+| `unity_extract_all_text` | ローカライゼーション用に全テキストコンテンツを抽出 |
+| `unity_batch_rename` | 複数のアセットを一括リネーム |
+| `unity_batch_prefab_update` | 複数のプレハブを変更で更新 |
+| `unity_batch_material_apply` | 複数のオブジェクトにマテリアルを適用 |
+| `unity_batch_prefab_create` | 複数のオブジェクトからプレハブを作成 |
+
+---
+
+## Build
+
+| ツール | 説明 |
+|--------|------|
+| `unity_get_build_settings` | Unityビルド設定を取得 |
+| `unity_get_player_settings` | Unityプレイヤー設定を取得 |
+| `unity_get_quality_settings` | Unity品質設定を取得 |
+| `unity_get_project_summary` | 全体的なプロジェクトサマリーを取得 |
+
+---
+
+## Package
+
+| ツール | 説明 |
+|--------|------|
+| `unity_list_packages` | インストール済み全Unityパッケージをリスト |
+| `unity_install_package` | Unityパッケージをインストール |
+| `unity_check_package` | パッケージがインストール済みか確認 |
+
+---
+
+## Debug
+
+| ツール | 説明 |
+|--------|------|
+| `unity_control_game_speed` | Unityゲーム速度（タイムスケール）を制御 |
+| `unity_profile_performance` | Unityパフォーマンスプロファイリングデータを取得 |
+| `unity_debug_draw` | Unityシーンにデバッグシェイプを描画 |
+| `unity_run_tests` | Unity Test Runnerテストを実行 |
+| `unity_manage_breakpoints` | デバッグブレークポイントを管理 |
+| `unity_debug_bt` | ビヘイビアツリーのデバッグ情報を取得 |
+
+---
+
+## Timeline
+
+| ツール | 説明 |
+|--------|------|
+| `unity_setup_avatar` | 3Dモデル用アバターを構成 |
+| `unity_create_timeline` | シネマティクス用Unity Timelineを作成 |
+
+---
+
+## Utility
+
+| ツール | 説明 |
+|--------|------|
+| `unity_add_target_to_group` | Cinemachine Target Groupにターゲットを追加 |
+| `unity_create_script` | 新しいC#スクリプトを作成 |
+| `unity_create_particle_system` | パーティクルシステムを作成 |
+| `unity_create_particle_preset` | 高度なパーティクルエフェクトを作成 |
+| `unity_place_objects` | パターンで複数のオブジェクトを配置 |
+| `unity_undo_operation` | 最後のUnity操作を取り消し |
+| `unity_redo_operation` | 以前に取り消した操作をやり直し |
+| `unity_list_assets` | プロジェクト内のアセットをリスト |
+| `unity_search_prefabs_by_component` | 特定コンポーネントを持つプレハブを検索 |
+| `unity_find_material_usage` | マテリアルを使用している全オブジェクトを検索 |
+| `unity_find_texture_usage` | テクスチャを使用している全マテリアルを検索 |
+| `unity_find_missing_references` | プロジェクト内の欠落参照を検索 |
+| `unity_group_gameobjects` | 複数のGameObjectを親の下にグループ化 |
+| `unity_batch_import_settings` | 複数のアセットにインポート設定を適用 |
+| `unity_find_unused_assets` | プロジェクトで参照されていないアセットを検索 |
+| `unity_create_responsive_ui` | レスポンシブUIコンテナを作成 |
+| `unity_setup_scroll_view` | 完全なスクロールビューを作成 |
+| `unity_setup_safe_area` | モバイル用セーフエリアをセットアップ |
+| `unity_get_asset_file_info` | アセットのファイルシステム情報を取得 |
+| `unity_get_asset_import_settings` | アセットのインポート設定を取得 |
+| `unity_search_code` | プロジェクト内でコードパターンを検索 |
+| `unity_auto_attach_ui` | UI要素をコンポーネントフィールドに自動アタッチ |
+| `unity_create_prefab` | GameObjectからプレハブを作成 |
+| `unity_read_particle_system` | 全Particle Systemプロパティを読み取り |
+| `unity_modify_particle_system` | Particle Systemプロパティを変更 |
+
+---
+
+## Other
+
+以下を含む42の追加ツール：
+- ビヘイビアツリー (`unity_create_bt_agent`, `unity_add_bt_node` など)
+- ウォーターシステム (`unity_create_ocean_system`, `unity_add_buoyancy` など)
+- HDRP Water (`unity_create_hdrp_water`, `unity_set_hdrp_water_property`)
+- 特殊エフェクト (`unity_create_caustics`, `unity_trigger_dissolve` など)
+- ランタイムステータス (`unity_get_runtime_status`, `unity_get_performance_metrics` など)
+- 通信 (`unity_send_chat_response`, `unity_check_messages`)
+
+---
+
+## バージョン情報
+
+- **ツール数**: 350
+- **バージョン**: 1.2.0
+- **最終更新**: 2026-01-19
+
+---
+
+*tool-registry.json から自動生成*

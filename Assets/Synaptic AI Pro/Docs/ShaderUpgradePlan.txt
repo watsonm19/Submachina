@@ -1,0 +1,290 @@
+================================================================================
+Synaptic AI Pro - シェーダーアップグレード計画
+================================================================================
+作成日: 2025-12-01
+目標: Asset Storeで販売可能なクオリティ / 原神レベルのアニメ表現
+
+================================================================================
+■ 調査結果サマリー
+================================================================================
+
+【参考資料】
+- 原神 GDC 2021: "Erta Gao -Erta Gao | GDC Talk -Erta Gao"
+- HoyoToon / StarRailNPRShader (オープンソース)
+- Guilty Gear Strive / Arc System Works GDC資料
+- Asset Store: Flat Kit, Toony Colors Pro 2
+
+【競合分析】
+- Flat Kit: $49 - シンプルなフラットシェーディング、使いやすさ重視
+- Toony Colors Pro 2: $50 - 多機能、Shader Generator付き
+- UTS2 (Unity-chan Toon Shader): 無料 - 日本アニメ向け基本機能
+
+【原神の主要技術】
+1. SDFフェイスシャドウ: 9段階補間ライトマップで滑らかな顔影
+2. Kajiya-Kayヘアモデル: 二重スペキュラ + タンジェントシフトマップ
+3. デュアルカラーSSS: 光側は黄色、影側は赤のグラデーション
+4. Parallax Eye: 深度オフセット + 瞳孔拡張 + 多層反射
+
+================================================================================
+■ Phase 1: ToonPro 完全版 (優先度: 最高)
+================================================================================
+
+【理由】
+- Asset Store需要が最も高い
+- 原神人気でアニメシェーダー注目度上昇
+- 差別化ポイントを作りやすい
+
+【実装項目】
+
+1. SDFフェイスシャドウシステム
+   - 9方向ライトマップ生成ツール (Editor拡張)
+   - SDF補間による滑らかな影遷移
+   - 鼻影の独立制御
+   ファイル: SynapticToonPro.shader, SDFGenerator.cs
+
+2. Kajiya-Kayヘアシェーダー
+   - Primary/Secondary Specular
+   - タンジェントシフトマップサポート
+   - 異方性ハイライト
+   ファイル: SynapticHairPro.shader (新規)
+
+3. Parallax Eyeシェーダー
+   - 深度オフセットによる立体感
+   - 瞳孔サイズ制御
+   - 環境マップ反射
+   - ハイライトレイヤー
+   ファイル: SynapticEyePro.shader (新規)
+
+4. アウトラインシステム強化
+   - Screen Space Edge Detection
+   - Inverted Hull (現行)
+   - ハイブリッド対応
+   - 距離に応じた太さ制御
+   ファイル: SynapticToonPro.shader
+
+5. デュアルカラーSSS
+   - ライト側: 暖色グラデーション
+   - シャドウ側: 寒色グラデーション
+   - ランプテクスチャ対応
+   ファイル: SynapticToonPro.shader
+
+6. リムライト拡張
+   - Standard Rim
+   - Fresnel Rim
+   - Depth-based Rim
+   - Directional Rim
+   - View-dependent Rim
+   ファイル: SynapticToonPro.shader
+
+【Editorツール】
+- SDF Generator Window
+- Ramp Texture Editor
+- Material Preset Manager
+
+================================================================================
+■ Phase 2: WaterPro + GrassPro 強化
+================================================================================
+
+【WaterPro改善】
+
+1. FFT Ocean Waves
+   - Tessendorf FFT実装
+   - Phillips/JONSWAP スペクトラム
+   - Compute Shader計算
+   ファイル: SynapticWaterPro.shader, FFTOcean.compute
+
+2. GPU Caustics
+   - ライトからのレイキャスト
+   - カスタムパターンサポート
+   ファイル: SynapticCaustics.compute
+
+3. Underwater God Rays
+   - ボリューメトリックライト
+   - 減衰制御
+   ファイル: SynapticWaterPro.shader
+
+4. Quadtree Tessellation
+   - 距離ベースLOD
+   - カメラ視錐台カリング
+   ファイル: SynapticWaterPro.shader
+
+5. Hi-Z SSR
+   - 階層的Zバッファトレーシング
+   - パフォーマンス最適化
+   ファイル: SynapticSSR.compute
+
+【GrassPro改善】
+
+1. Compute Shader Instancing
+   - GPU駆動インスタンシング
+   - 大量描画対応 (100万本+)
+   ファイル: SynapticGrassPro.shader, GrassInstancer.compute
+
+2. 風システム強化
+   - Perlin Noise + Turbulence
+   - グローバル風方向
+   - ローカル風ゾーン
+   ファイル: SynapticGrassPro.shader
+
+3. タイルベースLOD
+   - 距離に応じた密度制御
+   - シームレス遷移
+   ファイル: GrassRenderer.cs
+
+4. インタラクション
+   - 踏みつけ変形
+   - 刈り取り/再生
+   ファイル: GrassInteraction.cs
+
+5. カリング最適化
+   - Frustum Culling
+   - Occlusion Culling
+   - GPU Indirect Drawing
+   ファイル: GrassInstancer.compute
+
+================================================================================
+■ Phase 3: Effects + Sky 強化
+================================================================================
+
+【SkyPro改善】
+
+1. Volumetric Clouds
+   - Ray Marching実装
+   - Worley + FBM Noise
+   - 16フレーム時間再構成
+   ファイル: SynapticSkyPro.shader, CloudNoise.compute
+
+2. 物理ベース大気散乱
+   - Rayleigh散乱
+   - Mie散乱
+   - 時刻変化
+   ファイル: SynapticSkyPro.shader
+
+3. 銀縁効果 (Silver Lining)
+   - 雲の縁の光
+   - God Rays
+   ファイル: SynapticSkyPro.shader
+
+【DissolvePro改善】
+
+1. 方向選択UI
+   - X/Y/Z軸選択
+   - カスタム方向ベクトル
+   - 球状ディゾルブ
+   ファイル: SynapticDissolvePro.shader
+
+2. 多層エッジグロー
+   - 内側/外側グロー
+   - カラーグラデーション
+   - パーティクル連携
+   ファイル: SynapticDissolvePro.shader
+
+3. バーンテクスチャ統合
+   - カスタムパターン
+   - アニメーション対応
+   ファイル: SynapticDissolvePro.shader
+
+【ShieldPro改善】
+
+1. マルチヒットリップル
+   - 複数衝撃波管理
+   - C#コントローラー
+   ファイル: SynapticShieldPro.shader, ShieldController.cs
+
+2. インターセクション強化
+   - Overwatch風グロー
+   - ソフトブレンド
+   ファイル: SynapticShieldPro.shader
+
+3. パターン拡張
+   - Voronoi
+   - カスタムテクスチャ
+   - アニメーション
+   ファイル: SynapticShieldPro.shader
+
+================================================================================
+■ 新規シェーダー候補
+================================================================================
+
+1. SynapticHairPro.shader - アニメヘア特化
+2. SynapticEyePro.shader - 瞳シェーダー
+3. SynapticClothPro.shader - 布・衣服シェーダー
+4. SynapticHologramPro.shader - ホログラムエフェクト
+5. SynapticPortalPro.shader - ポータルエフェクト
+
+================================================================================
+■ Editorツール
+================================================================================
+
+1. SDFGenerator.cs
+   - 顔メッシュからSDF生成
+   - 9方向ライトマップ出力
+   - プレビュー機能
+
+2. RampEditor.cs
+   - グラデーションランプ作成
+   - プリセット管理
+   - リアルタイムプレビュー
+
+3. FlowMapPainter.cs
+   - フローマップペイント
+   - 方向可視化
+   - エクスポート機能
+
+4. NoiseGenerator.cs
+   - 各種ノイズ生成
+   - チャンネルパッキング
+   - タイル化対応
+
+5. MaterialPresetManager.cs
+   - プリセット保存/読込
+   - カテゴリ管理
+   - 一括適用
+
+================================================================================
+■ 実装状況 (2025-12-01 完了)
+================================================================================
+
+【Phase 1 完了】ToonPro + Character Shaders
+  ✅ SynapticHairPro.shader - Kajiya-Kay二重スペキュラ、SSS、風アニメーション
+  ✅ SynapticEyePro.shader - Parallax虹彩、瞳孔拡張、コースティクス、ハイライト
+  ✅ SynapticToonPro.shader強化:
+     - デュアルカラーSSS (Genshin Style)
+     - 5種類のリムライト (Standard, Fresnel, Depth, Directional, View)
+     - 距離フェード対応アウトライン
+
+【Phase 2 完了】Water + Grass
+  ✅ GrassInstancer.compute - GPU駆動インスタンシング、LOD、カリング
+  ✅ GrassRenderer.cs - Compute Shader連携、100万本以上対応
+
+【Phase 3 完了】Effects + Sky + Controllers
+  ✅ CloudNoise.compute - Worley/Perlin FBM 3Dノイズ生成
+  ✅ DissolveController.cs - 方向制御、パーティクル連携、イベント
+  ✅ ShieldController.cs - マルチヒットリップル、ダメージ状態、再生
+
+【LLM操作対応 完了】NexusExecutor統合 (すべてLLMから直接操作可能)
+  ✅ GENERATE_SDF_TEXTURE - SDFフェイスシャドウテクスチャ生成
+  ✅ GENERATE_RAMP_TEXTURE - シャドウランプテクスチャ生成 (8プリセット)
+  ✅ GENERATE_CLOUD_NOISE - 3Dクラウドノイズテクスチャ生成
+  ✅ ADD_DISSOLVE_CONTROLLER - DissolveController追加
+  ✅ ADD_SHIELD_CONTROLLER - ShieldController追加
+  ✅ ADD_GRASS_RENDERER - GrassRenderer追加
+  ✅ TRIGGER_DISSOLVE - ディゾルブ効果トリガー
+  ✅ TRIGGER_SHIELD_HIT - シールドヒット効果トリガー
+  ✅ CREATE_WATER - 水システム作成 (ocean/pool/river)
+  ※ エディターメニュー削除済み - すべてLLM経由で操作
+
+================================================================================
+■ 品質目標
+================================================================================
+
+【最低目標】
+- Asset Store上位シェーダーと同等機能
+- Flat Kit / Toony Colors Pro 2 を超える専門性
+
+【理想目標】
+- 原神/崩壊スターレイル相当のビジュアル
+- HoyoToon同等の機能をワンパッケージで提供
+- LLM連携による差別化
+
+================================================================================

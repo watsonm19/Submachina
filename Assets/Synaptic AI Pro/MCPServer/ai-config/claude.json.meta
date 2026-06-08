@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 7b83a451a66764293a632db12c102d92
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/MCPServer/ai-config/claude.json
+  uploadId: 920982

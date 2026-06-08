@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: a62991d1f740b43f9ab9c45321b68b16
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/MCPServer/utils/tool-loader.js
+  uploadId: 920982

@@ -1,0 +1,6 @@
+{
+  "provider": "google",
+  "model": "gemini-pro",
+  "temperature": 0.8,
+  "tools": ["unity_create", "unity_modify"]
+}

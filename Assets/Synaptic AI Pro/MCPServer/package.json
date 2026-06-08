@@ -1,0 +1,22 @@
+{
+  "name": "unity-mcp-server",
+  "version": "1.2.6",
+  "description": "MCP Server for Unity Integration",
+  "main": "index-supersave.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "ws": "^8.13.0",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.25.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

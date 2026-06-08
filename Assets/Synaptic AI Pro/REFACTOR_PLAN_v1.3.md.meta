@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: af8caa88043e6471fa0908aa7bf87375
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/REFACTOR_PLAN_v1.3.md
+  uploadId: 920982

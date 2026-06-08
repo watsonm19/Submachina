@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 02c26a063763b46768be7b91db398d95
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/MCPServer/ai-config/copilot.json
+  uploadId: 920982

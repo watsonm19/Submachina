@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 918ef77181e7a491d91f95e03029ffdf
+AssemblyDefinitionImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Editor/TestRunner/NexusAI.TestRunner.asmdef
+  uploadId: 920982

@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 1441c9d700fc54fb3b52f7e879cdb592
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Shaders/Toon/SynapticToonPro.shader
+  uploadId: 920982

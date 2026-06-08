@@ -1,0 +1,523 @@
+=====================================
+Synaptic AI Pro - Game Templates 改善計画
+=====================================
+作成日: 2026-01-09
+対象バージョン: v1.2.0 (予定)
+
+=====================================
+現状分析
+=====================================
+
+## 対応ジャンル (6種類)
+1. FPS (First Person Shooter)
+2. Platformer (2Dプラットフォーマー)
+3. RPG (ロールプレイング)
+4. Puzzle (パズル)
+5. Racing (レーシング)
+6. Strategy (ストラテジー/RTS)
+
+## 共通の問題点
+- スクリプトが付いていない（見た目だけ）
+- 旧Input Manager前提
+- New Input System未対応
+- Cinemachine未使用
+- 実際にプレイできない
+
+=====================================
+1. FPS Template 改善計画
+=====================================
+
+## 現状
+✅ Player + CharacterController (height=1.8m)
+✅ CameraRig (eye height 1.6m, FOV 70)
+✅ WeaponHolder + Rifle placeholder + MuzzlePoint
+✅ Level (Ground, Walls, Cover objects)
+✅ SpawnSystem (Player/Enemy spawns)
+✅ Pickups (Health, Ammo, Armor)
+✅ Lighting
+
+## 追加すべき機能
+
+### 必須 (Phase 1)
+- [ ] FPSController.cs スクリプト
+  - WASD移動
+  - マウスルック
+  - ジャンプ (Space)
+  - Sprint (Left Shift) + スタミナ
+  - Crouch (Ctrl) + 高さ変更
+
+### 推奨 (Phase 2)
+- [ ] New Input System対応
+  - PlayerInputActions アセット生成
+  - Move, Look, Jump, Sprint, Crouch, Fire, Reload, Aim アクション
+- [ ] Cinemachine POV Camera
+- [ ] Head Bob (歩行時の揺れ)
+- [ ] Weapon Sway (視点移動時の武器揺れ)
+- [ ] ADS (Aim Down Sights) - 右クリックでFOV変更
+- [ ] Footstep Audio (足音)
+
+### 拡張 (Phase 3)
+- [ ] 射撃システム (Raycast)
+- [ ] 弾薬管理
+- [ ] リロード
+- [ ] ダメージシステム
+- [ ] 敵AI (NavMesh + GOAP連携)
+
+### 参考値 (業界標準)
+```csharp
+// FPS Controller 推奨設定
+walkSpeed = 5f;
+sprintSpeed = 8f;
+crouchSpeed = 2.5f;
+jumpForce = 7f;
+gravity = -20f;
+mouseSensitivity = 2f;
+staminaMax = 100f;
+staminaDrain = 20f;  // per second while sprinting
+staminaRegen = 15f;  // per second while not sprinting
+```
+
+### 参考ソース
+- NeoFPS: https://neofps.com/
+- VionixStudio FPS Tutorial: https://vionixstudio.com/2022/10/17/unity-fps-controller-using-new-input-system/
+
+=====================================
+2. Platformer Template 改善計画
+=====================================
+
+## 現状
+✅ Player + Rigidbody2D + BoxCollider2D
+✅ Orthographic Camera
+✅ Progressive difficulty platforms (easy → medium → hard)
+✅ Moving platform placeholder
+✅ Hazards (Spikes, DeathZone)
+✅ Collectibles
+
+## 追加すべき機能
+
+### 必須 (Phase 1)
+- [ ] PlatformerController2D.cs スクリプト
+  - 左右移動 (A/D or Arrow keys)
+  - ジャンプ (Space)
+  - Variable Jump Height (押す長さで高さ変化)
+
+### 推奨 (Phase 2) - "Game Feel" 向上
+- [ ] Coyote Time (着地猶予) = 0.15秒
+  - 崖から落ちた直後でもジャンプ可能
+  - プレイヤーのミスを許容
+- [ ] Jump Buffering (ジャンプ先行入力) = 0.2秒
+  - 着地前にジャンプ入力を受け付け
+- [ ] Fall Multiplier = 2.5f
+  - 落下時に重力を増加させてキビキビ感を出す
+- [ ] Low Jump Multiplier = 2f
+  - ジャンプボタンを離すと早く落下
+
+### 拡張 (Phase 3)
+- [ ] Double Jump (2段ジャンプ)
+- [ ] Wall Slide (壁滑り)
+- [ ] Wall Jump (壁ジャンプ)
+- [ ] Dash (ダッシュ)
+- [ ] Ledge Grab (崖つかまり)
+
+### 参考値 (Celeste/Super Meat Boy レベル)
+```csharp
+// Platformer Controller 推奨設定
+moveSpeed = 8f;
+jumpForce = 14f;
+coyoteTime = 0.15f;
+jumpBufferTime = 0.2f;
+fallMultiplier = 2.5f;
+lowJumpMultiplier = 2f;
+wallSlideSpeed = 2f;
+wallJumpForce = new Vector2(12f, 14f);
+dashSpeed = 20f;
+dashDuration = 0.2f;
+```
+
+### 参考ソース
+- 2D-Platformer-Hunter: https://github.com/ta-david-yu/2D-Platformer-Hunter
+- DevSourceHub: https://devsourcehub.com/mastering-2d-platformer-mechanics-in-unity/
+
+=====================================
+3. RPG Template 改善計画
+=====================================
+
+## 現状
+✅ Player + CharacterController (Humanoid placeholder)
+✅ Isometric Camera Rig (45°/45°)
+✅ World Terrain
+✅ Town (Inn, Blacksmith, MagicShop, GeneralStore, TownHall)
+✅ Fountain
+✅ NPCs placeholder
+✅ Forest/Dungeon areas
+
+## 追加すべき機能
+
+### 必須 (Phase 1)
+- [ ] RPGPlayerController.cs
+  - Click to Move (マウスクリックで移動)
+  - NavMeshAgent使用
+  - WASD移動オプション
+
+### 推奨 (Phase 2)
+- [ ] NavMesh自動ベイク
+- [ ] Cinemachine Follow Camera
+- [ ] カメラ回転 (Q/E or Middle Mouse)
+- [ ] カメラズーム (Scroll Wheel)
+
+### 拡張 (Phase 3) - RPG Systems
+- [ ] Inventory System (基本)
+  - アイテムスロット
+  - ドラッグ&ドロップ
+- [ ] Dialogue System (基本)
+  - NPC会話
+  - 選択肢
+- [ ] Quest System (基本)
+  - クエスト受注/完了
+- [ ] Stats System
+  - HP, MP, STR, DEF, etc.
+
+### 参考実装
+```csharp
+// Click to Move
+void Update() {
+    if (Input.GetMouseButtonDown(0)) {
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        if (Physics.Raycast(ray, out RaycastHit hit)) {
+            navMeshAgent.SetDestination(hit.point);
+        }
+    }
+}
+```
+
+### 参考ソース
+- GameDev Academy NavMesh: https://gamedevacademy.org/learn-unitys-navmesh-by-creating-a-click-to-move-game/
+- ORK Framework概念: https://www.tldevtech.com/best-unity-game-templates/
+
+=====================================
+4. Puzzle Template 改善計画
+=====================================
+
+## 現状
+✅ Top-down Orthographic Camera
+✅ 8x8 Grid Game Board
+✅ Checkerboard pattern tiles
+✅ Puzzle pieces placeholder
+
+## 追加すべき機能
+
+### 必須 (Phase 1)
+- [ ] PuzzleManager.cs
+  - グリッド管理
+  - ピース配置
+- [ ] PuzzlePiece.cs
+  - ドラッグ&ドロップ
+
+### 推奨 (Phase 2) - Match-3 System
+- [ ] Match Detection (3つ以上の一致検出)
+- [ ] Piece Swap (隣接ピースの入れ替え)
+- [ ] Cascade/Gravity (消えた後の落下)
+- [ ] New Piece Spawn (上から新しいピース)
+
+### 拡張 (Phase 3)
+- [ ] Score System
+- [ ] Combo System
+- [ ] Special Pieces (4連、5連で特殊ピース)
+- [ ] Level System
+- [ ] Time/Move Limit
+
+### 参考実装 (Match-3 基本ロジック)
+```csharp
+// Grid-based approach
+public class PuzzleGrid {
+    private PuzzlePiece[,] grid;
+
+    public List<PuzzlePiece> CheckMatches() {
+        var matches = new List<PuzzlePiece>();
+        // Horizontal check
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width - 2; x++) {
+                if (grid[x,y].type == grid[x+1,y].type &&
+                    grid[x,y].type == grid[x+2,y].type) {
+                    matches.Add(grid[x,y]);
+                    matches.Add(grid[x+1,y]);
+                    matches.Add(grid[x+2,y]);
+                }
+            }
+        }
+        // Vertical check (similar)
+        return matches;
+    }
+}
+```
+
+### 参考ソース
+- Catlike Coding Match-3: https://catlikecoding.com/unity/tutorials/prototypes/match-3/
+- Kodeco Tutorial: https://www.kodeco.com/673-how-to-make-a-match-3-game-in-unity
+
+=====================================
+5. Racing Template 改善計画
+=====================================
+
+## 現状
+✅ Player Car (Body, Roof, Wheels)
+✅ Rigidbody (mass=1500, drag/angularDrag設定)
+✅ Chase Camera
+✅ Oval Race Track
+✅ Start/Finish Line
+✅ Barriers
+✅ AI Cars placeholder
+
+## 追加すべき機能
+
+### 必須 (Phase 1)
+- [ ] CarController.cs (基本)
+  - アクセル (W/Up)
+  - ブレーキ (S/Down)
+  - ステアリング (A/D or Left/Right)
+
+### 推奨 (Phase 2) - Physics改善
+- [ ] WheelCollider使用
+  - motorTorque
+  - brakeTorque
+  - steerAngle
+- [ ] Suspension設定
+- [ ] Center of Mass調整 (低め)
+- [ ] Anti-flip (Down Force)
+
+### 拡張 (Phase 3)
+- [ ] Lap Counter
+- [ ] Checkpoint System
+- [ ] Ghost Recording/Replay
+- [ ] AI Opponents (Waypoint follow)
+- [ ] Drift Physics
+- [ ] Nitro/Boost
+
+### 参考値 (Arcade Racing)
+```csharp
+// WheelCollider 推奨設定
+mass = 1500f;
+centerOfMass = new Vector3(0, -0.5f, 0);
+motorTorque = 800f;
+brakeTorque = 2000f;
+maxSteerAngle = 30f;
+downForce = 100f;  // Speed-dependent
+
+// Suspension
+suspensionDistance = 0.3f;
+spring = 35000f;
+damper = 4500f;
+targetPosition = 0.5f;
+```
+
+### 参考ソース
+- Unity WheelCollider Docs: https://docs.unity3d.com/Manual/WheelColliderTutorial.html
+- Arcade Car Physics: https://github.com/Saarg/Arcade_Car_Physics
+- Unity Forum Discussion: https://discussions.unity.com/t/the-dark-art-of-unity-wheel-colliders-what-unity-doesnt-tell-you/840741
+
+=====================================
+6. Strategy Template 改善計画
+=====================================
+
+## 現状
+✅ RTS Camera (60° angle)
+✅ Hex Grid (Perlin noise terrain)
+✅ Terrain Types (Water, Plains, Forest, Mountain)
+✅ Terrain Features (Trees, Rocks)
+✅ Units placeholder
+✅ Buildings placeholder
+✅ Resources placeholder
+
+## 追加すべき機能
+
+### 必須 (Phase 1)
+- [ ] RTSCameraController.cs
+  - WASD/Arrow移動
+  - Edge scroll (画面端でスクロール)
+  - Zoom (Scroll Wheel)
+  - Pan (Middle Mouse Drag)
+
+### 推奨 (Phase 2) - Selection System
+- [ ] Click to Select (単体選択)
+- [ ] Box Selection (範囲選択)
+  - マウスドラッグで矩形
+  - 矩形内のユニットを選択
+- [ ] Double Click (同種ユニット選択)
+- [ ] Ctrl+Click (追加選択)
+- [ ] Group Assignment (Ctrl+1~9)
+- [ ] Group Recall (1~9)
+
+### 拡張 (Phase 3)
+- [ ] Move Command (Right Click)
+- [ ] Attack Command
+- [ ] Formation System
+- [ ] Fog of War
+- [ ] Minimap
+- [ ] Building Placement
+- [ ] Resource Gathering
+
+### 参考実装 (Box Selection)
+```csharp
+// Box Selection
+Vector2 startPos, endPos;
+bool isSelecting;
+
+void Update() {
+    if (Input.GetMouseButtonDown(0)) {
+        startPos = Input.mousePosition;
+        isSelecting = true;
+    }
+    if (Input.GetMouseButtonUp(0) && isSelecting) {
+        endPos = Input.mousePosition;
+        SelectUnitsInBox(startPos, endPos);
+        isSelecting = false;
+    }
+}
+
+void SelectUnitsInBox(Vector2 start, Vector2 end) {
+    Rect selectionRect = new Rect(
+        Mathf.Min(start.x, end.x),
+        Mathf.Min(start.y, end.y),
+        Mathf.Abs(start.x - end.x),
+        Mathf.Abs(start.y - end.y)
+    );
+
+    foreach (var unit in allUnits) {
+        Vector2 screenPos = Camera.main.WorldToScreenPoint(unit.transform.position);
+        if (selectionRect.Contains(screenPos)) {
+            unit.Select();
+        }
+    }
+}
+```
+
+### 参考ソース
+- RTS Engine: https://unityassetcollection.com/rts-engine-free-download/
+- Unity-RTS-Camera: https://github.com/PanMig/Unity-RTS-Camera
+- GameDev Academy RTS Selection: https://gamedevacademy.org/rts-unity-tutorial/
+
+=====================================
+オプション追加: バリアント機能
+=====================================
+
+## 提案: テンプレートバリアント
+
+unity_create_game_template({
+  genre: "FPS",
+  variant: "tactical",  // basic | modern | tactical | arena
+  inputSystem: "new",   // legacy | new
+  features: {
+    sprint: true,
+    crouch: true,
+    ads: true,
+    headBob: true,
+    weaponSway: true
+  },
+  includeScripts: true  // NEW: スクリプト付き
+})
+
+### FPS Variants
+- basic: 最小限 (移動+ジャンプのみ)
+- modern: Sprint, Crouch, ADS
+- tactical: Lean, Prone, Tactical Reload
+- arena: Fast movement, No ADS, Bunny hop
+
+### Platformer Variants
+- basic: 移動+ジャンプのみ
+- standard: Coyote Time, Jump Buffer
+- celeste: Wall Jump, Dash, Climb
+- metroidvania: Double Jump, Wall Jump, Abilities
+
+### RPG Variants
+- action: リアルタイム戦闘
+- turn_based: ターン制戦闘
+- tactical: グリッドベース戦闘
+- hack_and_slash: アクション重視
+
+=====================================
+開発優先度
+=====================================
+
+## Phase 1: 基本スクリプト追加 (必須)
+- [ ] 各ジャンルの基本コントローラースクリプト
+- [ ] 実際にプレイ可能な状態に
+- 工数: 1-2週間
+
+## Phase 2: 品質向上 (推奨)
+- [ ] New Input System対応
+- [ ] Cinemachine統合
+- [ ] Game Feel向上 (Coyote Time等)
+- 工数: 1-2週間
+
+## Phase 3: 拡張機能 (オプション)
+- [ ] ジャンル固有の高度な機能
+- [ ] バリアントシステム
+- 工数: 2-3週間
+
+## 合計工数: 約4-7週間
+
+=====================================
+ファイル構成 (想定)
+=====================================
+
+Assets/Synaptic AI Pro/
+├── GameTemplates/
+│   ├── FPS/
+│   │   ├── Scripts/
+│   │   │   ├── FPSController.cs
+│   │   │   ├── WeaponSystem.cs
+│   │   │   └── FPSPlayerInput.inputactions
+│   │   └── Prefabs/
+│   │       └── FPSPlayer.prefab
+│   ├── Platformer/
+│   │   ├── Scripts/
+│   │   │   ├── PlatformerController2D.cs
+│   │   │   └── PlatformerPlayerInput.inputactions
+│   │   └── Prefabs/
+│   ├── RPG/
+│   │   ├── Scripts/
+│   │   │   ├── RPGPlayerController.cs
+│   │   │   ├── ClickToMove.cs
+│   │   │   └── InventorySystem.cs
+│   │   └── Prefabs/
+│   ├── Puzzle/
+│   │   ├── Scripts/
+│   │   │   ├── PuzzleManager.cs
+│   │   │   ├── PuzzlePiece.cs
+│   │   │   └── MatchDetector.cs
+│   │   └── Prefabs/
+│   ├── Racing/
+│   │   ├── Scripts/
+│   │   │   ├── CarController.cs
+│   │   │   ├── WheelController.cs
+│   │   │   └── LapCounter.cs
+│   │   └── Prefabs/
+│   └── Strategy/
+│       ├── Scripts/
+│       │   ├── RTSCameraController.cs
+│       │   ├── SelectionManager.cs
+│       │   └── UnitController.cs
+│       └── Prefabs/
+
+=====================================
+注意事項
+=====================================
+
+1. スクリプト配布について
+   - .csファイルはAsset Storeでも配布可能
+   - ただしアセンブリ定義で分離推奨
+
+2. 依存パッケージ
+   - New Input System (com.unity.inputsystem)
+   - Cinemachine (com.unity.cinemachine)
+   - AI Navigation (com.unity.ai.navigation)
+   - 自動インストール機能が必要
+
+3. Unity Version
+   - 最低: Unity 2021.3 LTS
+   - 推奨: Unity 2022.3 LTS以降
+   - Unity 6対応も考慮
+
+4. パフォーマンス
+   - モバイル対応を考慮した軽量実装
+   - LOD/Culling設定

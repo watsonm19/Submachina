@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: abb00cd6e72444e239439930c4157fe0
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/MCPServer/filter-essential-tools.py
+  uploadId: 920982

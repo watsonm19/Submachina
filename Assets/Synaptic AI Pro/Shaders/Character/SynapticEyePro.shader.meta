@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 75bb34e0ac07042dfa4db9dde6a54ab5
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Shaders/Character/SynapticEyePro.shader
+  uploadId: 920982

@@ -1,0 +1,255 @@
+# VRChatツール市場調査 (2024-2025)
+
+調査日: 2026-03-02
+
+## 1. 市場規模
+
+### BOOTH 3Dモデルカテゴリ
+- 2024年取扱高: 58億円超（前年比187%成長）
+- 注文者数: 21万人超（前年比1.5倍）
+- 1人あたり平均注文件数: 前年比135%
+
+### 成長要因
+- VRChatを取り上げた人気配信者の動画が話題に
+- 交流ワールドの人気化
+- 着せ替えを簡易化するツール・環境の普及
+
+### 主要プラットフォーム
+- BOOTH: 日本市場のデファクトスタンダード（アニメ系アバター）
+- Gumroad: 欧米市場中心（アニメ系＋Furry）
+
+---
+
+## 2. 現在人気のツール
+
+### デファクトスタンダード（必須級）
+| ツール名 | カテゴリ | 説明 |
+|---------|---------|------|
+| Modular Avatar (MA) | 非破壊改変 | D&Dでアセット導入、Armature/Animator統合 |
+| liltoon | シェーダー | VRChat向け高機能トゥーンシェーダー |
+| VRChat Creator Companion (VCC) | 開発環境 | 公式SDK管理ツール |
+
+### 最適化ツール
+| ツール名 | 機能 | 備考 |
+|---------|------|------|
+| d4rkAvatarOptimizer | マテリアル/メッシュ自動最適化 | アップロード前に自動適用 |
+| lilNDMFMeshSimplifier | ポリゴン削減 | lil製、簡単操作 |
+| VRCQuestTools | Quest対応変換 | PC版を壊さず複製生成 |
+| Cats Blender Plugin | Blender最適化 | ボーン統合、デシメート |
+
+### 作業効率化ツール
+| ツール名 | 機能 | 備考 |
+|---------|------|------|
+| EAUploader | アップロード簡略化 | Unity UIを大幅簡略化、初心者向け |
+| Gesture Manager | 動作テスト | Unity上でExpression Menu再現 |
+| FaceEmo | 表情作成 | Animatorなしで視覚的に設定 |
+| lilEditorToolbox | 便利ツール集 | アセット管理、Missing修正等 |
+| Fluff's Toolbox | 複合ツール | DPS/TPS Setup、PhysBone変換 |
+
+### ギミック系
+- 飛行、武器、魔法エフェクト、寝落ち表情制御など
+- Unity拡張ツールとして販売
+
+---
+
+## 3. ユーザーのペインポイント
+
+### 初心者の壁
+- 「Unityはクリエイター向けで一般ユーザーにはハードルが高い」
+- アバターアップロードまでの手順が複雑
+- エラーの原因が分からない
+
+### Quest対応の難しさ
+- 10MB制限（圧縮後）
+- 20,000ポリゴン制限（超えると"Very Poor"で非表示）
+- 1マテリアル推奨、テクスチャアトラス化必須
+- 1024x1024テクスチャ推奨
+- Skinned Mesh Rendererは1つのみ
+
+### 開発サイクルの遅さ
+- 「アップロード→確認→修正は1サイクルに時間がかかりすぎる」
+- ローカルテスト環境の重要性
+
+### VCCの不具合
+- Unity版との互換性問題が頻発
+- 「プロジェクトを開こうとするとVCCフォルダが開く」等のバグ
+
+### 一般的なフラストレーション
+- 「Unityほど頑固で直感的でないプログラムは初めて」
+- アニメーションがUnityで動くのにVRChat内で動かない
+
+---
+
+## 4. AI関連の現状
+
+### 既存のAIアバター生成ツール
+| ツール名 | 機能 | 制限 |
+|---------|------|------|
+| Ready Player Me | 写真からアバター生成 | Unity設定は手動 |
+| Fotor | テキストからアバター生成 | VRChat最適化は手動 |
+| 3D AI Studio | テキスト/画像から3D生成 | リギング・アニメは手動 |
+| Tafi | Text-to-3D Character | Unity設定は手動 |
+
+### AI活用のギャップ
+- AI生成後のUnityセットアップは全て手動
+- VRChat向けAI支援ワークフローツールは存在しない
+- 自然言語でのギミック追加ツールなし
+
+---
+
+## 5. 開発チャンス
+
+### Synaptic技術を活かせる領域
+
+#### A. AI Avatar Assistant（最有望）
+- 自然言語でアバター改変指示
+- 「このアバターに飛行ギミックを追加して」
+- 「Quest用に最適化して」
+- 競合: ほぼなし
+
+#### B. One-Click Quest Optimizer
+- AI判断で自動最適化
+  - ポリゴン削減（重要部分を保持）
+  - テクスチャアトラス化
+  - マテリアル統合
+  - ファイルサイズ圧縮
+- 既存ツールは手動設定が多い
+
+#### C. Avatar Error Fixer
+- アップロードエラーの自動診断
+- 具体的な修正提案
+- ワンクリック修正
+- 競合: なし
+
+#### D. Expression Auto-Generator
+- 顔写真/テキストから表情自動生成
+- FaceEmoの上位互換
+- AI生成表情
+
+#### E. Performance Analyzer
+- リアルタイムパフォーマンス問題検出
+- Quest/PC両対応の最適化提案
+
+---
+
+## 6. 製品コンセプト案
+
+### 「Synaptic AI for VRChat」
+
+#### コア機能
+1. 自然言語アバター改変
+   - 「衣装を追加して」→ Modular Avatar連携
+   - 「PhysBoneを設定して」→ 自動設定
+
+2. Quest最適化ウィザード
+   - 自動ポリゴン削減
+   - テクスチャ最適化
+   - パフォーマンスランク予測
+
+3. エラー診断・修正
+   - アップロードエラー解析
+   - 自動修正提案
+
+4. ギミック追加支援
+   - 「飛行機能を追加」
+   - 「武器を出せるようにして」
+
+#### 技術的優位性
+- Synapticの既存350+ツールを流用可能
+- MCP/HTTP APIアーキテクチャをそのまま使用
+- Unity Editor統合の実績あり
+
+#### 市場優位性
+- 日本市場がメイン → 言語・文化的優位性
+- BOOTH連携の可能性
+- 急成長市場（187%増）
+
+---
+
+## 7. 競合分析
+
+### 直接競合
+- **Synaptic AI Pro for Unity（自社製品）**
+  - VRChat開発もUnityなので技術的には使用可能
+  - ただしVRChat専用機能は含まれていない
+  - VRChatユーザーには「汎用すぎる」印象
+
+### 間接競合
+| ツール | 領域 | Synapticとの差別化 |
+|--------|------|------------------|
+| EAUploader | アップロード簡略化 | AI支援なし、GUI固定 |
+| FaceEmo | 表情作成 | 手動設定、AI生成なし |
+| VRCQuestTools | Quest対応 | 非破壊だが手動設定 |
+| d4rkOptimizer | 最適化 | 自動だがAI判断なし |
+
+---
+
+## 7.5. 製品戦略（決定案）
+
+### 製品ラインナップ
+| 製品名 | ターゲット | 価格 |
+|--------|----------|------|
+| Synaptic AI Pro for Unity | 汎用Unity開発者 | ¥X,XXX |
+| Synaptic AI Pro for VRChat | VRChatクリエイター | ¥X,XXX（同価格） |
+
+### クロスセル
+- 片方を持っていれば、もう片方を**+1000円**で追加購入可能
+- 例: Unity版購入済み → VRChat版を1000円で追加
+
+### 技術的構成
+- コードベースは共有（メンテコスト削減）
+- VRChat版は追加でVRChat専用ツールを含む
+  - PhysBone自動設定
+  - Quest最適化ウィザード
+  - VRChat SDK連携
+  - アバターパフォーマンス診断
+
+### マーケティング
+- Unity版: Asset Store、公式サイト
+- VRChat版: **BOOTH**（VRChatユーザーの主要市場）、Gumroad
+- 別々のランディングページ、別々のコミュニティ対応
+
+### メリット
+1. VRChatユーザーは「自分向け製品」と認識
+2. クロスセル機会（相互送客）
+3. 開発リソース共有でコスト効率化
+4. 市場ごとに最適なチャネルで販売
+
+---
+
+## 8. リスク・課題
+
+### 技術的課題
+- VRChat SDK / VCCとの互換性維持
+- Modular Avatar等の人気ツールとの連携
+- Unity版の頻繁なアップデート対応
+
+### 市場リスク
+- VRChat自体の成長依存
+- BOOTH/Gumroad以外の販路開拓
+- 無料ツール文化との競争
+
+### 開発リソース
+- VRChat特有のギミック知識が必要
+- コミュニティとの関係構築
+
+---
+
+## 9. 次のステップ
+
+1. VRChatコミュニティでのヒアリング
+2. 最小機能セット（MVP）の定義
+3. 既存Synapticツールの VRChat適用テスト
+4. BOOTHでのテスト販売
+
+---
+
+## 参考リンク
+
+- VRChat Creator Companion: https://vcc.docs.vrchat.com/
+- VRChat Creation Docs: https://creators.vrchat.com/
+- BOOTH VRChatツール: https://booth.pm/ja/search/VRChatツール
+- Gumroad VRChat Tools: https://gumroad.com/3d/vrchat/tools
+- MoguLive VRChat記事: https://www.moguravr.com/
+- d4rkAvatarOptimizer: https://github.com/d4rkc0d3r/d4rkAvatarOptimizer
+- Fluff's Toolbox: https://fluffs.gumroad.com/l/flufftoolbox

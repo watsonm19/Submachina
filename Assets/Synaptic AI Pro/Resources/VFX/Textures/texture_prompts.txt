@@ -1,0 +1,544 @@
+# VFX Particle Texture Generation Prompts for Gemini/AI
+# All textures: Pure white on transparent, PNG with alpha channel
+# Save to: Assets/Synaptic AI Pro/Resources/VFX/Textures/
+
+================================================================================
+## 基本 (Basic)
+================================================================================
+
+### 1. SoftParticle.png (汎用ソフト円形)
+Generate a VFX particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Soft circular gradient, bright white center fading smoothly to transparent edges
+- Color: Pure white (RGB 255,255,255)
+- Background: Fully transparent (alpha = 0)
+- Format: PNG with alpha channel
+- Style: Smooth radial falloff, no hard edges
+
+### 2. Fire.png (炎用)
+Generate a VFX fire particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Flame-like wispy shape, irregular edges with noise
+- Color: Pure white (will be tinted in engine)
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Organic flame silhouette, brighter in center, soft dissolving edges
+- Reference: Stylized cartoon fire, not realistic photo
+
+### 3. Smoke.png (煙用)
+Generate a VFX smoke particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Soft, fluffy cloud-like shape with organic edges
+- Color: Pure white
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Billowy, puffy smoke puff, very soft edges, slight noise variation
+
+### 4. Spark.png (スパーク/グロー用)
+Generate a VFX spark/glow particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Intense bright center point with radial glow falloff
+- Color: Pure white
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Hot glowing ember, very bright concentrated center, soft exponential falloff
+
+### 5. MagicStar.png (魔法/キラキラ用)
+Generate a VFX magic sparkle particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: 4-pointed or 6-pointed star with soft glow
+- Color: Pure white
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Anime/fantasy magic sparkle, bright star shape with subtle lens flare rays
+
+### 6. Trail.png (トレイル/ライン用)
+Generate a VFX trail texture for Unity.
+- Size: 256x64 pixels (wide rectangle)
+- Shape: Horizontal gradient, solid on left fading to transparent on right
+- Color: Pure white
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Smooth linear falloff for ribbon/trail effects
+
+### 7. SciFiCircuit.png (サイバー/回路用)
+Generate a VFX sci-fi circuit particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Tech circuit pattern, geometric lines and nodes
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Cyberpunk/sci-fi circuitry, clean geometric lines, glowing nodes at intersections
+
+### 8. Noise.png (ノイズ/ディストーション用)
+Generate a VFX noise texture for Unity.
+- Size: 256x256 pixels
+- Shape: Seamless tileable perlin/simplex noise pattern
+- Color: Grayscale (black to white)
+- Background: None (full coverage)
+- Format: PNG
+- Style: Organic flowing noise, good for distortion and turbulence effects
+
+================================================================================
+## 🌸 自然・植物系 (Nature/Plants)
+================================================================================
+
+### 9. Leaf.png (葉っぱ)
+Generate a VFX leaf particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Simple leaf silhouette with stem
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Stylized single leaf shape, slightly curved, soft edges
+
+### 10. Petal.png (花びら)
+Generate a VFX flower petal particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Soft curved petal shape, like cherry blossom or rose petal
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Delicate, slightly translucent looking, organic curved edges
+
+### 11. Flower.png (花)
+Generate a VFX flower particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Simple 5-petal flower viewed from above
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Stylized sakura/cherry blossom, soft petals with bright center
+
+### 12. Branch.png (枝)
+Generate a VFX tree branch texture for Unity.
+- Size: 512x128 pixels (horizontal)
+- Shape: Organic branching pattern, thick to thin
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Natural tree branch with smaller twigs splitting off
+
+### 13. Dandelion.png (種/タンポポ)
+Generate a VFX dandelion seed particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Fluffy dandelion seed with wispy strands
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Delicate floating seed with soft radiating fibers
+
+### 14. Grass.png (草)
+Generate a VFX grass blade particle texture for Unity.
+- Size: 128x256 pixels (vertical)
+- Shape: Single grass blade, thin and tapered
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Simple curved grass strand, pointed tip
+
+### 15. Vine.png (蔦/つる)
+Generate a VFX vine texture for Unity.
+- Size: 512x128 pixels (horizontal)
+- Shape: Curling vine with small leaves
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Organic curling plant tendril with leaf accents
+
+================================================================================
+## ❄️ 氷・水系 (Ice/Water)
+================================================================================
+
+### 16. Snowflake.png (雪の結晶)
+Generate a VFX snowflake particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Detailed 6-pointed snowflake crystal
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Geometric ice crystal pattern, intricate but clean
+
+### 17. IceShard.png (氷の破片)
+Generate a VFX ice shard particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Sharp angular ice crystal fragment
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Jagged crystalline shape, sharp edges, slight transparency variation
+
+### 18. Frost.png (霜)
+Generate a VFX frost pattern texture for Unity.
+- Size: 256x256 pixels
+- Shape: Branching frost/ice crystal growth pattern
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Organic ice formation like frost on window, fernlike branching
+
+### 19. WaterDrop.png (水滴)
+Generate a VFX water droplet particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Round water drop with highlight
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Glossy water droplet, bright specular highlight, soft edge
+
+### 20. Splash.png (水しぶき)
+Generate a VFX water splash particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Water splash crown or droplet burst
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Dynamic water splash moment, multiple droplets radiating
+
+### 21. Bubble.png (泡)
+Generate a VFX bubble particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Transparent soap bubble with highlight
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Iridescent bubble, rim highlight, mostly transparent center
+
+### 22. Ripple.png (波紋)
+Generate a VFX water ripple texture for Unity.
+- Size: 256x256 pixels
+- Shape: Concentric circular ripple rings
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Expanding water rings, fading outward
+
+================================================================================
+## ⚡ エネルギー・魔法系 (Energy/Magic)
+================================================================================
+
+### 23. Lightning.png (雷)
+Generate a VFX lightning bolt texture for Unity.
+- Size: 512x256 pixels
+- Shape: Jagged lightning bolt with branches
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Electric discharge, main bolt with smaller forks, glowing edges
+
+### 24. ElectricArc.png (電気アーク)
+Generate a VFX electric arc texture for Unity.
+- Size: 256x64 pixels (horizontal strip)
+- Shape: Wavy electric current line
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Plasma arc, irregular wavy line with glow
+
+### 25. MagicCircle.png (魔法陣)
+Generate a VFX magic circle texture for Unity.
+- Size: 512x512 pixels
+- Shape: Ornate circular magic symbol with runes
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Fantasy spell circle, geometric patterns, mystical symbols
+
+### 26. Rune.png (ルーン文字)
+Generate a VFX rune symbol texture for Unity.
+- Size: 256x256 pixels
+- Shape: Single mystical rune or glyph
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Ancient magical symbol, angular mystical letter
+
+### 27. EnergyRing.png (エネルギーリング)
+Generate a VFX energy ring texture for Unity.
+- Size: 256x256 pixels
+- Shape: Glowing ring/circle with energy fluctuations
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Power ring, slight thickness variation, inner glow
+
+### 28. Aura.png (オーラ)
+Generate a VFX aura particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Flowing energy wisps rising upward
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Rising flame-like energy, ethereal flowing shape
+
+### 29. OrbCore.png (オーブコア)
+Generate a VFX orb core texture for Unity.
+- Size: 256x256 pixels
+- Shape: Glowing magical orb with inner energy
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Mystical sphere, bright center with swirling inner pattern
+
+================================================================================
+## 🔥 炎・爆発系 (Fire/Explosion)
+================================================================================
+
+### 30. Explosion.png (爆発)
+Generate a VFX explosion particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Explosive burst, radiating irregular shape
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Comic/anime style explosion puff, dynamic radiating edges
+
+### 31. Ember.png (火の粉)
+Generate a VFX ember particle texture for Unity.
+- Size: 128x128 pixels
+- Shape: Small glowing ember chunk
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Hot coal fragment, irregular small shape with intense glow
+
+### 32. FireballCore.png (火球コア)
+Generate a VFX fireball core texture for Unity.
+- Size: 256x256 pixels
+- Shape: Intense hot sphere with flame wisps
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Blazing orb center, bright core with trailing flame edges
+
+### 33. FlameWisp.png (炎の揺らぎ)
+Generate a VFX flame wisp texture for Unity.
+- Size: 256x256 pixels
+- Shape: Single elongated flame tongue
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Vertical flame lick, tapered top, wavy edges
+
+### 34. Ash.png (灰)
+Generate a VFX ash particle texture for Unity.
+- Size: 128x128 pixels
+- Shape: Small irregular ash flake
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Thin burnt paper fragment, curled edges
+
+================================================================================
+## 🌟 Sci-Fi・サイバー系 (Sci-Fi/Cyber)
+================================================================================
+
+### 35. HexGrid.png (ヘックスグリッド)
+Generate a VFX hexagonal grid texture for Unity.
+- Size: 256x256 pixels
+- Shape: Honeycomb hexagon pattern
+- Color: Pure white lines on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Tech/sci-fi hex grid, clean geometric lines
+
+### 36. DigitalGlitch.png (デジタルグリッチ)
+Generate a VFX digital glitch texture for Unity.
+- Size: 256x256 pixels
+- Shape: Fragmented, displaced rectangular blocks
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Data corruption effect, offset blocks, scan lines
+
+### 37. HologramLines.png (ホログラムライン)
+Generate a VFX hologram scan line texture for Unity.
+- Size: 256x256 pixels
+- Shape: Horizontal scan lines with slight wave
+- Color: Pure white on transparent (varying opacity lines)
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Retro hologram display, parallel lines with gaps
+
+### 38. DataStream.png (データストリーム)
+Generate a VFX data stream particle texture for Unity.
+- Size: 128x512 pixels (vertical)
+- Shape: Flowing binary/matrix style vertical pattern
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Matrix rain, flowing code characters or dots
+
+### 39. CircuitNode.png (回路ノード)
+Generate a VFX circuit node texture for Unity.
+- Size: 256x256 pixels
+- Shape: Central node with radiating circuit lines
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Tech hub point, glowing center with geometric line connections
+
+### 40. LaserBeam.png (レーザービーム)
+Generate a VFX laser beam texture for Unity.
+- Size: 256x64 pixels (horizontal)
+- Shape: Intense center line with soft glow edges
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Concentrated beam, bright core with falloff
+
+### 41. Crosshair.png (クロスヘア/照準)
+Generate a VFX crosshair/target texture for Unity.
+- Size: 256x256 pixels
+- Shape: Tech targeting reticle with circles and lines
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Futuristic HUD element, geometric precision
+
+================================================================================
+## 💀 ダーク・ゴシック系 (Dark/Gothic)
+================================================================================
+
+### 42. Skull.png (骸骨)
+Generate a VFX skull particle texture for Unity.
+- Size: 256x256 pixels
+- Shape: Stylized skull face
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Simple iconic skull, slightly stylized, not too realistic
+
+### 43. SoulWisp.png (魂の炎)
+Generate a VFX soul wisp texture for Unity.
+- Size: 256x256 pixels
+- Shape: Ghostly flame wisp, ethereal shape
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Supernatural floating flame, wavy ethereal form
+
+### 44. DarkMist.png (闇の霧)
+Generate a VFX dark mist texture for Unity.
+- Size: 256x256 pixels
+- Shape: Creeping fog tendrils
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Ominous crawling mist, wispy reaching shapes
+
+### 45. Chains.png (鎖)
+Generate a VFX chain link texture for Unity.
+- Size: 64x256 pixels (vertical)
+- Shape: Connected chain links
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Metal chain segment, interlocking oval links
+
+================================================================================
+## ⚔️ アクション・戦闘系 (Action/Combat)
+================================================================================
+
+### 46. Slash.png (斬撃)
+Generate a VFX slash attack texture for Unity.
+- Size: 512x256 pixels
+- Shape: Curved sword slash arc
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Anime action slash, curved arc with sharp edges and motion trail
+
+### 47. ImpactRing.png (衝撃波リング)
+Generate a VFX impact shockwave ring texture for Unity.
+- Size: 256x256 pixels
+- Shape: Expanding ring with distortion edges
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Ground pound impact, circular wave with debris-like edge
+
+### 48. SpeedLines.png (スピードライン)
+Generate a VFX speed lines texture for Unity.
+- Size: 256x256 pixels
+- Shape: Radiating motion blur lines from center
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Manga/anime speed effect, converging action lines
+
+### 49. HitSpark.png (ヒットスパーク)
+Generate a VFX hit spark texture for Unity.
+- Size: 256x256 pixels
+- Shape: Sharp radiating impact spark
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Comic book impact flash, sharp pointed rays
+
+### 50. Debris.png (破片)
+Generate a VFX debris chunk texture for Unity.
+- Size: 128x128 pixels
+- Shape: Irregular rock/concrete fragment
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Broken material chunk, rough angular shape
+
+================================================================================
+## 🎆 特殊効果系 (Special Effects)
+================================================================================
+
+### 51. Confetti.png (紙吹雪)
+Generate a VFX confetti particle texture for Unity.
+- Size: 128x128 pixels
+- Shape: Small rectangular paper piece
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Celebration confetti, simple flat rectangle
+
+### 52. Feather.png (羽根)
+Generate a VFX feather particle texture for Unity.
+- Size: 256x128 pixels
+- Shape: Soft bird feather
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Delicate floating feather, detailed barbs
+
+### 53. Dust.png (埃/チリ)
+Generate a VFX dust particle texture for Unity.
+- Size: 64x64 pixels
+- Shape: Tiny irregular speck
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Atmospheric dust mote, subtle soft shape
+
+### 54. Lens Flare.png (レンズフレア)
+Generate a VFX lens flare texture for Unity.
+- Size: 256x256 pixels
+- Shape: Hexagonal/circular bokeh with rays
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Camera lens artifact, bright center with subtle rays
+
+### 55. Aurora.png (オーロラ)
+Generate a VFX aurora texture for Unity.
+- Size: 512x256 pixels
+- Shape: Flowing curtain wave pattern
+- Color: Pure white on transparent
+- Background: Fully transparent
+- Format: PNG with alpha channel
+- Style: Northern lights ribbon, wavy vertical striations
+
+================================================================================
+# Usage Notes:
+# 1. Generate each texture using the prompt above
+# 2. Save as PNG with transparency
+# 3. Place in: Assets/Synaptic AI Pro/Resources/VFX/Textures/
+# 4. Unity will auto-import, set alphaIsTransparency = true in import settings
+# 5. Reference in VFX presets by texture name
+================================================================================

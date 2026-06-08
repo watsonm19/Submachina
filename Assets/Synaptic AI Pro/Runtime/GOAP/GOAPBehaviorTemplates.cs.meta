@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 12bafd09c0eae4c659f870ecfb642515
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Runtime/GOAP/GOAPBehaviorTemplates.cs
+  uploadId: 920982

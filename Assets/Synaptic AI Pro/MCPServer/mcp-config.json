@@ -1,0 +1,23 @@
+{
+  "servers": {
+    "unity": {
+      "command": "node",
+      "args": ["index.js"],
+      "cwd": "/Users/macbookpro/Desktop/moveのコピー/Assets/Synaptic AI Pro/MCPServer",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  },
+  "tools": {
+    "unity_create": {
+      "description": "Create Unity GameObjects"
+    },
+    "unity_modify": {
+      "description": "Modify Unity GameObjects"
+    },
+    "unity_delete": {
+      "description": "Delete Unity GameObjects"
+    }
+  }
+}

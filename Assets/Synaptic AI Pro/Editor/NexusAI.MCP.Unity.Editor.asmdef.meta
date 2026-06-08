@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 343c464e684b044469a954b748d0e625
+AssemblyDefinitionImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Editor/NexusAI.MCP.Unity.Editor.asmdef
+  uploadId: 920982

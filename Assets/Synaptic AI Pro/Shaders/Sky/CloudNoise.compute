@@ -1,0 +1,211 @@
+// Synaptic AI Pro - Cloud Noise Generator
+// Generates 3D Worley and Perlin noise for volumetric clouds
+
+#pragma kernel GenerateWorley3D
+#pragma kernel GeneratePerlin3D
+#pragma kernel CombineNoise
+
+RWTexture3D<float4> _Result;
+RWTexture3D<float> _WorkBuffer;
+
+uint _Resolution;
+uint _Seed;
+float _Frequency;
+int _Octaves;
+float _Persistence;
+float _Lacunarity;
+
+// ============ Random Functions ============
+
+float3 Hash3(float3 p)
+{
+    p = float3(
+        dot(p, float3(127.1, 311.7, 74.7)),
+        dot(p, float3(269.5, 183.3, 246.1)),
+        dot(p, float3(113.5, 271.9, 124.6))
+    );
+    return frac(sin(p) * 43758.5453);
+}
+
+float Hash1(float3 p)
+{
+    return frac(sin(dot(p, float3(127.1, 311.7, 74.7))) * 43758.5453);
+}
+
+// ============ Worley Noise ============
+
+float Worley(float3 p)
+{
+    float3 id = floor(p);
+    float3 fp = frac(p);
+
+    float minDist = 1.0;
+
+    for (int z = -1; z <= 1; z++)
+    {
+        for (int y = -1; y <= 1; y++)
+        {
+            for (int x = -1; x <= 1; x++)
+            {
+                float3 offset = float3(x, y, z);
+                float3 cellId = id + offset;
+                float3 cellPoint = Hash3(cellId);
+                float3 diff = offset + cellPoint - fp;
+                float dist = length(diff);
+                minDist = min(minDist, dist);
+            }
+        }
+    }
+
+    return minDist;
+}
+
+float WorleyFBM(float3 p, int octaves, float persistence, float lacunarity)
+{
+    float value = 0.0;
+    float amplitude = 0.5;
+    float frequency = 1.0;
+    float maxValue = 0.0;
+
+    for (int i = 0; i < octaves; i++)
+    {
+        value += Worley(p * frequency) * amplitude;
+        maxValue += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+
+    return value / maxValue;
+}
+
+// ============ Perlin Noise ============
+
+float3 Fade(float3 t)
+{
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+float Grad(float hash, float3 p)
+{
+    int h = int(hash * 16.0) & 15;
+    float u = h < 8 ? p.x : p.y;
+    float v = h < 4 ? p.y : (h == 12 || h == 14 ? p.x : p.z);
+    return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+}
+
+float Perlin(float3 p)
+{
+    float3 Pi = floor(p);
+    float3 Pf = frac(p);
+    float3 fade = Fade(Pf);
+
+    float n000 = Grad(Hash1(Pi + float3(0, 0, 0)), Pf - float3(0, 0, 0));
+    float n100 = Grad(Hash1(Pi + float3(1, 0, 0)), Pf - float3(1, 0, 0));
+    float n010 = Grad(Hash1(Pi + float3(0, 1, 0)), Pf - float3(0, 1, 0));
+    float n110 = Grad(Hash1(Pi + float3(1, 1, 0)), Pf - float3(1, 1, 0));
+    float n001 = Grad(Hash1(Pi + float3(0, 0, 1)), Pf - float3(0, 0, 1));
+    float n101 = Grad(Hash1(Pi + float3(1, 0, 1)), Pf - float3(1, 0, 1));
+    float n011 = Grad(Hash1(Pi + float3(0, 1, 1)), Pf - float3(0, 1, 1));
+    float n111 = Grad(Hash1(Pi + float3(1, 1, 1)), Pf - float3(1, 1, 1));
+
+    float n00 = lerp(n000, n100, fade.x);
+    float n01 = lerp(n001, n101, fade.x);
+    float n10 = lerp(n010, n110, fade.x);
+    float n11 = lerp(n011, n111, fade.x);
+
+    float n0 = lerp(n00, n10, fade.y);
+    float n1 = lerp(n01, n11, fade.y);
+
+    return lerp(n0, n1, fade.z) * 0.5 + 0.5;
+}
+
+float PerlinFBM(float3 p, int octaves, float persistence, float lacunarity)
+{
+    float value = 0.0;
+    float amplitude = 0.5;
+    float frequency = 1.0;
+    float maxValue = 0.0;
+
+    for (int i = 0; i < octaves; i++)
+    {
+        value += Perlin(p * frequency) * amplitude;
+        maxValue += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+
+    return value / maxValue;
+}
+
+// ============ Kernels ============
+
+[numthreads(8, 8, 8)]
+void GenerateWorley3D(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id >= _Resolution))
+        return;
+
+    float3 uvw = float3(id) / float(_Resolution);
+    float3 p = uvw * _Frequency;
+
+    // Generate tileable Worley noise
+    float worley1 = WorleyFBM(p, _Octaves, _Persistence, _Lacunarity);
+    float worley2 = WorleyFBM(p * 2.0, _Octaves, _Persistence, _Lacunarity);
+    float worley3 = WorleyFBM(p * 4.0, _Octaves, _Persistence, _Lacunarity);
+
+    // Invert Worley for cloud-like shapes
+    worley1 = 1.0 - worley1;
+    worley2 = 1.0 - worley2;
+    worley3 = 1.0 - worley3;
+
+    // Pack into RGBA
+    _Result[id] = float4(worley1, worley2, worley3, 1.0);
+}
+
+[numthreads(8, 8, 8)]
+void GeneratePerlin3D(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id >= _Resolution))
+        return;
+
+    float3 uvw = float3(id) / float(_Resolution);
+    float3 p = uvw * _Frequency;
+
+    float perlin = PerlinFBM(p, _Octaves, _Persistence, _Lacunarity);
+
+    _WorkBuffer[id] = perlin;
+}
+
+[numthreads(8, 8, 8)]
+void CombineNoise(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id >= _Resolution))
+        return;
+
+    float3 uvw = float3(id) / float(_Resolution);
+    float3 p = uvw * _Frequency;
+
+    // Worley for cloud shapes (multiple octaves)
+    float worley1 = 1.0 - WorleyFBM(p, 3, 0.5, 2.0);
+    float worley2 = 1.0 - WorleyFBM(p * 2.0, 3, 0.5, 2.0);
+    float worley3 = 1.0 - WorleyFBM(p * 4.0, 3, 0.5, 2.0);
+
+    // Perlin for low frequency base shape
+    float perlin = PerlinFBM(p, 4, 0.5, 2.0);
+
+    // Combine: Perlin-Worley for base shape
+    float baseShape = saturate(perlin * 0.6 + worley1 * 0.4);
+
+    // Detail layers
+    float detail1 = worley2;
+    float detail2 = worley3;
+
+    // Erosion (subtract detail from base)
+    float erosion = saturate(baseShape - detail1 * 0.3 - detail2 * 0.1);
+
+    // R: Base shape with erosion
+    // G: Low frequency detail
+    // B: High frequency detail
+    // A: Perlin base (for animation blending)
+    _Result[id] = float4(erosion, detail1, detail2, perlin);
+}

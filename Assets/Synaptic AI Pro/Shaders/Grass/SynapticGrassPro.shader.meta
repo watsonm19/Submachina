@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 018e57d0f0e184f44b8e10e7c593c179
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Shaders/Grass/SynapticGrassPro.shader
+  uploadId: 920982

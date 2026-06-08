@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: b2ef5ddb214114bdd8138750bef9f7bc
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/vrchat-tools-research.txt
+  uploadId: 920982

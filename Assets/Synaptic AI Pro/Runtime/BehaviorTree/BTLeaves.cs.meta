@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 3f5de2b2723dd433bac886ded1d38724
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Runtime/BehaviorTree/BTLeaves.cs
+  uploadId: 920982

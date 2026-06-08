@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: acbf94dc47feb403bbdc6811a6a910b0
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Resources/VFX/Textures/texture_prompts.txt
+  uploadId: 920982

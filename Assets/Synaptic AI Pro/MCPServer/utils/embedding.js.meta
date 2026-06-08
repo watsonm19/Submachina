@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: a2b93324b0eb94427ab574545763d8d0
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/MCPServer/utils/embedding.js
+  uploadId: 920982

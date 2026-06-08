@@ -1,0 +1,54 @@
+{
+  "name": "Synaptic.MCP.Unity.Editor",
+  "rootNamespace": "SynapticPro",
+  "references": [
+    "Synaptic.MCP.Unity",
+    "Unity.Mathematics",
+    "Unity.Collections",
+    "Unity.Burst",
+    "Unity.TextMeshPro",
+    "Unity.Nuget.Newtonsoft-Json",
+    "Unity.ugui",
+    "Cinemachine",
+    "Unity.Cinemachine",
+    "Unity.Splines",
+    "Unity.VisualEffectGraph.Editor"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.cinemachine",
+      "expression": "[3.0,4.0)",
+      "define": "CINEMACHINE_3"
+    },
+    {
+      "name": "com.unity.cinemachine",
+      "expression": "[2.0,3.0)",
+      "define": "CINEMACHINE_2"
+    },
+    {
+      "name": "com.unity.cinemachine",
+      "expression": "",
+      "define": "CINEMACHINE"
+    },
+    {
+      "name": "com.unity.visualeffectgraph",
+      "expression": "",
+      "define": "VFX_GRAPH_PACKAGE"
+    },
+    {
+      "name": "com.unity.visualeffectgraph",
+      "expression": "[10.0,)",
+      "define": "VFX_GRAPH_10_PLUS"
+    }
+  ],
+  "noEngineReferences": false
+}

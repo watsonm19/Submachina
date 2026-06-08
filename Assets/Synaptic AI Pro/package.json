@@ -1,0 +1,48 @@
+{
+  "name": "com.synaptic.mcp-unity",
+  "version": "1.2.23",
+  "displayName": "Synaptic AI Pro for Unity",
+  "description": "Control Unity Editor with natural language through Claude AI. 235+ professional tools for scene management, GameObject manipulation, lighting, Cinemachine, physics, and animation. Includes Newtonsoft.Json. Compatible with Unity 2022.3+ and Unity 6.0+.",
+  "unity": "2022.3",
+  "keywords": [
+    "ai",
+    "mcp",
+    "goap",
+    "synaptic",
+    "natural-language",
+    "automation",
+    "chatgpt",
+    "claude",
+    "commercial",
+    "professional",
+    "unity-ai",
+    "game-ai"
+  ],
+  "author": {
+    "name": "Synaptic Development Team",
+    "email": "support@synaptic.dev",
+    "url": "https://synaptic.dev"
+  },
+  "license": "Commercial",
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "com.unity.mathematics": "1.3.1",
+    "com.unity.collections": "2.5.1",
+    "com.unity.burst": "1.8.17",
+    "com.unity.textmeshpro": "3.0.6",
+    "com.unity.ugui": "1.0.0"
+  },
+  "optionalDependencies": {
+    "com.unity.cinemachine": "2.9.7"
+  },
+  "recommendedPackages": {
+    "com.unity.cinemachine": "Cinemachine 2.9.7 or 3.0+ (both supported with automatic API detection)"
+  },
+  "samples": [
+    {
+      "displayName": "GOAP AI Demo Scene",
+      "description": "Demonstration scene showing natural language GOAP AI in action",
+      "path": "Samples~/GOAPDemo"
+    }
+  ]
+}

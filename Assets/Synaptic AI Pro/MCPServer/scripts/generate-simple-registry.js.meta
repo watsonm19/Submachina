@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 9fd11d8abdb6d40e8aba7dfcbb715379
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/MCPServer/scripts/generate-simple-registry.js
+  uploadId: 920982

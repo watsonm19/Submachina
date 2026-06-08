@@ -1,0 +1,31 @@
+# v1.2.0 Feature Ideas
+
+## アップデート通知ダイアログ (from Fuyusumi)
+- Unity起動時に変更点を表示
+- ポート番号変更、新機能、推奨設定など
+- 「次回以降表示しない」チェックボックス付き
+- EditorPrefsでバージョン管理して表示制御
+
+## セットアップリンク表示 (from Fuyusumi)
+- Synaptic Setupウィンドウにドキュメントリンク追加
+- https://www.synaptic-ai.net/ja/docs/setup
+- https://www.synaptic-ai.net/ja/docs/cli-integration
+
+## VR最適化機能 (from Greed)
+
+### テクスチャアトラス生成
+- 複数テクスチャを1枚にまとめてDraw Call削減
+- UV再計算が必要
+- 難易度: 中〜上級
+
+### Occlusion Culling自動設定
+- シーン内メッシュを自動スキャン
+- 大きいオブジェクト → Occluder Static
+- 小さいオブジェクト → Occludee Static
+- StaticOcclusionCulling.Compute() でベイク
+- 難易度: 比較的簡単 ✓
+
+### GPU Instancing設定
+- 同じメッシュの大量描画最適化（草、木など）
+- 参考: Qi GPU Instancer (https://qilab.booth.pm/items/7799242)
+- VRChat向け需要高い

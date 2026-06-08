@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 09ffb06a8ddce4b64abb75ae2bc7b4da
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Runtime/NexusRuntimeMonitor.cs
+  uploadId: 920982

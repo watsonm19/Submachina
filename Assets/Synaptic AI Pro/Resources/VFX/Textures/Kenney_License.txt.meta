@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 85b75512f96624680b03e12c1acbf522
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Resources/VFX/Textures/Kenney_License.txt
+  uploadId: 920982

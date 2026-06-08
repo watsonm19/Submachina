@@ -1,0 +1,176 @@
+// Synaptic AI Pro - GPU Grass Instancing Compute Shader
+// Handles culling, LOD, and instance buffer generation for massive grass rendering
+
+#pragma kernel CSMain
+#pragma kernel CSClear
+
+// Grass instance data
+struct GrassInstance
+{
+    float3 position;
+    float3 normal;
+    float2 uv;
+    float height;
+    float width;
+    float rotation;
+    float stiffness;
+    float windPhase;
+};
+
+// Indirect draw arguments
+struct IndirectArgs
+{
+    uint vertexCountPerInstance;
+    uint instanceCount;
+    uint startVertexLocation;
+    uint startInstanceLocation;
+};
+
+// Input buffers
+StructuredBuffer<GrassInstance> _SourceInstances;
+RWStructuredBuffer<GrassInstance> _CulledInstances;
+RWStructuredBuffer<IndirectArgs> _IndirectArgs;
+
+// Counters
+RWStructuredBuffer<uint> _InstanceCounter;
+
+// Parameters
+float4x4 _ViewProjectionMatrix;
+float4x4 _ViewMatrix;
+float3 _CameraPosition;
+float3 _CameraForward;
+float _FrustumCullMargin;
+float _MaxRenderDistance;
+float _LOD0Distance;
+float _LOD1Distance;
+float _LOD2Distance;
+float _DensityFalloff;
+float _Time;
+
+// Wind parameters
+float3 _WindDirection;
+float _WindStrength;
+float _WindSpeed;
+float _WindFrequency;
+
+// Frustum planes
+float4 _FrustumPlanes[6];
+
+// Instance counts
+uint _TotalInstances;
+uint _MaxVisibleInstances;
+
+// LOD group (0, 1, 2)
+uint _LODGroup;
+
+// Check if point is inside frustum
+bool IsInsideFrustum(float3 position, float margin)
+{
+    for (int i = 0; i < 6; i++)
+    {
+        float dist = dot(_FrustumPlanes[i].xyz, position) + _FrustumPlanes[i].w;
+        if (dist < -margin)
+            return false;
+    }
+    return true;
+}
+
+// Calculate LOD level based on distance
+uint GetLODLevel(float distance)
+{
+    if (distance < _LOD0Distance)
+        return 0;
+    else if (distance < _LOD1Distance)
+        return 1;
+    else if (distance < _LOD2Distance)
+        return 2;
+    else
+        return 3; // Culled
+}
+
+// Hash function for consistent randomization
+float Hash(float2 p)
+{
+    return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
+}
+
+// Wind offset calculation (matches shader)
+float3 CalculateWindOffset(float3 position, float height, float windPhase)
+{
+    float3 windDir = normalize(_WindDirection);
+
+    // Main wind wave
+    float phase = dot(position.xz, windDir.xz) * _WindFrequency + _Time * _WindSpeed + windPhase;
+    float wave = sin(phase) * 0.5 + 0.5;
+
+    // Gust
+    float gustPhase = _Time * 0.5 + windPhase;
+    float gust = sin(gustPhase) * sin(gustPhase * 2.3) * 0.3;
+
+    float windFactor = (wave + gust) * _WindStrength * height * height;
+
+    return windDir * windFactor;
+}
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _TotalInstances)
+        return;
+
+    GrassInstance instance = _SourceInstances[id.x];
+
+    // Calculate distance to camera
+    float3 toCamera = _CameraPosition - instance.position;
+    float distance = length(toCamera);
+
+    // Distance culling
+    if (distance > _MaxRenderDistance)
+        return;
+
+    // LOD selection
+    uint lodLevel = GetLODLevel(distance);
+    if (lodLevel != _LODGroup)
+        return;
+
+    // Density falloff (render fewer instances at distance)
+    if (lodLevel > 0)
+    {
+        float densityThreshold = 1.0 - (distance - _LOD0Distance) / (_MaxRenderDistance - _LOD0Distance) * _DensityFalloff;
+        float randomValue = Hash(instance.position.xz);
+        if (randomValue > densityThreshold)
+            return;
+    }
+
+    // Calculate wind-affected position for frustum culling
+    float3 windOffset = CalculateWindOffset(instance.position, instance.height, instance.windPhase);
+    float3 tipPosition = instance.position + float3(0, instance.height, 0) + windOffset;
+
+    // Frustum culling (check both root and tip)
+    float cullMargin = _FrustumCullMargin + instance.height;
+    if (!IsInsideFrustum(instance.position, cullMargin) && !IsInsideFrustum(tipPosition, cullMargin))
+        return;
+
+    // Backface culling optimization (skip grass facing away)
+    float3 grassForward = instance.normal;
+    float facingRatio = dot(normalize(toCamera), grassForward);
+    // Allow grass to be seen from both sides, but skip if completely edge-on
+    if (abs(facingRatio) < 0.1)
+        return;
+
+    // Add to visible buffer
+    uint index;
+    InterlockedAdd(_InstanceCounter[0], 1, index);
+
+    if (index < _MaxVisibleInstances)
+    {
+        _CulledInstances[index] = instance;
+    }
+}
+
+[numthreads(1, 1, 1)]
+void CSClear(uint3 id : SV_DispatchThreadID)
+{
+    _InstanceCounter[0] = 0;
+    _IndirectArgs[0].instanceCount = 0;
+}

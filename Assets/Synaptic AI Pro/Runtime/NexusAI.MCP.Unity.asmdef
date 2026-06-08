@@ -1,0 +1,21 @@
+{
+  "name": "Synaptic.MCP.Unity",
+  "rootNamespace": "SynapticPro",
+  "references": [
+    "Unity.Mathematics",
+    "Unity.Collections",
+    "Unity.Burst",
+    "Unity.TextMeshPro",
+    "Unity.Nuget.Newtonsoft-Json",
+    "UnityEngine.UI"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

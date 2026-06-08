@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 23e712a62571842ceb12739ea240a053
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/MCPServer/index-supersave.js
+  uploadId: 920982

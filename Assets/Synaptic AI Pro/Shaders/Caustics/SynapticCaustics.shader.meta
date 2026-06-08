@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 29cc4c20a7f2644ae8f99c7d830a5579
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Shaders/Caustics/SynapticCaustics.shader
+  uploadId: 920982

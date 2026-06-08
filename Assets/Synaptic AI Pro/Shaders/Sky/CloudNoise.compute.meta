@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 81d34d35ae5b84546a0a971124c61744
+ComputeShaderImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.23
+  assetPath: Assets/Synaptic AI Pro/Shaders/Sky/CloudNoise.compute
+  uploadId: 920982
