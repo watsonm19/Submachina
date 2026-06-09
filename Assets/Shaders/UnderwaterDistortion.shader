@@ -52,6 +52,7 @@ Shader "Submachina/UnderwaterDistortion"
             float  _UD_Chromatic;       // light-bending RGB split, scaled by displacement
 
             float4 _UD_GodRayParams;    // x=intensity y=density z=sharpness w=driftSpeed
+            float4 _UD_GodRayParams2;   // x=swayAmount y=shimmerAmount z=distortCouple
             float4 _UD_GodRayDir;       // xy = ray travel direction (screen space, downward-ish)
             float4 _UD_GodRayTint;      // rgb tint of the shafts
 
@@ -170,23 +171,62 @@ Shader "Submachina/UnderwaterDistortion"
 
             // ─── Artificial light (return additive intensity) ───────────────────
 
+            // Cheap 1-D smooth value noise — used to place irregular god-ray beams. Kept 1-D
+            // (and procedural) on purpose so the beams never inherit a sampled texture's
+            // directional streaks, which is what made the textured version band horizontally.
+            float UD_Hash1(float n) { return frac(sin(n) * 43758.5453); }
+            float UD_Noise1(float x)
+            {
+                float i = floor(x);
+                float f = frac(x);
+                f = f * f * (3.0 - 2.0 * f);
+                return lerp(UD_Hash1(i), UD_Hash1(i + 1.0), f);
+            }
+
             /**
-             * God-ray shafts. Noise sampled ACROSS the ray direction gives parallel beams;
-             * a slow drift animates them; brightness ramps toward the light-entry edge
-             * (the surface), so for downward rays the top of the screen is brightest.
+             * Procedural god-ray shafts, brightening toward the light-entry edge (the surface).
+             * Built entirely from 1-D noise of the ACROSS-ray coordinate so the beams are
+             * crisp vertical columns regardless of any texture. Layers of life:
+             *   - SWAY: the across coordinate is offset by a slow function of depth, so beams
+             *     wave from side to side as they descend;
+             *   - two octaves of irregular beam placement, slowly drifting;
+             *   - per-beam TWINKLE and a dappled SHIMMER whose phase is keyed to the beam
+             *     coordinate, so brightness varies inside each beam but never lines up into
+             *     coherent horizontal bands across beams;
+             *   - coupling to the scene displacement so they bend with the water.
              */
-            float GodRays(float2 uv)
+            float GodRays(float2 uv, float2 disp)
             {
                 float2 dir   = normalize(_UD_GodRayDir.xy + float2(1e-5, -1e-5));
                 float2 perp  = float2(-dir.y, dir.x);
-                float  across = dot(uv, perp);
-                float  along  = dot(uv, dir);
 
-                float n     = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex,
-                                  float2(across * _UD_GodRayParams.y, along * 0.05 + _UD_Time * _UD_GodRayParams.w)).r;
-                float shaft = pow(saturate(n), _UD_GodRayParams.z);
-                float entry = saturate(dot(uv, -dir));      // brighter toward the surface side
-                return shaft * entry;
+                // Bend the ray field by the water distortion, then split into along/across.
+                float2 p     = uv + disp * _UD_GodRayParams2.z;
+                float  across = dot(p, perp);
+                float  along  = dot(p, dir);
+
+                float density = _UD_GodRayParams.y;
+                float t       = _UD_Time * _UD_GodRayParams.w;
+
+                // Sway: wave the beams horizontally as a slow function of depth.
+                across += (UD_Noise1(along * 2.0 - t * 0.6) - 0.5) * _UD_GodRayParams2.x;
+
+                // Two octaves of irregular vertical beams, slowly drifting across. The
+                // contrast stretch lifts the smooth-noise cores so beams actually read, then
+                // the (gentler) sharpness exponent thins them.
+                float c     = across * density;
+                float beams = saturate(UD_Noise1(c + t * 0.3) * 0.65 + UD_Noise1(c * 2.3 + 11.0 - t * 0.5) * 0.45);
+                beams       = smoothstep(0.30, 0.90, beams);
+                float shaft = pow(beams, max(1.0, _UD_GodRayParams.z * 0.5));
+
+                // Per-beam twinkle + lengthwise dapple. Both are PHASE-KEYED to the beam coord
+                // c, so neighbouring beams flicker out of step — no screen-wide horizontal bands.
+                float twinkle = 0.65 + 0.35 * sin(c * 3.1 + t * 1.7);
+                float dapple  = lerp(1.0, 0.5 + 0.5 * sin(along * 9.0 + c * 5.0 - t * 3.0),
+                                     saturate(_UD_GodRayParams2.y));
+
+                float entry = saturate(dot(p, -dir));       // brighter toward the surface side
+                return shaft * twinkle * dapple * entry;
             }
 
             /**
@@ -245,7 +285,7 @@ Shader "Submachina/UnderwaterDistortion"
                 float luma    = dot(col, half3(0.299, 0.587, 0.114));
                 float caustic = Caustics(uv, disp);
                 float caMask  = luma * _UD_CausticMask.x + _UD_CausticMask.y;
-                col += _UD_GodRayTint.rgb  * GodRays(uv) * _UD_GodRayParams.x * enable;
+                col += _UD_GodRayTint.rgb  * GodRays(uv, disp) * _UD_GodRayParams.x * enable;
                 col += _UD_CausticTint.rgb * caustic * _UD_CausticParams.x * caMask * enable;
 
                 // 3) TINT — optional subtle deep-water grade.

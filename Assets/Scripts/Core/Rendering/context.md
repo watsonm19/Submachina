@@ -12,7 +12,9 @@ concentric ripples and propulsion turbulence wakes.
   1. **Distort** — sums UV displacement from ambient flow + ripples + wakes, then re-samples
      the scene (`_BlitTexture`) with a **chromatic split** (R/B offset along the displacement)
      for the light-bending look.
-  2. **Light** — adds **god-ray shafts** (procedural beams from the surface) and **caustics**
+  2. **Light** — adds **god-ray shafts** (fully procedural 1-D-noise beams from the surface,
+     with Sway / Shimmer / Distort controls so they wave, twinkle and bend with the water;
+     procedural on purpose so they can't inherit a texture's directional streaks and band) and **caustics**
      (dual-layer `min()` of a cell/voronoi texture, luminance-masked so the sparkle lands on
      lit objects rather than open water). The caustics are pushed through an animated domain
      **warp** (Caustic Warp) so the web morphs/pulses in place, and bent by the scene

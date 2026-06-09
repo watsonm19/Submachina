@@ -98,6 +98,21 @@ namespace Core.Rendering
         public float godRaySpeed = 0.05f;
 
         [TitleGroup("God Rays")]
+        [Tooltip("How much the shafts sway/wave along their length — the main 'alive' control. 0 = rigid stripes.")]
+        [Range(0f, 0.5f)]
+        public float godRaySway = 0.12f;
+
+        [TitleGroup("God Rays")]
+        [Tooltip("Bright/dark segments crawling down the shafts (flicker). 0 = uniform beams.")]
+        [Range(0f, 1f)]
+        public float godRayShimmer = 0.5f;
+
+        [TitleGroup("God Rays")]
+        [Tooltip("How much the water distortion bends the shafts, tying them to the wobble.")]
+        [Range(0f, 4f)]
+        public float godRayDistort = 1.5f;
+
+        [TitleGroup("God Rays")]
         [Tooltip("Horizontal lean of the shafts. 0 = straight down; +/- angles them.")]
         [Range(-1f, 1f)]
         public float godRayAngle = 0.15f;
@@ -260,6 +275,7 @@ namespace Core.Rendering
         private static readonly int _idAspect        = Shader.PropertyToID("_UD_Aspect");
         private static readonly int _idChromatic     = Shader.PropertyToID("_UD_Chromatic");
         private static readonly int _idGodRayParams  = Shader.PropertyToID("_UD_GodRayParams");
+        private static readonly int _idGodRayParams2 = Shader.PropertyToID("_UD_GodRayParams2");
         private static readonly int _idGodRayDir     = Shader.PropertyToID("_UD_GodRayDir");
         private static readonly int _idGodRayTint    = Shader.PropertyToID("_UD_GodRayTint");
         private static readonly int _idCausticParams = Shader.PropertyToID("_UD_CausticParams");
@@ -456,6 +472,7 @@ namespace Core.Rendering
             Shader.SetGlobalFloat(_idChromatic, chromaticAberration);
             Vector2 grDir = new Vector2(godRayAngle, -1f).normalized;
             Shader.SetGlobalVector(_idGodRayParams, new Vector4(godRayIntensity, godRayDensity, godRaySharpness, godRaySpeed));
+            Shader.SetGlobalVector(_idGodRayParams2, new Vector4(godRaySway, godRayShimmer, godRayDistort, 0f));
             Shader.SetGlobalVector(_idGodRayDir, new Vector4(grDir.x, grDir.y, 0f, 0f));
             Shader.SetGlobalVector(_idGodRayTint, godRayTint);
             Shader.SetGlobalVector(_idCausticParams, new Vector4(causticIntensity, causticScale, causticSpeed, causticSharpness));
