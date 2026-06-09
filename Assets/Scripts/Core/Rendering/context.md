@@ -1,59 +1,76 @@
 # Rendering — Underwater Distortion
 
-A fullscreen post-processing effect that warps the rendered 2D scene to look like it's
-viewed through water: a gentle whole-screen undulation plus localized, interactive ripples
-triggered at world points by gameplay events.
+A fullscreen post-processing effect that makes the 2D scene read as a **side-view, submerged
+("looking through the water")** environment: gentle distortion, light-bending refraction,
+artificial underwater light (god rays + caustics), and two kinds of interactive disturbance —
+concentric ripples and propulsion turbulence wakes.
 
 ## Pieces
 
 - **`Assets/Shaders/UnderwaterDistortion.shader`** (`Submachina/UnderwaterDistortion`)
-  Fullscreen Blit shader. Samples the rendered scene (`_BlitTexture`) at a UV offset built
-  from (1) *ambient flow* — two scrolling sine layers blended with an optional tiling noise
-  texture (`_UD_NoiseTex`) — and (2) *ripple flow* — expanding radial waves read from two
-  global Vector4 arrays. Edge-fades the displacement so warped UVs never sample off-screen.
-  All inputs are **global uniforms** (no surfaced material properties).
+  Fullscreen Blit shader. Does three things per pixel:
+  1. **Distort** — sums UV displacement from ambient flow + ripples + wakes, then re-samples
+     the scene (`_BlitTexture`) with a **chromatic split** (R/B offset along the displacement)
+     for the light-bending look.
+  2. **Light** — adds **god-ray shafts** (procedural beams from the surface) and **caustics**
+     (dual-layer `min()` of a cell/voronoi texture, luminance-masked so the sparkle lands on
+     lit objects rather than open water).
+  3. **Tint** — optional subtle deep-water color grade.
+  Material properties: `_UD_NoiseTex` (tiling noise for ambient/wake/god-rays) and
+  `_UD_CausticTex` (cell/voronoi for caustics). Everything else arrives as global uniforms.
 
 - **`UnderwaterDistortionController.cs`** (`Core.Rendering`, `[ExecuteAlways]` singleton)
-  The only writer of the shader globals. Owns the ambient settings and a fixed pool of 16
-  ripples. Each frame it converts ripple world positions to viewport UV, computes their
-  expand/fade envelope, and uploads everything via `Shader.SetGlobal*`. Has Odin test buttons
-  and an edit-mode **manual time override** for deterministic `EditorCapture` stills.
+  The sole writer of the shader globals. Owns ambient/refraction/god-ray/caustic/tint settings
+  plus two pools — **ripples (16)** and **wakes (8)**. Each frame it projects each disturbance's
+  world position to viewport UV, computes its envelope, and uploads everything via
+  `Shader.SetGlobal*`. Odin test buttons + an edit-mode **manual time override** for
+  deterministic `EditorCapture` stills.
 
-- **`DistortionRippleBus.cs`** (`Core.Rendering`, static)
-  Decoupled pub/sub (mirrors `Core.Input.PointerWorldBus`). Gameplay calls
-  `DistortionRippleBus.Emit(worldPos, strength, frequency, speed, lifetime)`; the controller
-  is the sole subscriber. This is the integration point for any event that should ripple the
-  water (dashes, impacts, explosions, fast movement).
+- **`DistortionRippleBus.cs`** (`Core.Rendering`, static) — `Emit(pos, strength, frequency,
+  speed, lifetime)`. Concentric expanding ripple (surface-style splash / impact).
 
-- **`Gameplay/SpeedRippleEmitter.cs`** (`Gameplay`)
-  Example emitter: watches an object's speed (Rigidbody2D velocity or transform delta) and
-  emits a strength-scaled ripple through the bus when it exceeds a threshold (with a cooldown).
+- **`DistortionWakeBus.cs`** (`Core.Rendering`, static) — `Emit(pos, dir, strength, length,
+  frequency, lifetime)`. Elongated turbulence plume trailing a travel direction (propulsion).
 
-## Render wiring (already set up in the project)
+- **`Gameplay/SpeedRippleEmitter.cs`** — emits a ripple when an object exceeds a speed threshold.
+- **`Gameplay/PropulsionWakeEmitter.cs`** — streams wakes along an object's velocity while it
+  moves fast (the propulsion-trail counterpart).
 
-The effect is injected by URP's built-in **Full Screen Pass Renderer Feature**, added to
-`Assets/Settings/Renderer2D.asset`, pointed at `Assets/Shaders/UnderwaterDistortion.mat`,
-at injection point **After Rendering Post Processing**, with **Fetch Color Buffer = ON**
-(required — the shader reads `_BlitTexture`). No custom render-pipeline C# is involved; the
-built-in feature handles both compatibility-mode and Render Graph paths.
+## Render wiring (already set up)
 
-`JDTestScene` contains an `UnderwaterDistortion` GameObject holding the controller, and the
-`Player_Torch` object carries an example `SpeedRippleEmitter`.
+Injected by URP's built-in **Full Screen Pass Renderer Feature** on
+`Assets/Settings/Renderer2D.asset` → material `Assets/Shaders/UnderwaterDistortion.mat`,
+injection **After Rendering Post Processing**, **Fetch Color Buffer = ON**. No custom
+render-pipeline C#. `JDTestScene` has an `UnderwaterDistortion` GameObject (controller);
+`Player_Torch` carries both example emitters.
+
+Default source textures: `_UD_NoiseTex` = Feel `MMFlowNoise`, `_UD_CausticTex` = Feel
+`MMCellNoise` (swap for `MMVoronoiNoise`, `MMCloudsNoise`, etc. in the material inspector).
 
 ## How to use
 
-- **Ambient look:** tune Ambient Flow (amplitude/scale/speed) on the controller. Raise **Noise
-  Blend** to cross-fade from procedural sine flow toward the tiling noise texture for a more
-  organic look. The material ships with Feel's `MMPerlinNoise` assigned to `_UD_NoiseTex`; swap
-  it for any other seamless noise (e.g. `MMCloudsNoise`, `MMFlowNoise`) in the material inspector.
-  A grayscale noise is sampled at two scrolling offsets so it still warps in both axes.
-- **Trigger a ripple from code:** `DistortionRippleBus.Emit(pos, strength, frequency, speed, lifetime)`.
-- **Verify visually in-editor:** enable Manual Time Override, raise Ambient Amplitude, emit a
-  test ripple at time 0, then scrub Manual Time upward and call
-  `Core.Editor.EditorCapture.Capture(...)` to see the ring expand frame-by-frame.
+- **Tune the look** on the controller: Ambient Flow, Refraction (chromatic), God Rays, Caustics,
+  Deep Tint. Each light feature has an intensity that goes to 0 = off. Master `globalEnable`
+  gates the whole effect.
+- **Trigger from code:**
+  - ripple: `DistortionRippleBus.Emit(pos, strength, frequency, speed, lifetime)`
+  - wake:   `DistortionWakeBus.Emit(pos, travelDir, strength, length, frequency, lifetime)`
+- **Verify in-editor:** enable Manual Time Override, hit a test button (Emit Test Ripple / Emit
+  Test Wake) at a low time, then scrub Manual Time up and `EditorCapture.Capture(...)`.
 
 ## Gotchas
 
-- The GPU arrays are always uploaded at full length (16) so Unity doesn't cache a shorter
-  array length — a known `SetGlobalVectorArray` pitfall.
-- If the warp ever appears on only half the screen, check the feature's Pass Index (URP 2D quirk).
+- GPU arrays always upload at full length (16 ripples / 8 wakes) so Unity doesn't cache a shorter
+  length — a known `SetGlobalVectorArray` pitfall.
+- Caustics show faintly in open water via the Open Water floor; set it to 0 to keep them only on
+  lit surfaces.
+- Effects apply to everything rendered before post-processing. A screen-space/overlay UI canvas
+  won't be distorted (usually desired).
+
+## Ideas / backlog (not yet built)
+
+- Drifting **particulate/motes** rising slowly through the water (additive sparkles).
+- A **water surface line** near the top with brighter caustics + god-ray origin there.
+- **Depth-driven grading**: darken + shift the deep tint as the player descends.
+- **Bubble emitter** (sprites) for stronger interactivity on impacts/propulsion.
+- Tie ambient amplitude / chromatic to player turbulence or nearby currents.

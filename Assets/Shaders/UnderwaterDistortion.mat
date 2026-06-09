@@ -23,6 +23,10 @@ Material:
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
+    - _UD_CausticTex:
+        m_Texture: {fileID: 2800000, guid: 6415e4b059f8ca249ad6c1c205f2330e, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _UD_NoiseTex:
         m_Texture: {fileID: 2800000, guid: 5c2ab7cb954a3974c8a19f8c9c6f6fdc, type: 3}
         m_Scale: {x: 1, y: 1}

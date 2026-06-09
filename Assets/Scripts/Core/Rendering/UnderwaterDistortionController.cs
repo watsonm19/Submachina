@@ -20,8 +20,9 @@ namespace Core.Rendering
     [ExecuteAlways]
     public class UnderwaterDistortionController : MonoBehaviour
     {
-        // Must match UD_MAX_RIPPLES in UnderwaterDistortion.shader.
+        // Must match UD_MAX_RIPPLES / UD_MAX_WAKES in UnderwaterDistortion.shader.
         private const int MaxRipples = 16;
+        private const int MaxWakes = 8;
 
         /** The single live controller, so emitters/tools can find it without a scene ref. */
         public static UnderwaterDistortionController Instance { get; private set; }
@@ -68,6 +69,111 @@ namespace Core.Rendering
         [Tooltip("Scroll speed of the noise texture.")]
         [Range(0f, 4f)]
         public float noiseSpeed = 0.4f;
+
+        // ─── Refraction (light bending) ──────────────────────────────────────
+        [TitleGroup("Refraction")]
+        [Tooltip("How much light splits into RGB along the distortion — the 'bent light' look. 0 = off.")]
+        [Range(0f, 8f)]
+        public float chromaticAberration = 2.5f;
+
+        // ─── God rays ────────────────────────────────────────────────────────
+        [TitleGroup("God Rays", "Light shafts angling down from the surface.")]
+        [Tooltip("Overall brightness of the god-ray shafts. 0 = off.")]
+        [Range(0f, 2f)]
+        public float godRayIntensity = 0.35f;
+
+        [TitleGroup("God Rays")]
+        [Tooltip("How many shafts across the screen (noise frequency across the ray direction).")]
+        [Range(0.5f, 20f)]
+        public float godRayDensity = 4f;
+
+        [TitleGroup("God Rays")]
+        [Tooltip("Shaft contrast/thinness — higher = sharper, more separated beams.")]
+        [Range(1f, 16f)]
+        public float godRaySharpness = 7f;
+
+        [TitleGroup("God Rays")]
+        [Tooltip("How fast the shafts drift/shimmer.")]
+        [Range(0f, 1f)]
+        public float godRaySpeed = 0.05f;
+
+        [TitleGroup("God Rays")]
+        [Tooltip("Horizontal lean of the shafts. 0 = straight down; +/- angles them.")]
+        [Range(-1f, 1f)]
+        public float godRayAngle = 0.15f;
+
+        [TitleGroup("God Rays")]
+        [Tooltip("Color of the shafts (HDR — push past white for a bloom-friendly glow).")]
+        [ColorUsage(false, true)]
+        public Color godRayTint = new Color(0.55f, 0.8f, 1f);
+
+        // ─── Caustics ────────────────────────────────────────────────────────
+        [TitleGroup("Caustics", "Animated light webs that sparkle across surfaces.")]
+        [Tooltip("Overall brightness of the caustics. 0 = off.")]
+        [Range(0f, 2f)]
+        public float causticIntensity = 0.45f;
+
+        [TitleGroup("Caustics")]
+        [Tooltip("Tiling scale of the caustic cells — higher = smaller, denser cells.")]
+        [Range(0.5f, 14f)]
+        public float causticScale = 3.5f;
+
+        [TitleGroup("Caustics")]
+        [Tooltip("Animation speed of the caustic shimmer.")]
+        [Range(0f, 1f)]
+        public float causticSpeed = 0.09f;
+
+        [TitleGroup("Caustics")]
+        [Tooltip("Contrast of the cell highlights — higher = thinner, brighter veins.")]
+        [Range(0.5f, 6f)]
+        public float causticSharpness = 1.6f;
+
+        [TitleGroup("Caustics")]
+        [Tooltip("How strongly caustics cling to lit surfaces vs. open water (higher = mostly on objects).")]
+        [Range(0f, 2f)]
+        public float causticSurfaceMask = 1.2f;
+
+        [TitleGroup("Caustics")]
+        [Tooltip("Baseline caustic visibility in open (dark) water.")]
+        [Range(0f, 1f)]
+        public float causticOpenWater = 0.12f;
+
+        [TitleGroup("Caustics")]
+        [Tooltip("Color of the caustics (HDR).")]
+        [ColorUsage(false, true)]
+        public Color causticTint = new Color(0.65f, 0.95f, 1f);
+
+        // ─── Deep tint ───────────────────────────────────────────────────────
+        [TitleGroup("Deep Tint", "Optional color grade; leave strength 0 if you grade via a Volume.")]
+        [Tooltip("Multiplicative deep-water color.")]
+        public Color deepTint = new Color(0.45f, 0.75f, 0.85f);
+
+        [TitleGroup("Deep Tint")]
+        [Tooltip("How strongly to apply the deep tint. 0 = off.")]
+        [Range(0f, 1f)]
+        public float deepTintStrength = 0f;
+
+        // ─── Wake shape ──────────────────────────────────────────────────────
+        [TitleGroup("Wake Shape", "Turbulence trails from propulsion (see PropulsionWakeEmitter).")]
+        [Tooltip("Length of the turbulence plume along travel, in viewport units.")]
+        [Range(0.02f, 0.5f)]
+        public float wakeHalfLength = 0.12f;
+
+        [TitleGroup("Wake Shape")]
+        [Tooltip("Turbulence frequency inside the wake — higher = finer churn.")]
+        [Range(2f, 40f)]
+        public float wakeFrequency = 14f;
+
+        // ─── Wake defaults (test button + emitter fallback) ──────────────────
+        [TitleGroup("Wake Defaults")]
+        [Tooltip("Peak displacement strength of a test wake.")]
+        [Range(0f, 0.2f)]
+        public float wakeDefaultStrength = 0.05f;
+
+        [TitleGroup("Wake Defaults")]
+        [Tooltip("Seconds until a test wake fully fades.")]
+        [Range(0.1f, 4f)]
+        public float wakeDefaultLifetime = 0.9f;
 
         // ─── Ripple shape ────────────────────────────────────────────────────
         [TitleGroup("Ripple Shape")]
@@ -132,14 +238,30 @@ namespace Core.Rendering
         private readonly Vector4[] _rippleA = new Vector4[MaxRipples];
         private readonly Vector4[] _rippleB = new Vector4[MaxRipples];
 
+        // Wake pool (turbulence trails), packed the same way the ripple pool is.
+        private Wake[] _wakes = new Wake[MaxWakes];
+        private readonly Vector4[] _wakeA = new Vector4[MaxWakes];
+        private readonly Vector4[] _wakeB = new Vector4[MaxWakes];
+
         // Cached shader property ids (per project convention).
-        private static readonly int _idTime        = Shader.PropertyToID("_UD_Time");
-        private static readonly int _idFlowParams  = Shader.PropertyToID("_UD_FlowParams");
-        private static readonly int _idFlowParams2 = Shader.PropertyToID("_UD_FlowParams2");
-        private static readonly int _idAspect      = Shader.PropertyToID("_UD_Aspect");
-        private static readonly int _idRippleA     = Shader.PropertyToID("_UD_RippleA");
-        private static readonly int _idRippleB     = Shader.PropertyToID("_UD_RippleB");
-        private static readonly int _idRippleCount = Shader.PropertyToID("_UD_RippleCount");
+        private static readonly int _idTime          = Shader.PropertyToID("_UD_Time");
+        private static readonly int _idFlowParams    = Shader.PropertyToID("_UD_FlowParams");
+        private static readonly int _idFlowParams2   = Shader.PropertyToID("_UD_FlowParams2");
+        private static readonly int _idAspect        = Shader.PropertyToID("_UD_Aspect");
+        private static readonly int _idChromatic     = Shader.PropertyToID("_UD_Chromatic");
+        private static readonly int _idGodRayParams  = Shader.PropertyToID("_UD_GodRayParams");
+        private static readonly int _idGodRayDir     = Shader.PropertyToID("_UD_GodRayDir");
+        private static readonly int _idGodRayTint    = Shader.PropertyToID("_UD_GodRayTint");
+        private static readonly int _idCausticParams = Shader.PropertyToID("_UD_CausticParams");
+        private static readonly int _idCausticTint   = Shader.PropertyToID("_UD_CausticTint");
+        private static readonly int _idCausticMask   = Shader.PropertyToID("_UD_CausticMask");
+        private static readonly int _idDeepTint      = Shader.PropertyToID("_UD_DeepTint");
+        private static readonly int _idRippleA       = Shader.PropertyToID("_UD_RippleA");
+        private static readonly int _idRippleB       = Shader.PropertyToID("_UD_RippleB");
+        private static readonly int _idRippleCount   = Shader.PropertyToID("_UD_RippleCount");
+        private static readonly int _idWakeA         = Shader.PropertyToID("_UD_WakeA");
+        private static readonly int _idWakeB         = Shader.PropertyToID("_UD_WakeB");
+        private static readonly int _idWakeCount     = Shader.PropertyToID("_UD_WakeCount");
 
         /** A single live ripple in the pool. */
         private struct Ripple
@@ -150,6 +272,19 @@ namespace Core.Rendering
             public float strength;
             public float frequency;
             public float speed;
+            public float lifetime;
+        }
+
+        /** A single live wake (turbulence trail) in the pool. */
+        private struct Wake
+        {
+            public bool active;
+            public Vector3 worldPos;
+            public Vector3 worldDir;   // travel direction in world space
+            public float startTime;
+            public float strength;
+            public float halfLength;
+            public float frequency;
             public float lifetime;
         }
 
@@ -182,12 +317,14 @@ namespace Core.Rendering
 
             Instance = this;
             DistortionRippleBus.OnRipple += Enqueue;
+            DistortionWakeBus.OnWake += EnqueueWake;
         }
 
         /** Release the singleton slot and stop listening. */
         private void OnDisable()
         {
             DistortionRippleBus.OnRipple -= Enqueue;
+            DistortionWakeBus.OnWake -= EnqueueWake;
             if (Instance == this) Instance = null;
         }
 
@@ -239,6 +376,48 @@ namespace Core.Rendering
             return oldest;
         }
 
+        /**
+         * Place an incoming wake request into the wake pool (first free slot, else steal
+         * the oldest). A zero/near-zero direction is dropped — a wake needs a travel axis.
+         */
+        private void EnqueueWake(WakeRequest r)
+        {
+            if (r.worldDir.sqrMagnitude < 1e-6f) return;
+
+            int slot = FindFreeOrOldestWakeSlot();
+
+            _wakes[slot] = new Wake
+            {
+                active = true,
+                worldPos = r.worldPos,
+                worldDir = r.worldDir.normalized,
+                startTime = CurrentTime,
+                strength = r.strength,
+                halfLength = r.length > 0f ? r.length : wakeHalfLength,
+                frequency = r.frequency > 0f ? r.frequency : wakeFrequency,
+                lifetime = Mathf.Max(0.01f, r.lifetime)
+            };
+        }
+
+        /** Return a free wake slot, or the index of the oldest wake if all are busy. */
+        private int FindFreeOrOldestWakeSlot()
+        {
+            int oldest = 0;
+            float oldestStart = float.MaxValue;
+
+            for (int i = 0; i < _wakes.Length; i++)
+            {
+                if (!_wakes[i].active) return i;
+                if (_wakes[i].startTime < oldestStart)
+                {
+                    oldestStart = _wakes[i].startTime;
+                    oldest = i;
+                }
+            }
+
+            return oldest;
+        }
+
         // ─── GPU upload ──────────────────────────────────────────────────────
 
         /**
@@ -261,6 +440,17 @@ namespace Core.Rendering
             Camera cam = targetCamera != null ? targetCamera : Camera.main;
             float aspect = cam != null ? cam.aspect : 1.7777f;
             Shader.SetGlobalVector(_idAspect, new Vector4(aspect, 1f, 0f, 0f));
+
+            // Refraction + artificial-light parameters (Color implicitly converts to Vector4).
+            Shader.SetGlobalFloat(_idChromatic, chromaticAberration);
+            Vector2 grDir = new Vector2(godRayAngle, -1f).normalized;
+            Shader.SetGlobalVector(_idGodRayParams, new Vector4(godRayIntensity, godRayDensity, godRaySharpness, godRaySpeed));
+            Shader.SetGlobalVector(_idGodRayDir, new Vector4(grDir.x, grDir.y, 0f, 0f));
+            Shader.SetGlobalVector(_idGodRayTint, godRayTint);
+            Shader.SetGlobalVector(_idCausticParams, new Vector4(causticIntensity, causticScale, causticSpeed, causticSharpness));
+            Shader.SetGlobalVector(_idCausticTint, causticTint);
+            Shader.SetGlobalVector(_idCausticMask, new Vector4(causticSurfaceMask, causticOpenWater, 0f, 0f));
+            Shader.SetGlobalVector(_idDeepTint, new Vector4(deepTint.r, deepTint.g, deepTint.b, deepTintStrength));
 
             // Pack live ripples to the front of the arrays, expire finished ones, zero the rest.
             int live = 0;
@@ -296,6 +486,45 @@ namespace Core.Rendering
             Shader.SetGlobalVectorArray(_idRippleA, _rippleA);
             Shader.SetGlobalVectorArray(_idRippleB, _rippleB);
             Shader.SetGlobalInt(_idRippleCount, live);
+
+            // Pack live wakes: viewport center + aspect-corrected travel direction.
+            int wlive = 0;
+            for (int i = 0; i < _wakes.Length; i++)
+            {
+                ref Wake wk = ref _wakes[i];
+                if (!wk.active) continue;
+
+                float t = time - wk.startTime;
+                if (t < 0f || t > wk.lifetime) { wk.active = false; continue; }
+
+                float u = Mathf.Clamp01(t / wk.lifetime);
+                Vector3 vp0 = cam != null ? cam.WorldToViewportPoint(wk.worldPos) : new Vector3(0.5f, 0.5f, 1f);
+                Vector3 vp1 = cam != null ? cam.WorldToViewportPoint(wk.worldPos + wk.worldDir) : new Vector3(0.6f, 0.5f, 1f);
+                float visible = vp0.z > 0f ? 1f : 0f;
+
+                // Travel direction in aspect-corrected viewport space (matches the shader's frame).
+                Vector2 dirUv = new Vector2((vp1.x - vp0.x) * aspect, vp1.y - vp0.y);
+                if (dirUv.sqrMagnitude < 1e-8f) dirUv = Vector2.right;
+                dirUv.Normalize();
+
+                // Envelope: quick ramp-in then fade; the plume grows a little as it dissipates.
+                float strength = wk.strength * (1f - u) * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(u / 0.12f)) * visible;
+                float halfLen = wk.halfLength * (1f + u * 0.6f);
+
+                _wakeA[wlive] = new Vector4(vp0.x, vp0.y, strength, halfLen);
+                _wakeB[wlive] = new Vector4(dirUv.x, dirUv.y, wk.frequency, 1f);
+                wlive++;
+            }
+
+            for (int i = wlive; i < MaxWakes; i++)
+            {
+                _wakeA[i] = Vector4.zero;
+                _wakeB[i] = Vector4.zero;
+            }
+
+            Shader.SetGlobalVectorArray(_idWakeA, _wakeA);
+            Shader.SetGlobalVectorArray(_idWakeB, _wakeB);
+            Shader.SetGlobalInt(_idWakeCount, wlive);
         }
 
         // ─── Test controls ───────────────────────────────────────────────────
@@ -322,11 +551,35 @@ namespace Core.Rendering
             UploadToGpu();
         }
 
+        /**
+         * Emit a test wake across the middle of the view (moving right), so the turbulence
+         * plume is easy to see. Emit at a low manual time, then raise it to watch it dissipate.
+         */
+        [Button("Emit Test Wake (Across View)")]
+        public void EmitTestWake()
+        {
+            Camera cam = targetCamera != null ? targetCamera : Camera.main;
+            float zd = cam != null ? Mathf.Abs(cam.transform.position.z) : 10f;
+            Vector3 pos = cam != null ? cam.ViewportToWorldPoint(new Vector3(0.5f, 0.5f, zd)) : Vector3.zero;
+            Vector3 dir = cam != null ? cam.transform.right : Vector3.right;
+
+            DistortionWakeBus.Emit(pos, dir, wakeDefaultStrength, wakeHalfLength, wakeFrequency, wakeDefaultLifetime);
+            UploadToGpu();
+        }
+
         /** Clear every active ripple immediately. */
         [Button("Clear Ripples")]
         public void ClearRipples()
         {
             for (int i = 0; i < _ripples.Length; i++) _ripples[i].active = false;
+            UploadToGpu();
+        }
+
+        /** Clear every active wake immediately. */
+        [Button("Clear Wakes")]
+        public void ClearWakes()
+        {
+            for (int i = 0; i < _wakes.Length; i++) _wakes[i].active = false;
             UploadToGpu();
         }
     }
