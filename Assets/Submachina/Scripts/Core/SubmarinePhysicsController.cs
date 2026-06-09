@@ -96,6 +96,19 @@ namespace Submachina.Core
             : 0f;
 
         // =====================
+        // Public State
+        // =====================
+
+        /** Raw thrust input this frame — read by SubmarineDash for dash direction. */
+        public Vector2 ThrustInput => _thrustInput;
+
+        /**
+         * Set true by SubmarineDash during a burst to bypass the speed clamp.
+         * Without this, ClampSpeed immediately cancels the impulse on the same frame.
+         */
+        public bool IsDashing { get; set; }
+
+        // =====================
         // Internals
         // =====================
 
@@ -190,6 +203,8 @@ namespace Submachina.Core
          */
         private void ClampSpeed()
         {
+            // Skip during a dash — the burst needs to exceed normal max speed briefly
+            if (IsDashing) return;
             if (_rb.linearVelocity.sqrMagnitude > maxSpeed * maxSpeed)
                 _rb.linearVelocity = _rb.linearVelocity.normalized * maxSpeed;
         }
