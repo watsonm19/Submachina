@@ -115,7 +115,7 @@ namespace Core.Rendering
 
         [TitleGroup("Caustics")]
         [Tooltip("Tiling scale of the caustic cells — higher = smaller, denser cells.")]
-        [Range(0.5f, 14f)]
+        [Range(0.01f, 14f)]
         public float causticScale = 3.5f;
 
         [TitleGroup("Caustics")]
@@ -125,12 +125,22 @@ namespace Core.Rendering
 
         [TitleGroup("Caustics")]
         [Tooltip("Contrast of the cell highlights — higher = thinner, brighter veins.")]
-        [Range(0.5f, 6f)]
+        [Range(0.5f, 20f)]
         public float causticSharpness = 1.6f;
 
         [TitleGroup("Caustics")]
+        [Tooltip("Animated domain warp — makes the caustic web MORPH/pulse in place instead of sliding flatly. The main 'alive' control.")]
+        [Range(0f, 1f)]
+        public float causticWarp = 0.18f;
+
+        [TitleGroup("Caustics")]
+        [Tooltip("How much the water distortion bends the caustics, tying them to the same wobble as the scene.")]
+        [Range(0f, 6f)]
+        public float causticDistort = 1.5f;
+
+        [TitleGroup("Caustics")]
         [Tooltip("How strongly caustics cling to lit surfaces vs. open water (higher = mostly on objects).")]
-        [Range(0f, 2f)]
+        [Range(0f, 20f)]
         public float causticSurfaceMask = 1.2f;
 
         [TitleGroup("Caustics")]
@@ -253,6 +263,7 @@ namespace Core.Rendering
         private static readonly int _idGodRayDir     = Shader.PropertyToID("_UD_GodRayDir");
         private static readonly int _idGodRayTint    = Shader.PropertyToID("_UD_GodRayTint");
         private static readonly int _idCausticParams = Shader.PropertyToID("_UD_CausticParams");
+        private static readonly int _idCausticParams2 = Shader.PropertyToID("_UD_CausticParams2");
         private static readonly int _idCausticTint   = Shader.PropertyToID("_UD_CausticTint");
         private static readonly int _idCausticMask   = Shader.PropertyToID("_UD_CausticMask");
         private static readonly int _idDeepTint      = Shader.PropertyToID("_UD_DeepTint");
@@ -448,6 +459,7 @@ namespace Core.Rendering
             Shader.SetGlobalVector(_idGodRayDir, new Vector4(grDir.x, grDir.y, 0f, 0f));
             Shader.SetGlobalVector(_idGodRayTint, godRayTint);
             Shader.SetGlobalVector(_idCausticParams, new Vector4(causticIntensity, causticScale, causticSpeed, causticSharpness));
+            Shader.SetGlobalVector(_idCausticParams2, new Vector4(causticWarp, causticDistort, 0f, 0f));
             Shader.SetGlobalVector(_idCausticTint, causticTint);
             Shader.SetGlobalVector(_idCausticMask, new Vector4(causticSurfaceMask, causticOpenWater, 0f, 0f));
             Shader.SetGlobalVector(_idDeepTint, new Vector4(deepTint.r, deepTint.g, deepTint.b, deepTintStrength));

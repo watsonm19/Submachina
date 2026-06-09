@@ -14,7 +14,10 @@ concentric ripples and propulsion turbulence wakes.
      for the light-bending look.
   2. **Light** — adds **god-ray shafts** (procedural beams from the surface) and **caustics**
      (dual-layer `min()` of a cell/voronoi texture, luminance-masked so the sparkle lands on
-     lit objects rather than open water).
+     lit objects rather than open water). The caustics are pushed through an animated domain
+     **warp** (Caustic Warp) so the web morphs/pulses in place, and bent by the scene
+     displacement (Caustic Distort) so they ride the same wobble as the water — without these
+     they read as a flat decal sliding across the screen.
   3. **Tint** — optional subtle deep-water color grade.
   Material properties: `_UD_NoiseTex` (tiling noise for ambient/wake/god-rays) and
   `_UD_CausticTex` (cell/voronoi for caustics). Everything else arrives as global uniforms.

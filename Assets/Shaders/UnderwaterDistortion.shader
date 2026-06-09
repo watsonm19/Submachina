@@ -56,6 +56,7 @@ Shader "Submachina/UnderwaterDistortion"
             float4 _UD_GodRayTint;      // rgb tint of the shafts
 
             float4 _UD_CausticParams;   // x=intensity y=scale z=speed w=sharpness
+            float4 _UD_CausticParams2;  // x=warpAmount y=distortCouple
             float4 _UD_CausticTint;     // rgb tint of the caustics
             float4 _UD_CausticMask;     // x=lumaMaskStrength y=openWaterFloor
 
@@ -117,7 +118,8 @@ Shader "Submachina/UnderwaterDistortion"
 
                     float2 d    = (uv - a.xy) * _UD_Aspect;
                     float  dist = length(d);
-                    float  ring = exp(-pow((dist - a.z) / max(b.y, 1e-4), 2.0));
+                    float  rr   = (dist - a.z) / max(b.y, 1e-4);     // signed distance from the ring
+                    float  ring = exp(-rr * rr);                     // Gaussian band (x*x avoids pow(neg,2))
                     float  wave = sin(dist * b.x * UD_TAU - b.z);
                     float2 dir  = d / max(dist, 1e-4);
                     disp += dir * wave * ring * a.w;
@@ -152,7 +154,8 @@ Shader "Submachina/UnderwaterDistortion"
                     // plume trails it; tighter across (side) than along the travel axis.
                     float halfLen = max(a.w, 1e-3);
                     float al  = (along + halfLen) / halfLen;
-                    float env = exp(-al * al) * exp(-pow(side / (halfLen * 0.35), 2.0));
+                    float ss  = side / (halfLen * 0.35);             // normalized perpendicular distance
+                    float env = exp(-al * al) * exp(-ss * ss);       // elliptical falloff (x*x avoids pow(neg,2))
 
                     // Backward-scrolling high-frequency turbulence.
                     float2 nUv  = uv * b.z - dir * (_UD_Time * 1.5);
@@ -188,17 +191,32 @@ Shader "Submachina/UnderwaterDistortion"
 
             /**
              * Caustic web. Two scrolling layers of the cell/voronoi texture combined with
-             * min() (classic caustic trick), then sharpened. Aspect-corrected so cells stay
-             * roughly square. Returns the raw pattern; Frag tints/masks it.
+             * min() (the classic caustic trick), then sharpened. To avoid the "flat decal
+             * sliding across the screen" look, the sample coordinates are (a) bent by the
+             * scene displacement `disp` so the caustics ride the same wobble as everything
+             * else, and (b) pushed through an animated low-frequency DOMAIN WARP so the web
+             * morphs/pulses in place instead of translating rigidly. Each layer is warped
+             * slightly differently, so their min() intersection shimmers and crawls.
              */
-            float Caustics(float2 uv)
+            float Caustics(float2 uv, float2 disp)
             {
-                float2 buv = uv * float2(_UD_Aspect.x, 1.0) * _UD_CausticParams.y;
+                // Aspect-correct base coords, coupled to the water distortion.
+                float2 base = (uv + disp * _UD_CausticParams2.y) * float2(_UD_Aspect.x, 1.0);
+
+                // Animated domain warp sampled from the flow noise — the "alive" morph.
+                float2 w;
+                w.x = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex, base * 0.6 + _UD_Time * 0.04).r;
+                w.y = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex, base * 0.6 + 0.5 - _UD_Time * 0.035).r;
+                w = (w * 2.0 - 1.0) * _UD_CausticParams2.x;
+
+                float2 buv = base * _UD_CausticParams.y + w;
                 float  sp  = _UD_Time * _UD_CausticParams.z;
-                float  c1  = SAMPLE_TEXTURE2D(_UD_CausticTex, sampler_UD_CausticTex, buv          + sp * float2( 0.10, 0.07)).r;
-                float  c2  = SAMPLE_TEXTURE2D(_UD_CausticTex, sampler_UD_CausticTex, buv * 1.30    + sp * float2(-0.08, 0.05)).r;
-                float  c   = min(c1, c2);
-                return pow(c, _UD_CausticParams.w) * 2.0;
+
+                // Two differently-warped, differently-drifting layers -> shimmering veins.
+                float c1 = SAMPLE_TEXTURE2D(_UD_CausticTex, sampler_UD_CausticTex, buv              + sp * float2( 0.10, 0.07)).r;
+                float c2 = SAMPLE_TEXTURE2D(_UD_CausticTex, sampler_UD_CausticTex, buv * 1.30 + w * 0.6 - sp * float2( 0.08, 0.05)).r;
+                float c  = min(c1, c2);
+                return pow(saturate(c), _UD_CausticParams.w) * 2.0;
             }
 
             half4 Frag(Varyings input) : SV_Target
@@ -225,7 +243,7 @@ Shader "Submachina/UnderwaterDistortion"
 
                 // 2) LIGHT — additive god rays + caustics (caustics ride on lit surfaces).
                 float luma    = dot(col, half3(0.299, 0.587, 0.114));
-                float caustic = Caustics(uv);
+                float caustic = Caustics(uv, disp);
                 float caMask  = luma * _UD_CausticMask.x + _UD_CausticMask.y;
                 col += _UD_GodRayTint.rgb  * GodRays(uv) * _UD_GodRayParams.x * enable;
                 col += _UD_CausticTint.rgb * caustic * _UD_CausticParams.x * caMask * enable;
