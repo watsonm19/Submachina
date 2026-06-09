@@ -31,6 +31,7 @@ namespace Submachina.Core
         private GameObject _resourcePrefab;
         private ResourceManager _resourceManager;
         private GameObject _enemyPrefab;
+        private GameObject _o2BubblePrefab;
         private O2System _o2System;
 
         // -------------------------------------------------------
@@ -51,7 +52,7 @@ namespace Submachina.Core
          */
         public void Initialize(float topY, float height, float halfWidth, float depth,
             GameObject rockPrefab, GameObject resourcePrefab, ResourceManager resourceManager,
-            GameObject enemyPrefab, O2System o2System)
+            GameObject enemyPrefab, GameObject o2BubblePrefab, O2System o2System)
         {
             _topY = topY;
             _height = height;
@@ -60,11 +61,13 @@ namespace Submachina.Core
             _resourcePrefab = resourcePrefab;
             _resourceManager = resourceManager;
             _enemyPrefab = enemyPrefab;
+            _o2BubblePrefab = o2BubblePrefab;
             _o2System = o2System;
 
             GenerateObstacles(depth);
             GenerateResources(depth);
             GenerateEnemies(depth);
+            GeneratePassiveO2(depth);
         }
 
         // -------------------------------------------------------
@@ -150,7 +153,7 @@ namespace Submachina.Core
                 float x = Random.Range(-_halfWidth * 0.8f, _halfWidth * 0.8f);
                 float y = Random.Range(_topY - _height + 1f, _topY - 1f);
 
-                GameObject go = Instantiate(_resourcePrefab, new Vector3(x, y, 0f), Quaternion.identity, transform);
+                GameObject go = Instantiate(_resourcePrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
 
                 MiningResource resource = go.GetComponent<MiningResource>();
                 if (resource != null) resource.SetResourceManager(_resourceManager);
@@ -169,7 +172,9 @@ namespace Submachina.Core
         {
             if (_enemyPrefab == null || depth < 20f) return;
 
-            int count = Mathf.RoundToInt(Mathf.Lerp(0f, 3f, Mathf.Clamp01(depth / 400f)));
+            // Start at 1 enemy per chunk at the grace zone boundary, scale to 4 at 400m.
+            // Previously lerped from 0 which caused ~0 enemies to spawn until 50m+ depth.
+            int count = Mathf.RoundToInt(Mathf.Lerp(1f, 4f, Mathf.Clamp01((depth - 20f) / 380f)));
 
             for (int i = 0; i < count; i++)
             {
@@ -177,10 +182,37 @@ namespace Submachina.Core
                 float x = Random.Range(-_halfWidth * 0.65f, _halfWidth * 0.65f);
                 float y = Random.Range(_topY - _height + 2f, _topY - 2f);
 
-                GameObject go = Instantiate(_enemyPrefab, new Vector3(x, y, 0f), Quaternion.identity, transform);
+                GameObject go = Instantiate(_enemyPrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
 
                 EnemyController enemy = go.GetComponent<EnemyController>();
                 if (enemy != null) enemy.SetO2System(_o2System);
+            }
+        }
+
+        /**
+         * Scatters free-floating O2 bubbles that the player can collect without
+         * needing to kill anything. These act as a safety net at shallow depth
+         * where enemies are sparse — without them, a player who misses enemies
+         * has no O2 recovery and dies.
+         *
+         * Count tapers from 2 → 0 over the first 150m. Past that, enemies are
+         * common enough that combat-sourced O2 takes over as the primary supply.
+         * Example: depth=0 → 2 bubbles, depth=75 → 1 bubble, depth=150+ → 0 bubbles.
+         */
+        private void GeneratePassiveO2(float depth)
+        {
+            if (_o2BubblePrefab == null || _o2System == null) return;
+
+            int count = Mathf.RoundToInt(Mathf.Lerp(2f, 0f, Mathf.Clamp01(depth / 150f)));
+
+            for (int i = 0; i < count; i++)
+            {
+                float x = Random.Range(-_halfWidth * 0.7f, _halfWidth * 0.7f);
+                float y = Random.Range(_topY - _height + 1f, _topY - 1f);
+
+                GameObject go = Instantiate(_o2BubblePrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
+                O2Pickup pickup = go.GetComponent<O2Pickup>();
+                if (pickup != null) pickup.SetO2System(_o2System);
             }
         }
 
@@ -190,7 +222,8 @@ namespace Submachina.Core
          */
         private void SpawnRockAt(float x, float y, float w, float h)
         {
-            GameObject rock = Instantiate(_rockPrefab, new Vector3(x, y, 0f), Quaternion.identity, transform);
+            // x is chunk-local — offset by chunk world X so rocks follow the chunk position
+            GameObject rock = Instantiate(_rockPrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
             rock.transform.localScale = new Vector3(w, h, 1f);
         }
 
@@ -203,7 +236,7 @@ namespace Submachina.Core
         {
             // Draw chunk bounds as a cyan wire rectangle
             Gizmos.color = new Color(0.2f, 0.8f, 1f, 0.3f);
-            Vector3 center = new Vector3(0f, _topY - _height * 0.5f, 0f);
+            Vector3 center = new Vector3(transform.position.x, _topY - _height * 0.5f, 0f);
             Vector3 size = new Vector3(_halfWidth * 2f, _height, 0f);
             Gizmos.DrawWireCube(center, size);
         }

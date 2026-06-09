@@ -6,18 +6,17 @@ using Sirenix.OdinInspector;
 namespace Submachina.Core
 {
     /**
-     * Manages the infinite procedural world by spawning and despawning
-     * WorldChunks as the submarine descends.
+     * Generates the world as a persistent 2D grid of cells around the camera.
      *
-     * Tracks the camera's vertical position each frame:
-     *   - If there aren't enough chunks spawned below the camera, spawn more.
-     *   - If a chunk has scrolled far enough above the camera, destroy it.
+     * Each frame, all cells within spawnRadius of the camera's current cell are
+     * checked. Any cell that hasn't been generated yet is spawned immediately.
+     * Cells are NEVER despawned — the world persists as the player explores,
+     * so returning to a previously visited area looks exactly as they left it.
      *
-     * Each chunk is initialized with the player's current depth so obstacle
-     * density and difficulty scale naturally the deeper the player goes.
+     * Cells only spawn below the water surface (cellY < 0). The surface boundary
+     * collider at Y=0 handles blocking the player from going above water.
      *
      * Place this on the GameManager object. Assign the Main Camera.
-     * The camera must be Orthographic (standard for 2D).
      */
     public class ChunkSpawner : MonoBehaviour
     {
@@ -26,172 +25,157 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("References")]
-        [Tooltip("The scene's main camera. Must be orthographic. Used to determine visible area.")]
+        [Tooltip("The scene's main camera. Used to determine which cells to generate.")]
         [SerializeField] private Camera gameCamera;
 
         [FoldoutGroup("References")]
-        [Tooltip("Prefab instantiated for each rock obstacle. Must have SpriteRenderer + BoxCollider2D.")]
+        [Tooltip("Prefab for rock obstacles.")]
         [SerializeField] private GameObject rockPrefab;
 
         [FoldoutGroup("References")]
-        [Tooltip("Prefab instantiated for each mining resource node. Must have SpriteRenderer + CircleCollider2D (trigger).")]
+        [Tooltip("Prefab for mining resource nodes.")]
         [SerializeField] private GameObject resourcePrefab;
 
         [FoldoutGroup("References")]
-        [Tooltip("The scene's ResourceManager. Injected into each resource pickup at spawn time.")]
+        [Tooltip("The scene's ResourceManager — injected into each spawned resource.")]
         [SerializeField] private ResourceManager resourceManager;
 
         [FoldoutGroup("References")]
-        [Tooltip("Enemy prefab spawned procedurally in chunks below the grace zone. " +
-                 "Leave empty to disable chunk enemy spawning.")]
+        [Tooltip("Enemy prefab — injected into chunks below the grace zone.")]
         [SerializeField] private GameObject enemyPrefab;
 
         [FoldoutGroup("References")]
-        [Tooltip("The scene's O2System. Injected into chunk-spawned enemies so they drop O2 on death.")]
-        [SerializeField] private O2System o2System;
+        [Tooltip("O2 bubble prefab — scattered passively in shallow cells.")]
+        [SerializeField] private GameObject o2BubblePrefab;
 
         [FoldoutGroup("References")]
-        [Tooltip("Depth atom from DepthTracker. Passed to each chunk so obstacle density scales with depth.")]
-        [SerializeField] private FloatVariable currentDepth;
+        [Tooltip("The scene's O2System — injected into enemies and passive O2 pickups.")]
+        [SerializeField] private O2System o2System;
 
         // =====================
         // World Settings
         // =====================
 
         [FoldoutGroup("World")]
-        [Tooltip("Vertical height of each chunk in world units. " +
-                 "Should be roughly 2× the camera's visible height so the player always sees partial chunks above and below.")]
-        [SerializeField, Min(5f)] private float chunkHeight = 20f;
+        [Tooltip("Width of each grid cell in world units.")]
+        [SerializeField, Min(5f)] private float cellWidth = 20f;
 
         [FoldoutGroup("World")]
-        [Tooltip("Half the navigable play area width. Rocks are generated within ±this value. " +
-                 "Example: 9 = 18 units total width. Match to your camera's visible width.")]
-        [SerializeField, Min(1f)] private float playAreaHalfWidth = 9f;
+        [Tooltip("Height of each grid cell in world units.")]
+        [SerializeField, Min(5f)] private float cellHeight = 20f;
 
-        // =====================
-        // Spawn Settings
-        // =====================
-
-        [FoldoutGroup("Spawn")]
-        [Tooltip("How many chunks to keep spawned below the camera's bottom edge. " +
-                 "Higher = more lookahead. 3 is safe — the player never sees the world generate.")]
-        [SerializeField, Min(1)] private int chunksAhead = 3;
-
-        [FoldoutGroup("Spawn")]
-        [Tooltip("A chunk is destroyed when its top edge is this many units above the camera. " +
-                 "Should be comfortably larger than chunksAhead × chunkHeight to avoid pop-in on reversal.")]
-        [SerializeField, Min(10f)] private float despawnDistance = 80f;
+        [FoldoutGroup("World")]
+        [Tooltip("How many cells out from the camera to pre-generate in every direction. " +
+                 "Example: 3 = a 7×7 ring of cells (circular check), covering 140 units each way.")]
+        [SerializeField, Min(1)] private int spawnRadius = 3;
 
         // =====================
         // Debug
         // =====================
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private int ActiveChunkCount => _activeChunks.Count;
+        private int GeneratedCellCount => _chunks.Count;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private float NextChunkTopY => _nextChunkTopY;
+        private string CameraCell => _chunks.Count > 0
+            ? WorldToCell(gameCamera.transform.position).ToString()
+            : "-";
 
         // =====================
         // State
         // =====================
 
-        // Y position of the TOP edge of the next chunk to be spawned
-        // Decreases each time a chunk is spawned (world grows downward)
-        private float _nextChunkTopY;
-        private readonly List<WorldChunk> _activeChunks = new List<WorldChunk>();
+        // Keyed by cell coordinate — persisted forever once generated
+        private readonly Dictionary<Vector2Int, WorldChunk> _chunks
+            = new Dictionary<Vector2Int, WorldChunk>();
 
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Start()
-        {
-            // Start spawning from the surface so rocks are present from the beginning
-            _nextChunkTopY = 0f;
-            SpawnChunksAhead();
-        }
-
         private void Update()
         {
-            SpawnChunksAhead();
-            DespawnChunksBehind();
+            SpawnCellsAroundCamera();
         }
 
         // -------------------------------------------------------
-        // Spawn / Despawn
+        // Generation
         // -------------------------------------------------------
 
         /**
-         * Spawns new chunks until the lowest spawned chunk extends at least
-         * (chunksAhead × chunkHeight) below the camera's bottom edge.
+         * Checks every cell within spawnRadius of the camera's current cell.
+         * Uses a circular distance check so cells generate in a round area
+         * rather than a square, matching the "360 around the player" feel.
          *
-         * Called every frame — most frames do nothing because the condition
-         * is already satisfied. A new chunk only spawns when the submarine
-         * has descended far enough to need one.
+         * Most frames this does nothing — the vast majority of nearby cells
+         * are already generated. A new cell only spawns when the camera moves
+         * into an area that hasn't been visited yet.
          */
-        private void SpawnChunksAhead()
+        private void SpawnCellsAroundCamera()
         {
-            float targetBottomY = GetCameraBottom() - (chunksAhead * chunkHeight);
+            Vector2Int center = WorldToCell(gameCamera.transform.position);
 
-            while (_nextChunkTopY > targetBottomY)
-                SpawnChunk();
-        }
-
-        /**
-         * Destroys any chunk whose top edge has scrolled more than despawnDistance
-         * above the camera. Iterates in reverse to allow safe mid-loop removal.
-         */
-        private void DespawnChunksBehind()
-        {
-            float cameraY = gameCamera.transform.position.y;
-
-            for (int i = _activeChunks.Count - 1; i >= 0; i--)
+            for (int dy = -spawnRadius; dy <= spawnRadius; dy++)
             {
-                WorldChunk chunk = _activeChunks[i];
-
-                // Guard against externally destroyed chunks
-                if (chunk == null) { _activeChunks.RemoveAt(i); continue; }
-
-                // chunk.transform.position.y is the chunk's TOP edge
-                // Positive difference means the chunk top is above the camera
-                if (chunk.transform.position.y - cameraY > despawnDistance)
+                for (int dx = -spawnRadius; dx <= spawnRadius; dx++)
                 {
-                    _activeChunks.RemoveAt(i);
-                    Destroy(chunk.gameObject);
+                    // Circular check: skip corners outside the radius
+                    if (dx * dx + dy * dy > spawnRadius * spawnRadius) continue;
+
+                    Vector2Int cell = new Vector2Int(center.x + dx, center.y + dy);
+
+                    // Only generate below the water surface (cellY < 0)
+                    if (cell.y >= 0) continue;
+
+                    if (!_chunks.ContainsKey(cell))
+                        SpawnCell(cell);
                 }
             }
         }
 
         /**
-         * Instantiates a single WorldChunk at the current _nextChunkTopY position
-         * and advances _nextChunkTopY downward for the next spawn.
+         * Generates a single world cell at the given grid coordinate.
          *
-         * Passes current depth so each new chunk is appropriately difficult
-         * for where the player is in the run.
+         * Cell coordinate → world space mapping:
+         *   topY    = (cellY + 1) * cellHeight  (e.g. cell(-1) → topY=0, the surface)
+         *   centerX = cellX * cellWidth + cellWidth * 0.5
+         *   depth   = max(0, -topY)             (positive metres below surface)
+         *
+         * Example: cell (2, -3) → topY=-40, depth=40, centerX=50
          */
-        private void SpawnChunk()
+        private void SpawnCell(Vector2Int cell)
         {
-            GameObject chunkGO = new GameObject($"Chunk_{_activeChunks.Count:000}");
-            chunkGO.transform.SetParent(transform);
-            chunkGO.transform.position = new Vector3(0f, _nextChunkTopY, 0f);
+            float topY    = (cell.y + 1) * cellHeight;
+            float centerX = cell.x * cellWidth + cellWidth * 0.5f;
+            float depth   = Mathf.Max(0f, -topY);
 
-            WorldChunk chunk = chunkGO.AddComponent<WorldChunk>();
-            // Depth is derived from the chunk's world position, not the player's current depth.
-            // This ensures world generation is consistent regardless of when a chunk is spawned.
-            float chunkDepth = Mathf.Max(0f, -_nextChunkTopY);
-            chunk.Initialize(_nextChunkTopY, chunkHeight, playAreaHalfWidth, chunkDepth,
-                rockPrefab, resourcePrefab, resourceManager, enemyPrefab, o2System);
+            GameObject cellGO = new GameObject($"Cell_{cell.x}_{cell.y}");
+            cellGO.transform.SetParent(transform);
+            cellGO.transform.position = new Vector3(centerX, topY, 0f);
 
-            _activeChunks.Add(chunk);
-            _nextChunkTopY -= chunkHeight;
+            WorldChunk chunk = cellGO.AddComponent<WorldChunk>();
+            chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, depth,
+                rockPrefab, resourcePrefab, resourceManager,
+                enemyPrefab, o2BubblePrefab, o2System);
+
+            _chunks[cell] = chunk;
         }
 
         // -------------------------------------------------------
         // Helpers
         // -------------------------------------------------------
 
-        private float GetCameraBottom() => gameCamera.transform.position.y - gameCamera.orthographicSize;
+        /**
+         * Converts a world position to its grid cell coordinate.
+         * FloorToInt handles negative coordinates correctly —
+         * e.g. worldX=-1, cellWidth=20 → cellX=-1 (not 0).
+         */
+        private Vector2Int WorldToCell(Vector3 worldPos)
+        {
+            return new Vector2Int(
+                Mathf.FloorToInt(worldPos.x / cellWidth),
+                Mathf.FloorToInt(worldPos.y / cellHeight));
+        }
 
         // -------------------------------------------------------
         // Editor Utilities
@@ -199,11 +183,11 @@ namespace Submachina.Core
 
 #if UNITY_EDITOR
         [FoldoutGroup("Debug")]
-        [Button("Log Active Chunks"), GUIColor(0.6f, 0.8f, 1f)]
+        [Button("Log Generated Cells"), GUIColor(0.6f, 0.8f, 1f)]
         private void DebugLogChunks()
         {
             if (!Application.isPlaying) { Debug.Log("[ChunkSpawner] Play mode only."); return; }
-            Debug.Log($"[ChunkSpawner] {_activeChunks.Count} active chunks. Next spawn at Y={_nextChunkTopY:F1}");
+            Debug.Log($"[ChunkSpawner] {_chunks.Count} cells generated. Camera at cell {WorldToCell(gameCamera.transform.position)}.");
         }
 #endif
     }
