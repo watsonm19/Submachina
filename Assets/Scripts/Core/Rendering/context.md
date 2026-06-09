@@ -42,8 +42,11 @@ built-in feature handles both compatibility-mode and Render Graph paths.
 
 ## How to use
 
-- **Ambient look:** tune Ambient Flow (amplitude/scale/speed) on the controller. To use the
-  textured mode, assign a tiling noise to `_UD_NoiseTex` on the material and raise Noise Blend.
+- **Ambient look:** tune Ambient Flow (amplitude/scale/speed) on the controller. Raise **Noise
+  Blend** to cross-fade from procedural sine flow toward the tiling noise texture for a more
+  organic look. The material ships with Feel's `MMPerlinNoise` assigned to `_UD_NoiseTex`; swap
+  it for any other seamless noise (e.g. `MMCloudsNoise`, `MMFlowNoise`) in the material inspector.
+  A grayscale noise is sampled at two scrolling offsets so it still warps in both axes.
 - **Trigger a ripple from code:** `DistortionRippleBus.Emit(pos, strength, frequency, speed, lifetime)`.
 - **Verify visually in-editor:** enable Manual Time Override, raise Ambient Amplitude, emit a
   test ripple at time 0, then scrub Manual Time upward and call

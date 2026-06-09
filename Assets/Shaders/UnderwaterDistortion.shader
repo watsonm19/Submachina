@@ -2,9 +2,9 @@
 //
 // Designed to be driven by URP's built-in "Full Screen Pass Renderer Feature":
 // the feature binds the rendered scene as _BlitTexture and runs this pass over a
-// fullscreen triangle. Every tunable arrives as a GLOBAL uniform set from C#
-// (UnderwaterDistortionController) — there are no surfaced material properties,
-// so the same material can be reconfigured live without per-material plumbing.
+// fullscreen triangle. Most tunables arrive as GLOBAL uniforms set from C#
+// (UnderwaterDistortionController); the one exception is the ambient noise texture,
+// which is a normal material property so it can be assigned in the inspector.
 //
 // The fragment shader builds a UV displacement from two sources and re-samples
 // the scene at the warped coordinate:
@@ -14,6 +14,14 @@
 //                      into two Vector4 arrays by the controller each frame.
 Shader "Submachina/UnderwaterDistortion"
 {
+    Properties
+    {
+        // Tiling noise sampled for the textured ambient mode (Noise Blend > 0). Any
+        // seamless grayscale noise works (e.g. Feel's MMPerlinNoise/MMCloudsNoise).
+        // Default "gray" = 0.5 -> a neutral zero offset, so an unassigned slot is safe.
+        [NoScaleOffset] _UD_NoiseTex ("Ambient Noise (tiling)", 2D) = "gray" {}
+    }
+
     SubShader
     {
         Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
@@ -40,8 +48,8 @@ Shader "Submachina/UnderwaterDistortion"
             float4 _UD_FlowParams2;     // x=noiseBlend(0..1) y=noiseScale z=noiseSpeed w=unused
             float2 _UD_Aspect;          // (camera.aspect, 1) — keeps ripple rings circular
 
-            // Optional tiling noise driving the textured ambient mode. Unbound = black,
-            // which the noiseBlend slider simply lerps away from, so procedural still works.
+            // Tiling noise driving the textured ambient mode (declared as a material
+            // property above so it shows in the inspector). Default "gray" = neutral.
             TEXTURE2D(_UD_NoiseTex);
             SAMPLER(sampler_UD_NoiseTex);
 
@@ -68,9 +76,14 @@ Shader "Submachina/UnderwaterDistortion"
                 proc.x = sin(uv.y * s * UD_TAU + t)        + 0.5 * sin(uv.y * s * 13.0 - t * 1.3);
                 proc.y = cos(uv.x * s * UD_TAU - t * 0.9)  + 0.5 * cos(uv.x * s * 11.0 + t * 1.1);
 
-                // Textured: scroll the noise and remap RG from [0,1] to a signed [-1,1] offset.
-                float2 nUv = uv * _UD_FlowParams2.y + _UD_Time * _UD_FlowParams2.z * float2(0.1, 0.13);
-                float2 tex = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex, nUv).rg * 2.0 - 1.0;
+                // Textured: sample the tiling noise at two differently-scrolled UVs so even a
+                // grayscale map gives a 2D (non-diagonal) warp. Each sample feeds one axis;
+                // the +0.5 shift decorrelates them. Remap [0,1] -> signed [-1,1] offset.
+                float  ns = _UD_FlowParams2.y;
+                float  nt = _UD_Time * _UD_FlowParams2.z;
+                float  nx = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex, uv * ns + float2( 0.10,  0.13) * nt).r;
+                float  ny = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex, uv * ns + float2(-0.13,  0.07) * nt + 0.5).r;
+                float2 tex = float2(nx, ny) * 2.0 - 1.0;
 
                 // Blend the two sources, then scale by the master ambient amplitude.
                 return lerp(proc, tex, saturate(_UD_FlowParams2.x)) * _UD_FlowParams.x;
