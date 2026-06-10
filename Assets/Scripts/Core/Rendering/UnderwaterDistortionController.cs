@@ -189,6 +189,118 @@ namespace Core.Rendering
         [ColorUsage(false, true)]
         public Color causticTint = new Color(0.65f, 0.95f, 1f);
 
+        // ─── Marine snow ─────────────────────────────────────────────────────
+        [TitleGroup("Marine Snow", "Parallax layers of drifting particulate — the strongest 'you are actually moving' cue.")]
+        [Tooltip("Overall brightness of the motes. 0 = off.")]
+        [Range(0f, 2f)]
+        public float moteIntensity = 0.3f;
+
+        [TitleGroup("Marine Snow")]
+        [Tooltip("Grid density — roughly how many mote cells fit across the screen height.")]
+        [Range(2f, 60f)]
+        public float moteScale = 14f;
+
+        [TitleGroup("Marine Snow")]
+        [Tooltip("Fraction of grid cells that actually host a mote. Lower = sparser field.")]
+        [Range(0f, 1f)]
+        public float moteDensity = 0.25f;
+
+        [TitleGroup("Marine Snow")]
+        [Tooltip("Size multiplier for the individual motes.")]
+        [Range(0.2f, 3f)]
+        public float moteSize = 0.7f;
+
+        [TitleGroup("Marine Snow")]
+        [Tooltip("How strongly each mote pulses in brightness (phase-randomized per mote).")]
+        [Range(0f, 1f)]
+        public float moteTwinkle = 0.6f;
+
+        [TitleGroup("Marine Snow")]
+        [Tooltip("Slow water drift of the motes in screen-heights/sec — a touch of sideways current plus a gentle sink (negative Y) reads as real marine snow.")]
+        public Vector2 moteDrift = new Vector2(0.004f, -0.012f);
+
+        [TitleGroup("Marine Snow")]
+        [Tooltip("World anchor of the FARTHEST layer. Low = barely scrolls = reads as far away.")]
+        [Range(0f, 1f)]
+        public float moteFarAnchor = 0.35f;
+
+        [TitleGroup("Marine Snow")]
+        [Tooltip("World anchor of the NEAREST layer. >1 = scrolls faster than the world = reads as foreground passing the camera.")]
+        [Range(0.5f, 2f)]
+        public float moteNearAnchor = 1.25f;
+
+        [TitleGroup("Marine Snow")]
+        [Tooltip("How much motes brighten where they cross the god-ray shafts — dust sparkling in a sunbeam. 0 = no coupling.")]
+        [Range(0f, 6f)]
+        public float moteGodRayBoost = 2f;
+
+        [TitleGroup("Marine Snow")]
+        [Tooltip("Color of the motes (HDR).")]
+        [ColorUsage(false, true)]
+        public Color moteTint = new Color(0.78f, 0.9f, 1f);
+
+        // ─── Bubbles ─────────────────────────────────────────────────────────
+        [TitleGroup("Bubbles", "Sparse rim-lit bubbles rising through the water (two parallax layers).")]
+        [Tooltip("Overall brightness of the bubbles. 0 = off.")]
+        [Range(0f, 2f)]
+        public float bubbleIntensity = 0.25f;
+
+        [TitleGroup("Bubbles")]
+        [Tooltip("Grid density — roughly how many bubble cells fit across the screen height.")]
+        [Range(1f, 30f)]
+        public float bubbleScale = 6f;
+
+        [TitleGroup("Bubbles")]
+        [Tooltip("Fraction of grid cells that host a bubble. Keep low — sparse bubbles read as individuals.")]
+        [Range(0f, 1f)]
+        public float bubbleDensity = 0.08f;
+
+        [TitleGroup("Bubbles")]
+        [Tooltip("Size multiplier for the individual bubbles.")]
+        [Range(0.2f, 3f)]
+        public float bubbleSize = 1f;
+
+        [TitleGroup("Bubbles")]
+        [Tooltip("Side-to-side sway as bubbles rise (in cell units — keep subtle or bubbles clip their cell).")]
+        [Range(0f, 0.2f)]
+        public float bubbleWobble = 0.08f;
+
+        [TitleGroup("Bubbles")]
+        [Tooltip("How fast bubbles rise through the world, in screen-heights/sec.")]
+        [Range(0f, 0.5f)]
+        public float bubbleRiseSpeed = 0.05f;
+
+        [TitleGroup("Bubbles")]
+        [Tooltip("Sideways current drift of the bubbles, in screen-heights/sec.")]
+        [Range(-0.2f, 0.2f)]
+        public float bubbleDrift = 0f;
+
+        [TitleGroup("Bubbles")]
+        [Tooltip("Base world anchor of the bubbles (layers spread around it for parallax).")]
+        [Range(0f, 1.5f)]
+        public float bubbleAnchor = 1f;
+
+        [TitleGroup("Bubbles")]
+        [Tooltip("Color of the bubbles (HDR).")]
+        [ColorUsage(false, true)]
+        public Color bubbleTint = new Color(0.8f, 0.95f, 1f);
+
+        // ─── Flow bias ───────────────────────────────────────────────────────
+        [TitleGroup("Flow Bias", "EXPERIMENTAL: extra pattern scroll driven by travel speed — water visibly streams past under propulsion.")]
+        [InfoBox("Rides the shared world offset, so every feature inherits it through its own World Anchor (a feature with anchor 0 ignores it). Play mode only; eases back to zero when disabled — safe to toggle live.")]
+        [ToggleLeft]
+        public bool flowBiasEnabled = false;
+
+        [TitleGroup("Flow Bias")]
+        [Tooltip("Extra scroll per unit of travel speed. 1 = patterns stream past at DOUBLE apparent speed while moving.")]
+        [Range(0f, 3f)]
+        public float flowBiasStrength = 0.6f;
+
+        [TitleGroup("Flow Bias")]
+        [Tooltip("How quickly the bias responds to speed changes. Lower = smoother, more 'massive' water.")]
+        [Range(0.5f, 10f)]
+        public float flowBiasResponse = 3f;
+
         // ─── Deep tint ───────────────────────────────────────────────────────
         [TitleGroup("Deep Tint", "Optional color grade; leave strength 0 if you grade via a Volume.")]
         [Tooltip("Multiplicative deep-water color.")]
@@ -319,6 +431,20 @@ namespace Core.Rendering
         private static readonly int _idDeepTint      = Shader.PropertyToID("_UD_DeepTint");
         private static readonly int _idWorldOffset   = Shader.PropertyToID("_UD_WorldOffset");
         private static readonly int _idWorldAnchor   = Shader.PropertyToID("_UD_WorldAnchor");
+        private static readonly int _idMoteParams    = Shader.PropertyToID("_UD_MoteParams");
+        private static readonly int _idMoteParams2   = Shader.PropertyToID("_UD_MoteParams2");
+        private static readonly int _idMoteTint      = Shader.PropertyToID("_UD_MoteTint");
+        private static readonly int _idBubbleParams  = Shader.PropertyToID("_UD_BubbleParams");
+        private static readonly int _idBubbleParams2 = Shader.PropertyToID("_UD_BubbleParams2");
+        private static readonly int _idBubbleTint    = Shader.PropertyToID("_UD_BubbleTint");
+        private static readonly int _idParticleDrift = Shader.PropertyToID("_UD_ParticleDrift");
+
+        // Flow-bias runtime state: accumulated extra scroll + the smoothed camera velocity
+        // feeding it. Lives outside the inspector; reset via the test button.
+        private Vector2 _flowBias;
+        private Vector2 _smoothedVelUv;
+        private Vector3 _lastCamPos;
+        private bool _hasLastCamPos;
         private static readonly int _idRippleA       = Shader.PropertyToID("_UD_RippleA");
         private static readonly int _idRippleB       = Shader.PropertyToID("_UD_RippleB");
         private static readonly int _idRippleCount   = Shader.PropertyToID("_UD_RippleCount");
@@ -394,7 +520,51 @@ namespace Core.Rendering
         /** Push the latest parameters to the GPU every frame (edit and play). */
         private void Update()
         {
+            UpdateFlowBias();
             UploadToGpu();
+        }
+
+        /**
+         * Accumulate the velocity-driven flow bias: while the camera travels, extra scroll
+         * is integrated so the water streams past FASTER than 1:1 world anchoring — an
+         * exaggerated slipstream. The bias rides the shared world offset, so each feature
+         * scales it by its own World Anchor. Play mode only; when disabled it eases back
+         * to zero so toggling never snaps the patterns.
+         */
+        private void UpdateFlowBias()
+        {
+            // Disabled or edit mode: relax toward zero (instant outside play mode).
+            if (!Application.isPlaying || !flowBiasEnabled)
+            {
+                _flowBias = Application.isPlaying
+                    ? Vector2.Lerp(_flowBias, Vector2.zero, 1f - Mathf.Exp(-Time.deltaTime * 2f))
+                    : Vector2.zero;
+                _hasLastCamPos = false;
+                return;
+            }
+
+            Camera cam = targetCamera != null ? targetCamera : Camera.main;
+            float dt = Time.deltaTime;
+            if (cam == null || dt <= 0f) return;
+
+            // Camera velocity in viewport-height units/sec (the same space as the world offset).
+            Vector3 pos = cam.transform.position;
+            if (!_hasLastCamPos) { _lastCamPos = pos; _hasLastCamPos = true; return; }
+            Vector2 velUv = new Vector2(pos.x - _lastCamPos.x, pos.y - _lastCamPos.y) / (dt * 2f * HalfHeight(cam));
+            _lastCamPos = pos;
+
+            // Smooth the velocity (frame-rate independent), then integrate it into the bias.
+            _smoothedVelUv = Vector2.Lerp(_smoothedVelUv, velUv, 1f - Mathf.Exp(-dt * flowBiasResponse));
+            _flowBias += _smoothedVelUv * flowBiasStrength * dt;
+        }
+
+        /** Half the camera's vertical world extent (ortho size, or the perspective equivalent at z=0). */
+        private float HalfHeight(Camera cam)
+        {
+            if (cam == null) return 5f;
+            return cam.orthographic
+                ? cam.orthographicSize
+                : Mathf.Abs(cam.transform.position.z) * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
         }
 
         // ─── Emission ────────────────────────────────────────────────────────
@@ -519,17 +689,21 @@ namespace Core.Rendering
 
             // World anchoring: the camera position converted to viewport-height UV units
             // (one unit = one full screen height; e.g. ortho half-height 5 → travelling
-            // 10 world units scrolls an anchored pattern one full screen). The shader adds
-            // this offset to its sample coords so the patterns stay pinned to the world.
-            float halfHeight = cam != null
-                ? (cam.orthographic
-                    ? cam.orthographicSize
-                    : Mathf.Abs(cam.transform.position.z) * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad))
-                : 5f;
+            // 10 world units scrolls an anchored pattern one full screen). The flow bias
+            // rides the same offset, so every feature inherits it through its own anchor.
             Vector3 camPos = cam != null ? cam.transform.position : Vector3.zero;
-            Vector2 worldUv = new Vector2(camPos.x, camPos.y) / Mathf.Max(0.0001f, 2f * halfHeight);
+            Vector2 worldUv = new Vector2(camPos.x, camPos.y) / Mathf.Max(0.0001f, 2f * HalfHeight(cam)) + _flowBias;
             Shader.SetGlobalVector(_idWorldOffset, new Vector4(worldUv.x, worldUv.y, 0f, 0f));
             Shader.SetGlobalVector(_idWorldAnchor, new Vector4(ambientWorldAnchor, causticWorldAnchor, godRayWorldAnchor, 0f));
+
+            // Particles: marine snow (3 parallax layers) + bubbles (2 layers).
+            Shader.SetGlobalVector(_idMoteParams, new Vector4(moteIntensity, moteScale, moteSize, moteTwinkle));
+            Shader.SetGlobalVector(_idMoteParams2, new Vector4(moteFarAnchor, moteNearAnchor, moteDensity, moteGodRayBoost));
+            Shader.SetGlobalVector(_idMoteTint, moteTint);
+            Shader.SetGlobalVector(_idBubbleParams, new Vector4(bubbleIntensity, bubbleScale, bubbleSize, bubbleWobble));
+            Shader.SetGlobalVector(_idBubbleParams2, new Vector4(bubbleAnchor, bubbleDensity, 0f, 0f));
+            Shader.SetGlobalVector(_idBubbleTint, bubbleTint);
+            Shader.SetGlobalVector(_idParticleDrift, new Vector4(moteDrift.x, moteDrift.y, bubbleDrift, bubbleRiseSpeed));
 
             // Pack live ripples to the front of the arrays, expire finished ones, zero the rest.
             int live = 0;
@@ -669,6 +843,24 @@ namespace Core.Rendering
         public void ClearWakes()
         {
             for (int i = 0; i < _wakes.Length; i++) _wakes[i].active = false;
+            UploadToGpu();
+        }
+
+        /** Current accumulated flow-bias offset (viewport-height units), for sanity checks. */
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(55)]
+        [ShowInInspector, ReadOnly]
+        public Vector2 CurrentFlowBias => _flowBias;
+
+        /** Zero the accumulated flow bias (snaps anchored patterns back to pure world positions). */
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(56)]
+        [Button("Reset Flow Bias")]
+        public void ResetFlowBias()
+        {
+            _flowBias = Vector2.zero;
+            _smoothedVelUv = Vector2.zero;
+            _hasLastCamPos = false;
             UploadToGpu();
         }
     }

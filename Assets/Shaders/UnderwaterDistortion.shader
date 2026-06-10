@@ -6,12 +6,14 @@
 // tunables arrive as GLOBAL uniforms set from C# (UnderwaterDistortionController); the
 // sampled noise/caustic textures are material properties so they show in the inspector.
 //
-// The fragment shader does three things, in order:
-//   1. DISTORT  — build a UV displacement from ambient flow + ripples + propulsion wakes,
-//                 then re-sample the scene with a chromatic (light-bending) split.
-//   2. LIGHT    — add artificial underwater light: god-ray shafts from the surface and
-//                 animated caustic shimmer (luminance-masked so it lands on objects).
-//   3. TINT     — optional subtle depth tint.
+// The fragment shader does four things, in order:
+//   1. DISTORT   — build a UV displacement from ambient flow + ripples + propulsion wakes,
+//                  then re-sample the scene with a chromatic (light-bending) split.
+//   2. LIGHT     — add artificial underwater light: god-ray shafts from the surface and
+//                  animated caustic shimmer (luminance-masked so it lands on objects).
+//   3. PARTICLES — procedural parallax "marine snow" mote layers + rising bubbles, all
+//                  world-anchored so they sell the sense of travelling through the water.
+//   4. TINT      — optional subtle depth tint.
 Shader "Submachina/UnderwaterDistortion"
 {
     Properties
@@ -67,6 +69,15 @@ Shader "Submachina/UnderwaterDistortion"
             // as the camera travels (the "you are actually moving" cue).
             float4 _UD_WorldOffset;     // xy = camera world position in viewport-height units (aspect-corrected space)
             float4 _UD_WorldAnchor;     // x=ambientAnchor y=causticAnchor z=godRayAnchor (0=screen-locked, 1=world-locked, between=parallax)
+
+            // Particles — marine snow (parallax mote layers) and rising bubbles.
+            float4 _UD_MoteParams;      // x=intensity y=cellScale z=sizeMul w=twinkle
+            float4 _UD_MoteParams2;     // x=farAnchor y=nearAnchor z=density w=godRayBoost
+            float4 _UD_MoteTint;        // rgb tint of the motes
+            float4 _UD_BubbleParams;    // x=intensity y=cellScale z=sizeMul w=wobble
+            float4 _UD_BubbleParams2;   // x=anchorBase y=density
+            float4 _UD_BubbleTint;      // rgb tint of the bubbles
+            float4 _UD_ParticleDrift;   // xy=mote world drift (current/sink) z=bubble sideways drift w=bubble rise speed
 
             // Tiling source textures (material properties, declared above).
             TEXTURE2D(_UD_NoiseTex);    SAMPLER(sampler_UD_NoiseTex);
@@ -279,6 +290,128 @@ Shader "Submachina/UnderwaterDistortion"
                 return pow(saturate(c), _UD_CausticParams.w) * 2.0;
             }
 
+            // ─── Particles (marine snow + bubbles) ──────────────────────────────
+
+            /** 2-D cell hash → two decorrelated 0-1 randoms (cheap, no texture fetch). */
+            float2 UD_Hash22(float2 p)
+            {
+                float3 p3 = frac(float3(p.xyx) * float3(0.1031, 0.1030, 0.0973));
+                p3 += dot(p3, p3.yzx + 33.33);
+                return frac((p3.xx + p3.yz) * p3.zy);
+            }
+
+            /**
+             * One parallax layer of "marine snow": a jittered grid where each cell may host
+             * one soft mote. The jitter range keeps the mote inside its cell, so a single
+             * cell lookup suffices (no neighbor scan). Per-mote size and twinkle phase come
+             * from the cell hash, so the field never pulses in unison.
+             */
+            float UD_MoteLayer(float2 coord, float density, float sizeMul, float twinkleAmt, float t)
+            {
+                float2 cell = floor(coord);
+                float2 f    = frac(coord);
+                float2 h    = UD_Hash22(cell);
+                float2 h2   = UD_Hash22(cell + 19.19);
+
+                // Density culling: the hash decides whether this cell hosts a mote at all.
+                if (h2.x > density) return 0.0;
+
+                // Soft gaussian dot at a jittered center, size varied per mote.
+                float2 center = 0.25 + 0.5 * h;
+                float  size   = (0.05 + 0.09 * h2.y) * sizeMul;
+                float  d      = length(f - center);
+                float  spot   = exp(-(d * d) / max(size * size, 1e-6));
+
+                // Slow per-mote twinkle, phase-randomized across the field.
+                float tw = 1.0 - twinkleAmt * (0.5 + 0.5 * sin(t * (0.7 + h.x * 1.8) + h.y * UD_TAU));
+                return spot * tw;
+            }
+
+            /**
+             * Marine snow: UD_MOTE_LAYERS parallax depth layers. Far layers use a weak world
+             * anchor (scroll slower = read as distant), are denser/smaller and dimmer; the
+             * near layer overshoots the world (anchor > 1) so it reads as foreground passing
+             * the camera. Both the camera offset AND the water drift scale by each layer's
+             * anchor, keeping the perspective consistent (near things move and drift faster).
+             */
+            #define UD_MOTE_LAYERS 3
+            float UD_Motes(float2 uv, float2 disp, float t)
+            {
+                float2 baseUv = (uv + disp * 0.5) * float2(_UD_Aspect.x, 1.0);
+                float sum = 0.0;
+
+                [unroll]
+                for (int l = 0; l < UD_MOTE_LAYERS; l++)
+                {
+                    float fl     = l / (UD_MOTE_LAYERS - 1.0);                    // 0 = far … 1 = near
+                    float anchor = lerp(_UD_MoteParams2.x, _UD_MoteParams2.y, fl);
+                    float2 wuv   = baseUv + (_UD_WorldOffset.xy - _UD_ParticleDrift.xy * t) * anchor;
+
+                    // Depth styling: far layers get a tighter grid (smaller, denser motes) and dim out.
+                    float scale = _UD_MoteParams.y * lerp(1.8, 0.8, fl);
+                    float size  = _UD_MoteParams.z * lerp(0.7, 1.25, fl);
+                    sum += UD_MoteLayer(wuv * scale + l * 13.7, _UD_MoteParams2.z, size, _UD_MoteParams.w, t + l * 7.31)
+                         * lerp(0.3, 1.0, fl);
+                }
+                return sum;
+            }
+
+            /**
+             * One layer of bubbles: a sparse jittered grid; each occupied cell hosts a
+             * rim-lit circle with a small specular glint offset up-left, reading as a glassy
+             * sphere. The center wobbles side-to-side as the bubble rises.
+             */
+            float UD_BubbleLayer(float2 coord, float density, float sizeMul, float wobble, float t)
+            {
+                float2 cell = floor(coord);
+                float2 f    = frac(coord);
+                float2 h    = UD_Hash22(cell);
+                float2 h2   = UD_Hash22(cell + 7.77);
+
+                // Density culling — bubbles should stay sparse to read as individuals.
+                if (h2.x > density) return 0.0;
+
+                // Wobbling center + per-bubble size.
+                float  size   = (0.04 + 0.08 * h2.y) * sizeMul;
+                float2 center = 0.3 + 0.4 * h;
+                center.x += sin(t * (1.2 + h.y * 1.6) + h.x * UD_TAU) * wobble;
+
+                // Rim ring + specular glint (up-left) = glassy sphere.
+                float d    = length(f - center);
+                float rr   = (d - size) / max(size * 0.35, 1e-4);
+                float rim  = exp(-rr * rr);
+                float2 sp  = f - center + size * float2(0.35, -0.35);
+                float s2   = max(size * 0.3, 1e-4);
+                float spec = exp(-dot(sp, sp) / (s2 * s2));
+                return rim * 0.6 + spec * 1.1;
+            }
+
+            /**
+             * Bubbles: two parallax layers (small far fizz + larger near bubbles) rising
+             * through the world-anchored space, with optional sideways current drift.
+             */
+            #define UD_BUBBLE_LAYERS 2
+            float UD_Bubbles(float2 uv, float2 disp, float t)
+            {
+                float2 baseUv = (uv + disp * 0.7) * float2(_UD_Aspect.x, 1.0);   // bubbles bend with the water a bit more
+                float2 drift  = float2(_UD_ParticleDrift.z, _UD_ParticleDrift.w); // sideways current, rise speed
+                float sum = 0.0;
+
+                [unroll]
+                for (int l = 0; l < UD_BUBBLE_LAYERS; l++)
+                {
+                    float fl     = l / (UD_BUBBLE_LAYERS - 1.0);                  // 0 = far … 1 = near
+                    float anchor = _UD_BubbleParams2.x * lerp(0.75, 1.2, fl);
+                    float2 wuv   = baseUv + (_UD_WorldOffset.xy - drift * t) * anchor;
+
+                    float scale = _UD_BubbleParams.y * lerp(1.6, 0.9, fl);
+                    float size  = _UD_BubbleParams.z * lerp(0.75, 1.2, fl);
+                    sum += UD_BubbleLayer(wuv * scale + l * 23.7, _UD_BubbleParams2.y, size, _UD_BubbleParams.w, t + l * 11.7)
+                         * lerp(0.45, 1.0, fl);
+                }
+                return sum;
+            }
+
             half4 Frag(Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
@@ -303,12 +436,20 @@ Shader "Submachina/UnderwaterDistortion"
 
                 // 2) LIGHT — additive god rays + caustics (caustics ride on lit surfaces).
                 float luma    = dot(col, half3(0.299, 0.587, 0.114));
+                float rays    = GodRays(uv, disp);
                 float caustic = Caustics(uv, disp);
                 float caMask  = luma * _UD_CausticMask.x + _UD_CausticMask.y;
-                col += _UD_GodRayTint.rgb  * GodRays(uv, disp) * _UD_GodRayParams.x * enable;
+                col += _UD_GodRayTint.rgb  * rays * _UD_GodRayParams.x * enable;
                 col += _UD_CausticTint.rgb * caustic * _UD_CausticParams.x * caMask * enable;
 
-                // 3) TINT — optional subtle deep-water grade.
+                // 3) PARTICLES — parallax marine snow (boosted where it crosses the light
+                //    shafts, like dust in a sunbeam) + rising bubbles. Both additive.
+                float motes   = UD_Motes(uv, disp, _UD_Time);
+                float bubbles = UD_Bubbles(uv, disp, _UD_Time);
+                col += _UD_MoteTint.rgb   * motes   * _UD_MoteParams.x   * (1.0 + rays * _UD_MoteParams2.w) * enable;
+                col += _UD_BubbleTint.rgb * bubbles * _UD_BubbleParams.x * enable;
+
+                // 4) TINT — optional subtle deep-water grade.
                 col = lerp(col, col * _UD_DeepTint.rgb, _UD_DeepTint.w * enable);
 
                 return half4(col, 1.0);

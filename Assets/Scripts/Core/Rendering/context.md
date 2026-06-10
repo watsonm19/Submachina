@@ -76,6 +76,34 @@ Note: anchoring follows the **camera**, not the player object — correct as lon
 follows the Submarine. Float precision in the shader stays clean to roughly tens of thousands
 of world units of descent; revisit (e.g. wrap the offset) if runs ever go deeper.
 
+## Particles (marine snow + bubbles)
+
+Fully procedural, in-shader (hash-grid cells, no textures, no GameObjects), world-anchored
+through the same offset so they scroll with travel:
+
+- **Marine snow** (`UD_Motes`, 3 layers) — soft twinkling motes at three parallax depths.
+  The far layer barely scrolls (anchor `moteFarAnchor`, default 0.35) and is smaller/denser/
+  dimmer; the near layer overshoots the world (`moteNearAnchor`, default 1.25 > 1) so it reads
+  as **foreground passing the camera** — this near/far spread is what produces the 3D feel.
+  Motes drift slowly through the water (`moteDrift`, default a gentle sink + slight current)
+  and **brighten where they cross the god-ray shafts** (`moteGodRayBoost`) like dust in a
+  sunbeam, tying the particulate to the lighting.
+- **Bubbles** (`UD_Bubbles`, 2 layers) — sparse rim-lit circles with a specular glint
+  (reads as a glassy sphere), rising (`bubbleRiseSpeed`) and wobbling side-to-side as they go.
+  Keep `bubbleDensity` low so they read as individuals.
+
+Both are additive light drawn over the scene (a fullscreen pass can't occlude behind sprites);
+at the tuned default intensities this is imperceptible, and dim far layers read as distant.
+
+## Flow bias (experimental, default OFF)
+
+`flowBiasEnabled` + `flowBiasStrength` on the controller: while the camera travels, extra
+scroll is integrated from its smoothed velocity, so the water streams past **faster** than
+1:1 anchoring — an exaggerated slipstream. Implemented purely C#-side as an addition to
+`_UD_WorldOffset`, so every feature inherits it through its own World Anchor (anchor 0 =
+immune). Play-mode only; eases back to zero when disabled, so it's safe to toggle live.
+Debug: `CurrentFlowBias` readout + "Reset Flow Bias" button in Testing & Debug.
+
 ## How to use
 
 - **Tune the look** on the controller: Ambient Flow, Refraction (chromatic), God Rays, Caustics,
@@ -98,10 +126,10 @@ of world units of descent; revisit (e.g. wrap the offset) if runs ever go deeper
 
 ## Ideas / backlog (not yet built)
 
-- Drifting **particulate/motes** ("marine snow") — world-anchored particles at 2-3 parallax
-  depths; the single strongest motion cue and a perfect complement to world anchoring.
-- **Velocity-driven flow bias** — push the ambient noise scroll opposite the player's velocity
-  (smoothed) so the water visibly streams past when under propulsion.
+- **Depth-driven grading** — darken / shift the deep tint and fade god rays as the player
+  descends (descent-depth progression, distinct from the parallax depth already built).
+- **Sprite-layer parallax** — actual background sprite layers (rock walls, silhouettes of
+  distant fauna) moving at fractional camera speed; pairs with the shader parallax.
 - A **water surface line** near the top with brighter caustics + god-ray origin there.
 - **Depth-driven grading**: darken + shift the deep tint as the player descends.
 - **Bubble emitter** (sprites) for stronger interactivity on impacts/propulsion.
