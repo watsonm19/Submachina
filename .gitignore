@@ -174,7 +174,9 @@ sysinfo.txt
 # Builds
 *.apk
 *.aab
-*.unitypackage
+# Suppressing Unitypackage files seems to cause more problems then it solves, since several asset store
+# assets include optional .unitypackage files as extras, etc.
+# *.unitypackage
 *.app
 
 # Odin ships demos as .unitypackage assets inside Assets/ — keep them with their .meta files
