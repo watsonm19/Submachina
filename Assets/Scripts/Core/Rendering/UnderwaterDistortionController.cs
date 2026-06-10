@@ -24,6 +24,10 @@ namespace Core.Rendering
         private const int MaxRipples = 16;
         private const int MaxWakes = 8;
 
+        // Odin group that quarantines every editor-only field and debug button. Everything
+        // under it is for in-editor testing/capture only and has no effect on shipped gameplay.
+        private const string TestingGroup = "Testing & Debug";
+
         /** The single live controller, so emitters/tools can find it without a scene ref. */
         public static UnderwaterDistortionController Instance { get; private set; }
 
@@ -189,13 +193,16 @@ namespace Core.Rendering
         [Range(2f, 40f)]
         public float wakeFrequency = 14f;
 
-        // ─── Wake defaults (test button + emitter fallback) ──────────────────
-        [TitleGroup("Wake Defaults")]
+        // ─── Wake defaults (test button only) ────────────────────────────────
+        [FoldoutGroup(TestingGroup, Expanded = false, Order = 1000)]
+        [Title("Wake Defaults", "Parameters used by the test wake button.")]
+        [PropertyOrder(20)]
         [Tooltip("Peak displacement strength of a test wake.")]
         [Range(0f, 0.2f)]
         public float wakeDefaultStrength = 0.05f;
 
-        [TitleGroup("Wake Defaults")]
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(21)]
         [Tooltip("Seconds until a test wake fully fades.")]
         [Range(0.1f, 4f)]
         public float wakeDefaultLifetime = 0.9f;
@@ -212,39 +219,49 @@ namespace Core.Rendering
         public float ringFalloff = 0.08f;
 
         // ─── Ripple defaults (used by the test buttons) ──────────────────────
-        [TitleGroup("Ripple Defaults", "Parameters used by the test buttons below; gameplay emitters pass their own.")]
+        [FoldoutGroup(TestingGroup)]
+        [Title("Ripple Defaults", "Parameters used by the test ripple buttons; gameplay emitters pass their own.")]
+        [PropertyOrder(10)]
         [Tooltip("Peak displacement amplitude of a test ripple.")]
         [Range(0f, 0.2f)]
         public float defaultStrength = 0.04f;
 
-        [TitleGroup("Ripple Defaults")]
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(11)]
         [Tooltip("Number of wave cycles packed into the ring.")]
         [Range(1f, 30f)]
         public float defaultFrequency = 10f;
 
-        [TitleGroup("Ripple Defaults")]
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(12)]
         [Tooltip("Oscillation (phase) speed of a test ripple — higher feels faster/jolting.")]
         [Range(0f, 30f)]
         public float defaultSpeed = 12f;
 
-        [TitleGroup("Ripple Defaults")]
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(13)]
         [Tooltip("Seconds until a test ripple fully fades out.")]
         [Range(0.1f, 6f)]
         public float defaultLifetime = 2f;
 
         // ─── Edit-mode capture ───────────────────────────────────────────────
-        [TitleGroup("Edit-Mode Capture", "Freeze the animation clock so EditorCapture produces a deterministic, repeatable still.")]
+        [FoldoutGroup(TestingGroup)]
+        [Title("Edit-Mode Capture", "Freeze the animation clock so EditorCapture produces a deterministic, repeatable still.")]
+        [PropertyOrder(30)]
         [Tooltip("When on (in edit mode), the effect uses Manual Time instead of the live editor clock.")]
         [ToggleLeft]
         public bool manualTimeOverride = false;
 
-        [TitleGroup("Edit-Mode Capture")]
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(31)]
         [ShowIf(nameof(manualTimeOverride))]
         [Tooltip("The frozen clock value. Emit a ripple at a low value, then raise this to watch the ring expand in successive captures.")]
         public float manualTime = 0f;
 
         // ─── Debug readout ───────────────────────────────────────────────────
-        [TitleGroup("Debug")]
+        [FoldoutGroup(TestingGroup)]
+        [Title("Debug")]
+        [PropertyOrder(40)]
         [ShowInInspector, ReadOnly]
         public int LiveRippleCount
         {
@@ -559,7 +576,9 @@ namespace Core.Rendering
         // ─── Test controls ───────────────────────────────────────────────────
 
         /** Emit a test ripple at the world origin using the default parameters. */
-        [TitleGroup("Test Controls")]
+        [FoldoutGroup(TestingGroup)]
+        [Title("Controls")]
+        [PropertyOrder(50)]
         [Button("Emit Test Ripple At Origin")]
         public void EmitTestRippleAtOrigin()
         {
@@ -568,6 +587,8 @@ namespace Core.Rendering
         }
 
         /** Emit a test ripple at the center of the target camera's view. */
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(51)]
         [Button("Emit Test Ripple At Camera Center")]
         public void EmitTestRippleAtCameraCenter()
         {
@@ -584,6 +605,8 @@ namespace Core.Rendering
          * Emit a test wake across the middle of the view (moving right), so the turbulence
          * plume is easy to see. Emit at a low manual time, then raise it to watch it dissipate.
          */
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(52)]
         [Button("Emit Test Wake (Across View)")]
         public void EmitTestWake()
         {
@@ -597,6 +620,8 @@ namespace Core.Rendering
         }
 
         /** Clear every active ripple immediately. */
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(53)]
         [Button("Clear Ripples")]
         public void ClearRipples()
         {
@@ -605,6 +630,8 @@ namespace Core.Rendering
         }
 
         /** Clear every active wake immediately. */
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(54)]
         [Button("Clear Wakes")]
         public void ClearWakes()
         {
