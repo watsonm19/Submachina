@@ -52,6 +52,30 @@ render-pipeline C#. `JDTestScene` has an `UnderwaterDistortion` GameObject (cont
 Default source textures: `_UD_NoiseTex` = Feel `MMFlowNoise`, `_UD_CausticTex` = Feel
 `MMCellNoise` (swap for `MMVoronoiNoise`, `MMCloudsNoise`, etc. in the material inspector).
 
+## World anchoring (sense of travel)
+
+All the ambient patterns originally sampled in pure screen-space UV, so they rode along with
+the camera and the player never felt like they were moving. The **World Anchoring** group on the
+controller fixes that: the camera's world position is converted to viewport-height UV units
+(`_UD_WorldOffset`) and added to each pattern's sample coordinates, scaled by a per-feature
+anchor strength (`_UD_WorldAnchor`):
+
+- **0** = screen-locked (the original in-place behavior — still available per feature).
+- **1** = pinned to the world: the pattern scrolls past at exactly travel speed, as if painted
+  on the water. Tiling textures make the scroll seamless/infinite.
+- **between** = parallax — the pattern reads as a more distant water layer; **>1** = foreground.
+
+Per feature: `ambientWorldAnchor` (default 0.35, partial parallax keeps some in-place wobble),
+`causticWorldAnchor` (default 1 — swimming through a stationary light field is the strongest
+motion cue), `godRayWorldAnchor` (default 0.6 — anchors beam placement and shimmer phase, but
+the surface-entry brightness gradient deliberately stays screen-space so light always enters
+from the top of the view). Ripples and wakes were already world-anchored (projected from world
+positions every frame) and are unaffected.
+
+Note: anchoring follows the **camera**, not the player object — correct as long as the camera
+follows the Submarine. Float precision in the shader stays clean to roughly tens of thousands
+of world units of descent; revisit (e.g. wrap the offset) if runs ever go deeper.
+
 ## How to use
 
 - **Tune the look** on the controller: Ambient Flow, Refraction (chromatic), God Rays, Caustics,
@@ -74,7 +98,10 @@ Default source textures: `_UD_NoiseTex` = Feel `MMFlowNoise`, `_UD_CausticTex` =
 
 ## Ideas / backlog (not yet built)
 
-- Drifting **particulate/motes** rising slowly through the water (additive sparkles).
+- Drifting **particulate/motes** ("marine snow") — world-anchored particles at 2-3 parallax
+  depths; the single strongest motion cue and a perfect complement to world anchoring.
+- **Velocity-driven flow bias** — push the ambient noise scroll opposite the player's velocity
+  (smoothed) so the water visibly streams past when under propulsion.
 - A **water surface line** near the top with brighter caustics + god-ray origin there.
 - **Depth-driven grading**: darken + shift the deep tint as the player descends.
 - **Bubble emitter** (sprites) for stronger interactivity on impacts/propulsion.

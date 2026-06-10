@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Events;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -33,6 +34,15 @@ namespace Submachina.Core
         [FoldoutGroup("References")]
         [Tooltip("The scene's O2System. Assign on the prefab or at spawn time.")]
         [SerializeField] private O2System o2System;
+
+        // =====================
+        // Events
+        // =====================
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired the moment this bubble is collected, before it is destroyed. " +
+                 "Wire VFX/SFX (e.g. a ripple emit) here.")]
+        public UnityEvent onCollected;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -72,6 +82,9 @@ namespace Submachina.Core
                 o2System.AddO2(replenishAmount);
             else
                 Debug.LogWarning("[O2Pickup] No O2System assigned — pickup consumed but O2 not restored.");
+
+            // Notify listeners (VFX/SFX such as a ripple) before the object goes away.
+            onCollected?.Invoke();
 
             Destroy(gameObject);
         }

@@ -74,6 +74,23 @@ namespace Core.Rendering
         [Range(0f, 4f)]
         public float noiseSpeed = 0.4f;
 
+        // ─── World anchoring ─────────────────────────────────────────────────
+        [TitleGroup("World Anchoring", "Pin the ambient patterns to the WORLD so they scroll past as the camera travels — the 'you are actually moving' cue.")]
+        [InfoBox("0 = screen-locked (patterns ride along with the camera, the old behavior). 1 = locked to the world (scrolls past at exactly travel speed). In-between = parallax: the pattern reads as a more distant water layer. >1 = a closer-than-gameplay foreground layer.")]
+        [Tooltip("How strongly the ambient flow/noise pattern is pinned to the world.")]
+        [Range(0f, 1.5f)]
+        public float ambientWorldAnchor = 0.35f;
+
+        [TitleGroup("World Anchoring")]
+        [Tooltip("How strongly the caustic web is pinned to the world. 1 = swim through a stationary light field (the strongest motion cue).")]
+        [Range(0f, 1.5f)]
+        public float causticWorldAnchor = 1f;
+
+        [TitleGroup("World Anchoring")]
+        [Tooltip("How strongly the god-ray beams are pinned to the world. Sideways travel scrolls the beams past; descending crawls the shimmer. The surface-entry brightness stays screen-space.")]
+        [Range(0f, 1.5f)]
+        public float godRayWorldAnchor = 0.6f;
+
         // ─── Refraction (light bending) ──────────────────────────────────────
         [TitleGroup("Refraction")]
         [Tooltip("How much light splits into RGB along the distortion — the 'bent light' look. 0 = off.")]
@@ -300,6 +317,8 @@ namespace Core.Rendering
         private static readonly int _idCausticTint   = Shader.PropertyToID("_UD_CausticTint");
         private static readonly int _idCausticMask   = Shader.PropertyToID("_UD_CausticMask");
         private static readonly int _idDeepTint      = Shader.PropertyToID("_UD_DeepTint");
+        private static readonly int _idWorldOffset   = Shader.PropertyToID("_UD_WorldOffset");
+        private static readonly int _idWorldAnchor   = Shader.PropertyToID("_UD_WorldAnchor");
         private static readonly int _idRippleA       = Shader.PropertyToID("_UD_RippleA");
         private static readonly int _idRippleB       = Shader.PropertyToID("_UD_RippleB");
         private static readonly int _idRippleCount   = Shader.PropertyToID("_UD_RippleCount");
@@ -497,6 +516,20 @@ namespace Core.Rendering
             Shader.SetGlobalVector(_idCausticTint, causticTint);
             Shader.SetGlobalVector(_idCausticMask, new Vector4(causticSurfaceMask, causticOpenWater, 0f, 0f));
             Shader.SetGlobalVector(_idDeepTint, new Vector4(deepTint.r, deepTint.g, deepTint.b, deepTintStrength));
+
+            // World anchoring: the camera position converted to viewport-height UV units
+            // (one unit = one full screen height; e.g. ortho half-height 5 → travelling
+            // 10 world units scrolls an anchored pattern one full screen). The shader adds
+            // this offset to its sample coords so the patterns stay pinned to the world.
+            float halfHeight = cam != null
+                ? (cam.orthographic
+                    ? cam.orthographicSize
+                    : Mathf.Abs(cam.transform.position.z) * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad))
+                : 5f;
+            Vector3 camPos = cam != null ? cam.transform.position : Vector3.zero;
+            Vector2 worldUv = new Vector2(camPos.x, camPos.y) / Mathf.Max(0.0001f, 2f * halfHeight);
+            Shader.SetGlobalVector(_idWorldOffset, new Vector4(worldUv.x, worldUv.y, 0f, 0f));
+            Shader.SetGlobalVector(_idWorldAnchor, new Vector4(ambientWorldAnchor, causticWorldAnchor, godRayWorldAnchor, 0f));
 
             // Pack live ripples to the front of the arrays, expire finished ones, zero the rest.
             int live = 0;

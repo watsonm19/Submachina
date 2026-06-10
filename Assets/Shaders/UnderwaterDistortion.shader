@@ -63,6 +63,11 @@ Shader "Submachina/UnderwaterDistortion"
 
             float4 _UD_DeepTint;        // rgb deep-water tint, w=strength
 
+            // World anchoring — pins the ambient patterns to the WORLD so they scroll past
+            // as the camera travels (the "you are actually moving" cue).
+            float4 _UD_WorldOffset;     // xy = camera world position in viewport-height units (aspect-corrected space)
+            float4 _UD_WorldAnchor;     // x=ambientAnchor y=causticAnchor z=godRayAnchor (0=screen-locked, 1=world-locked, between=parallax)
+
             // Tiling source textures (material properties, declared above).
             TEXTURE2D(_UD_NoiseTex);    SAMPLER(sampler_UD_NoiseTex);
             TEXTURE2D(_UD_CausticTex);  SAMPLER(sampler_UD_CausticTex);
@@ -88,16 +93,21 @@ Shader "Submachina/UnderwaterDistortion"
              */
             float2 AmbientFlow(float2 uv)
             {
+                // World-anchor: shift the sample coords by the camera offset so the flow
+                // pattern sticks to the world and scrolls past as the camera travels.
+                // (Offset arrives in aspect-corrected units, so x converts back to raw uv.)
+                float2 wuv = uv + _UD_WorldOffset.xy * _UD_WorldAnchor.x * float2(1.0 / _UD_Aspect.x, 1.0);
+
                 float t = _UD_Time * _UD_FlowParams.z;
                 float s = _UD_FlowParams.y;
                 float2 proc;
-                proc.x = sin(uv.y * s * UD_TAU + t)        + 0.5 * sin(uv.y * s * 13.0 - t * 1.3);
-                proc.y = cos(uv.x * s * UD_TAU - t * 0.9)  + 0.5 * cos(uv.x * s * 11.0 + t * 1.1);
+                proc.x = sin(wuv.y * s * UD_TAU + t)        + 0.5 * sin(wuv.y * s * 13.0 - t * 1.3);
+                proc.y = cos(wuv.x * s * UD_TAU - t * 0.9)  + 0.5 * cos(wuv.x * s * 11.0 + t * 1.1);
 
                 float  ns = _UD_FlowParams2.y;
                 float  nt = _UD_Time * _UD_FlowParams2.z;
-                float  nx = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex, uv * ns + float2( 0.10,  0.13) * nt).r;
-                float  ny = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex, uv * ns + float2(-0.13,  0.07) * nt + 0.5).r;
+                float  nx = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex, wuv * ns + float2( 0.10,  0.13) * nt).r;
+                float  ny = SAMPLE_TEXTURE2D(_UD_NoiseTex, sampler_UD_NoiseTex, wuv * ns + float2(-0.13,  0.07) * nt + 0.5).r;
                 float2 tex = float2(nx, ny) * 2.0 - 1.0;
 
                 return lerp(proc, tex, saturate(_UD_FlowParams2.x)) * _UD_FlowParams.x;
@@ -205,6 +215,13 @@ Shader "Submachina/UnderwaterDistortion"
                 float  across = dot(p, perp);
                 float  along  = dot(p, dir);
 
+                // World-anchor the beam pattern: sideways travel scrolls the beams past,
+                // descending crawls the shimmer upward. The entry gradient below stays
+                // screen-space (light always enters from the top of the view).
+                float2 wo = _UD_WorldOffset.xy * _UD_WorldAnchor.z * float2(1.0 / _UD_Aspect.x, 1.0);
+                across += dot(wo, perp);
+                along  += dot(wo, dir);
+
                 float density = _UD_GodRayParams.y;
                 float t       = _UD_Time * _UD_GodRayParams.w;
 
@@ -240,8 +257,11 @@ Shader "Submachina/UnderwaterDistortion"
              */
             float Caustics(float2 uv, float2 disp)
             {
-                // Aspect-correct base coords, coupled to the water distortion.
-                float2 base = (uv + disp * _UD_CausticParams2.y) * float2(_UD_Aspect.x, 1.0);
+                // Aspect-correct base coords, coupled to the water distortion, then shifted
+                // by the world-anchor offset so the web is pinned to the world (the camera
+                // travels THROUGH the caustic field instead of carrying it along).
+                float2 base = (uv + disp * _UD_CausticParams2.y) * float2(_UD_Aspect.x, 1.0)
+                            + _UD_WorldOffset.xy * _UD_WorldAnchor.y;
 
                 // Animated domain warp sampled from the flow noise — the "alive" morph.
                 float2 w;
