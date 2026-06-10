@@ -75,7 +75,7 @@ namespace Core.Rendering
         public float noiseSpeed = 0.4f;
 
         // ─── World anchoring ─────────────────────────────────────────────────
-        [TitleGroup("World Anchoring", "Pin the ambient patterns to the WORLD so they scroll past as the camera travels — the 'you are actually moving' cue.")]
+        [TitleGroup("World Anchoring", "Pins patterns to world space so they scroll past while traveling.")]
         [InfoBox("0 = screen-locked (patterns ride along with the camera, the old behavior). 1 = locked to the world (scrolls past at exactly travel speed). In-between = parallax: the pattern reads as a more distant water layer. >1 = a closer-than-gameplay foreground layer.")]
         [Tooltip("How strongly the ambient flow/noise pattern is pinned to the world.")]
         [Range(0f, 1.5f)]
@@ -190,7 +190,7 @@ namespace Core.Rendering
         public Color causticTint = new Color(0.65f, 0.95f, 1f);
 
         // ─── Marine snow ─────────────────────────────────────────────────────
-        [TitleGroup("Marine Snow", "Parallax layers of drifting particulate — the strongest 'you are actually moving' cue.")]
+        [TitleGroup("Marine Snow", "Drifting particulate in parallax layers — the strongest motion cue.")]
         [Tooltip("Overall brightness of the motes. 0 = off.")]
         [Range(0f, 2f)]
         public float moteIntensity = 0.3f;
@@ -240,7 +240,7 @@ namespace Core.Rendering
         public Color moteTint = new Color(0.78f, 0.9f, 1f);
 
         // ─── Bubbles ─────────────────────────────────────────────────────────
-        [TitleGroup("Bubbles", "Sparse rim-lit bubbles rising through the water (two parallax layers).")]
+        [TitleGroup("Bubbles", "Sparse rim-lit bubbles rising in two parallax layers.")]
         [Tooltip("Overall brightness of the bubbles. 0 = off.")]
         [Range(0f, 2f)]
         public float bubbleIntensity = 0.25f;
@@ -286,7 +286,7 @@ namespace Core.Rendering
         public Color bubbleTint = new Color(0.8f, 0.95f, 1f);
 
         // ─── Flow bias ───────────────────────────────────────────────────────
-        [TitleGroup("Flow Bias", "EXPERIMENTAL: extra pattern scroll driven by travel speed — water visibly streams past under propulsion.")]
+        [TitleGroup("Flow Bias", "EXPERIMENTAL: scroll driven by travel speed — water streams past.")]
         [InfoBox("Rides the shared world offset, so every feature inherits it through its own World Anchor (a feature with anchor 0 ignores it). Play mode only; eases back to zero when disabled — safe to toggle live.")]
         [ToggleLeft]
         public bool flowBiasEnabled = false;
