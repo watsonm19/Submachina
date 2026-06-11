@@ -33,6 +33,12 @@ namespace Submachina.Core
         [Tooltip("Reference to ManualBellowsPump to read MaxAir for normalisation.")]
         [SerializeField] private ManualBellowsPump pump;
 
+        [FoldoutGroup("References")]
+        [Tooltip("A second Filled Image (same rect as the main bar, placed behind it in the hierarchy) " +
+                 "whose fillAmount tracks the current max capacity. Give it a dim/semi-transparent color " +
+                 "so it peeks out beyond the main fill when capacity has degraded.")]
+        [SerializeField] private Image capacityBar;
+
         // =====================
         // Colors
         // =====================
@@ -91,8 +97,11 @@ namespace Submachina.Core
         {
             if (currentO2 == null || pump == null) return;
 
-            float fill = pump.MaxAir > 0f ? currentO2.Value / pump.MaxAir : 0f;
+            float fill    = pump.OriginalMaxAir > 0f ? currentO2.Value / pump.OriginalMaxAir : 0f;
+            float maxFill = pump.OriginalMaxAir > 0f ? pump.MaxAir     / pump.OriginalMaxAir : 0f;
+
             _barImage.fillAmount = fill;
+            if (capacityBar != null) capacityBar.fillAmount = maxFill;
 
             if (fill <= 0f)
                 _barImage.color = criticalColor;

@@ -51,6 +51,15 @@ namespace Submachina.Core
                  "Example: 2 → mining drains 2 additional units/s regardless of base rate.")]
         [SerializeField, Min(0f)] private float miningExtraDecayRate = 2f;
 
+        [FoldoutGroup("Air Pressure")]
+        [Tooltip("Rate at which max air capacity shrinks per second. " +
+                 "Only O2 bubble pickups can restore it. Example: 0.5 → max drops by 30 over a minute.")]
+        [SerializeField, Min(0f)] private float maxCapacityDecayRate = 0.5f;
+
+        [FoldoutGroup("Air Pressure")]
+        [Tooltip("Floor for max air capacity — it will never decay below this value.")]
+        [SerializeField, Min(1f)] private float minMaxCapacity = 20f;
+
         // =====================
         // Charge Cycle
         // =====================
@@ -176,8 +185,12 @@ namespace Submachina.Core
             baseDecayRate * (IsMining || IsThrusting ? exertionDecayMultiplier : 1f)
             + (IsMining ? miningExtraDecayRate : 0f);
 
-        /** Max air capacity — read by O2Bar for normalisation. */
-        public float MaxAir => maxAirPressure;
+        /** Current max air capacity — shrinks over time, restored by O2 bubbles. */
+        public float MaxAir => _currentMaxAir;
+
+        /** The original max capacity set in the Inspector — used by O2Bar as the fixed denominator
+         *  so the bar visually shrinks as capacity degrades. */
+        public float OriginalMaxAir => maxAirPressure;
 
         /** Lower bound of the sweet spot window — read by BellowsBar to position markers. */
         public float SweetSpotMin => sweetSpotMin;
@@ -232,6 +245,7 @@ namespace Submachina.Core
 
         private PumpState _state  = PumpState.Idle;
         private float _currentAirPressure;
+        private float _currentMaxAir;
         private float _chargeProgress;
         private float _airLockTimer;
         private float _lastPressTime   = -999f;
@@ -245,6 +259,7 @@ namespace Submachina.Core
 
         private void Awake()
         {
+            _currentMaxAir      = maxAirPressure;
             _currentAirPressure = maxAirPressure;
             WriteAtom();
         }
@@ -261,6 +276,7 @@ namespace Submachina.Core
 
         private void Update()
         {
+            DecayMaxCapacity();
             DecayAirPressure();
             UpdateStateMachine();
             ProcessInput();
@@ -270,6 +286,25 @@ namespace Submachina.Core
         // -------------------------------------------------------
         // Air Pressure
         // -------------------------------------------------------
+
+        /**
+         * Slowly lowers the max air capacity each frame.
+         * If current pressure exceeds the new ceiling it is clamped down with it.
+         * Floored at minMaxCapacity so the sub always has some capacity remaining.
+         */
+        private void DecayMaxCapacity()
+        {
+            if (maxCapacityDecayRate <= 0f) return;
+
+            _currentMaxAir = Mathf.Max(minMaxCapacity, _currentMaxAir - maxCapacityDecayRate * Time.deltaTime);
+
+            // If current pressure is above the new ceiling, pull it down too
+            if (_currentAirPressure > _currentMaxAir)
+            {
+                _currentAirPressure = _currentMaxAir;
+                WriteAtom();
+            }
+        }
 
         /**
          * Drains air pressure each frame at the active decay rate.
@@ -468,12 +503,21 @@ namespace Submachina.Core
         }
 
         /**
-         * Restores air by amount, clamped to maxAirPressure.
+         * Raises the max air capacity by amount, clamped to the original maxAirPressure ceiling.
+         * Called by O2 bubble pickups — the only way to push the capacity back up.
+         */
+        public void RestoreCapacity(float amount)
+        {
+            _currentMaxAir = Mathf.Min(maxAirPressure, _currentMaxAir + amount);
+        }
+
+        /**
+         * Restores air by amount, clamped to the current dynamic max capacity.
          * Resets the exhausted flag so OnAirExhausted can fire again next drain cycle.
          */
         public void AddAir(float amount)
         {
-            _currentAirPressure = Mathf.Min(maxAirPressure, _currentAirPressure + amount);
+            _currentAirPressure = Mathf.Min(_currentMaxAir, _currentAirPressure + amount);
             _airExhaustedFired = false;
             _pendingHealthDamage = 0f;
             WriteAtom();

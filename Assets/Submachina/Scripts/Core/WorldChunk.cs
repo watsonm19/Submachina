@@ -31,6 +31,7 @@ namespace Submachina.Core
         private GameObject _resourcePrefab;
         private ResourceManager _resourceManager;
         private GameObject _enemyPrefab;
+        private GameObject _o2BubblePrefab;
         private ManualBellowsPump _pump;
 
         // -------------------------------------------------------
@@ -51,7 +52,7 @@ namespace Submachina.Core
          */
         public void Initialize(float topY, float height, float halfWidth, float depth,
             GameObject rockPrefab, GameObject resourcePrefab, ResourceManager resourceManager,
-            GameObject enemyPrefab, ManualBellowsPump pump)
+            GameObject enemyPrefab, GameObject o2BubblePrefab, ManualBellowsPump pump)
         {
             _topY = topY;
             _height = height;
@@ -60,10 +61,12 @@ namespace Submachina.Core
             _resourcePrefab = resourcePrefab;
             _resourceManager = resourceManager;
             _enemyPrefab = enemyPrefab;
+            _o2BubblePrefab = o2BubblePrefab;
             _pump = pump;
 
             GenerateObstacles(depth);
             GenerateResources(depth);
+            GeneratePassiveO2(depth);
             GenerateEnemies(depth);
         }
 
@@ -143,7 +146,7 @@ namespace Submachina.Core
         {
             if (_resourcePrefab == null) return;
 
-            int count = Mathf.RoundToInt(Mathf.Lerp(1f, 3f, Mathf.Clamp01(depth / 300f)));
+            int count = Mathf.RoundToInt(Mathf.Lerp(3f, 6f, Mathf.Clamp01(depth / 300f)));
 
             for (int i = 0; i < count; i++)
             {
@@ -154,6 +157,33 @@ namespace Submachina.Core
 
                 MiningResource resource = go.GetComponent<MiningResource>();
                 if (resource != null) resource.SetResourceManager(_resourceManager);
+            }
+        }
+
+        /**
+         * Scatters a small number of O2 bubbles passively throughout the chunk.
+         * These exist independently of enemy drops and give the player a baseline
+         * source of capacity restoration while exploring.
+         *
+         * Count is intentionally low (1–2) so combat still drives the main loop.
+         */
+        private void GeneratePassiveO2(float depth)
+        {
+            if (_o2BubblePrefab == null) return;
+
+            int count = depth < 3f ? 0 : Random.Range(1, 3);
+
+            for (int i = 0; i < count; i++)
+            {
+                float x = Random.Range(-_halfWidth * 0.7f, _halfWidth * 0.7f);
+                float y = Random.Range(_topY - _height + 1f, _topY - 1f);
+
+                GameObject go = Instantiate(_o2BubblePrefab,
+                    new Vector3(transform.position.x + x, y, 0f),
+                    Quaternion.identity, transform);
+
+                O2Pickup pickup = go.GetComponent<O2Pickup>();
+                if (pickup != null) pickup.SetPump(_pump);
             }
         }
 
