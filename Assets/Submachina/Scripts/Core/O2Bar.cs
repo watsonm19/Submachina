@@ -30,8 +30,8 @@ namespace Submachina.Core
         [SerializeField] private FloatVariable currentO2;
 
         [FoldoutGroup("References")]
-        [Tooltip("Reference to O2System to read the MaxO2 value for normalisation.")]
-        [SerializeField] private O2System o2System;
+        [Tooltip("Reference to ManualBellowsPump to read MaxAir for normalisation.")]
+        [SerializeField] private ManualBellowsPump pump;
 
         // =====================
         // Colors
@@ -89,9 +89,9 @@ namespace Submachina.Core
          */
         private void UpdateBar()
         {
-            if (currentO2 == null || o2System == null) return;
+            if (currentO2 == null || pump == null) return;
 
-            float fill = o2System.MaxO2 > 0f ? currentO2.Value / o2System.MaxO2 : 0f;
+            float fill = pump.MaxAir > 0f ? currentO2.Value / pump.MaxAir : 0f;
             _barImage.fillAmount = fill;
 
             if (fill <= 0f)

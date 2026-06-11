@@ -25,15 +25,15 @@ namespace Submachina.Core
 
         [FoldoutGroup("Settings")]
         [Tooltip("How much O2 this bubble restores when collected.")]
-        [SerializeField, Min(0f)] private float replenishAmount = 25f;
+        [SerializeField, Min(0f)] private float replenishAmount = 10f;
 
         // =====================
         // References
         // =====================
 
         [FoldoutGroup("References")]
-        [Tooltip("The scene's O2System. Assign on the prefab or at spawn time.")]
-        [SerializeField] private O2System o2System;
+        [Tooltip("The player's ManualBellowsPump. Injected at spawn time by WorldChunk.")]
+        [SerializeField] private ManualBellowsPump pump;
 
         // =====================
         // Events
@@ -78,10 +78,10 @@ namespace Submachina.Core
          */
         public void Collect()
         {
-            if (o2System != null)
-                o2System.AddO2(replenishAmount);
+            if (pump != null)
+                pump.AddAir(replenishAmount);
             else
-                Debug.LogWarning("[O2Pickup] No O2System assigned — pickup consumed but O2 not restored.");
+                Debug.LogWarning("[O2Pickup] No ManualBellowsPump assigned — pickup consumed but air not restored.");
 
             // Notify listeners (VFX/SFX such as a ripple) before the object goes away.
             onCollected?.Invoke();
@@ -89,10 +89,10 @@ namespace Submachina.Core
             Destroy(gameObject);
         }
 
-        /** Assigns the O2System at spawn time. Called by enemies when dropping this pickup. */
-        public void SetO2System(O2System system)
+        /** Assigns the pump at spawn time. Called by WorldChunk when spawning pickups. */
+        public void SetPump(ManualBellowsPump bellowsPump)
         {
-            o2System = system;
+            pump = bellowsPump;
         }
     }
 }

@@ -67,6 +67,15 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float maxSpeed = 15f;
 
         // =====================
+        // World Bounds
+        // =====================
+
+        [FoldoutGroup("World Bounds")]
+        [Tooltip("Maximum horizontal distance from X=0 the submarine can travel. " +
+                 "Set to 0 to disable. Replace with physical walls when real cave geometry exists.")]
+        [SerializeField, Min(0f)] private float horizontalBoundary = 500f;
+
+        // =====================
         // Atoms
         // =====================
 
@@ -155,6 +164,7 @@ namespace Submachina.Core
             ApplyCurrentForce();
             ApplyPlayerThrust();
             ClampSpeed();
+            ClampHorizontalBounds();
         }
 
         // -------------------------------------------------------
@@ -207,6 +217,24 @@ namespace Submachina.Core
             if (IsDashing) return;
             if (_rb.linearVelocity.sqrMagnitude > maxSpeed * maxSpeed)
                 _rb.linearVelocity = _rb.linearVelocity.normalized * maxSpeed;
+        }
+
+        /**
+         * Prevents the submarine from travelling beyond horizontalBoundary units
+         * from the world center (X=0). When the limit is reached, horizontal
+         * velocity is zeroed so the sub doesn't press against an invisible wall.
+         * Remove this once real cave wall geometry is in place.
+         */
+        private void ClampHorizontalBounds()
+        {
+            if (horizontalBoundary <= 0f) return;
+
+            Vector2 pos = _rb.position;
+            if (Mathf.Abs(pos.x) <= horizontalBoundary) return;
+
+            pos.x = Mathf.Clamp(pos.x, -horizontalBoundary, horizontalBoundary);
+            _rb.position = pos;
+            _rb.linearVelocity = new Vector2(0f, _rb.linearVelocity.y);
         }
 
         // -------------------------------------------------------

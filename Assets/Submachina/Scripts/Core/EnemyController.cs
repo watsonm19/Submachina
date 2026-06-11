@@ -105,12 +105,12 @@ namespace Submachina.Core
         [SerializeField] private GameObject o2BubblePrefab;
 
         [FoldoutGroup("Death Drops")]
-        [Tooltip("Scene O2System — injected by WorldChunk when spawned via chunks.")]
-        [SerializeField] private O2System o2System;
+        [Tooltip("Player's ManualBellowsPump — injected by WorldChunk when spawned via chunks.")]
+        [SerializeField] private ManualBellowsPump pump;
 
         [FoldoutGroup("Death Drops")]
         [Tooltip("Number of O2 bubbles dropped on death.")]
-        [SerializeField, Min(0)] private int bubbleDropCount = 2;
+        [SerializeField, Min(0)] private int bubbleDropCount = 1;
 
         // =====================
         // Debug
@@ -373,7 +373,7 @@ namespace Submachina.Core
                     Quaternion.identity);
 
                 O2Pickup pickup = bubble.GetComponent<O2Pickup>();
-                if (pickup != null) pickup.SetO2System(o2System);
+                if (pickup != null) pickup.SetPump(pump);
             }
         }
 
@@ -382,9 +382,9 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /** Injected by WorldChunk when spawned procedurally via chunks. */
-        public void SetO2System(O2System system)
+        public void SetPump(ManualBellowsPump bellowsPump)
         {
-            o2System = system;
+            pump = bellowsPump;
         }
 
         // -------------------------------------------------------

@@ -31,8 +31,7 @@ namespace Submachina.Core
         private GameObject _resourcePrefab;
         private ResourceManager _resourceManager;
         private GameObject _enemyPrefab;
-        private GameObject _o2BubblePrefab;
-        private O2System _o2System;
+        private ManualBellowsPump _pump;
 
         // -------------------------------------------------------
         // Initialization
@@ -52,7 +51,7 @@ namespace Submachina.Core
          */
         public void Initialize(float topY, float height, float halfWidth, float depth,
             GameObject rockPrefab, GameObject resourcePrefab, ResourceManager resourceManager,
-            GameObject enemyPrefab, GameObject o2BubblePrefab, O2System o2System)
+            GameObject enemyPrefab, ManualBellowsPump pump)
         {
             _topY = topY;
             _height = height;
@@ -61,13 +60,11 @@ namespace Submachina.Core
             _resourcePrefab = resourcePrefab;
             _resourceManager = resourceManager;
             _enemyPrefab = enemyPrefab;
-            _o2BubblePrefab = o2BubblePrefab;
-            _o2System = o2System;
+            _pump = pump;
 
             GenerateObstacles(depth);
             GenerateResources(depth);
             GenerateEnemies(depth);
-            GeneratePassiveO2(depth);
         }
 
         // -------------------------------------------------------
@@ -185,34 +182,7 @@ namespace Submachina.Core
                 GameObject go = Instantiate(_enemyPrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
 
                 EnemyController enemy = go.GetComponent<EnemyController>();
-                if (enemy != null) enemy.SetO2System(_o2System);
-            }
-        }
-
-        /**
-         * Scatters free-floating O2 bubbles that the player can collect without
-         * needing to kill anything. These act as a safety net at shallow depth
-         * where enemies are sparse — without them, a player who misses enemies
-         * has no O2 recovery and dies.
-         *
-         * Count tapers from 2 → 0 over the first 150m. Past that, enemies are
-         * common enough that combat-sourced O2 takes over as the primary supply.
-         * Example: depth=0 → 2 bubbles, depth=75 → 1 bubble, depth=150+ → 0 bubbles.
-         */
-        private void GeneratePassiveO2(float depth)
-        {
-            if (_o2BubblePrefab == null || _o2System == null) return;
-
-            int count = Mathf.RoundToInt(Mathf.Lerp(2f, 0f, Mathf.Clamp01(depth / 150f)));
-
-            for (int i = 0; i < count; i++)
-            {
-                float x = Random.Range(-_halfWidth * 0.7f, _halfWidth * 0.7f);
-                float y = Random.Range(_topY - _height + 1f, _topY - 1f);
-
-                GameObject go = Instantiate(_o2BubblePrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
-                O2Pickup pickup = go.GetComponent<O2Pickup>();
-                if (pickup != null) pickup.SetO2System(_o2System);
+                if (enemy != null) enemy.SetPump(_pump);
             }
         }
 
