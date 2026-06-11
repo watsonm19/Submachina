@@ -128,7 +128,8 @@ namespace Submachina.Core
         {
             if (mineAction == null || turretAim == null) return;
 
-            bool firing = mineAction.action.IsPressed();
+            bool firing = mineAction.action.IsPressed()
+                && (pump == null || pump.CurrentAirPressure > 0f);
             if (pump != null) pump.IsMining = firing;
 
             if (firing)

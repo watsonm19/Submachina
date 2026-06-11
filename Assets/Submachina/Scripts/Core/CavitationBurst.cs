@@ -157,6 +157,7 @@ namespace Submachina.Core
         private void TryBurst()
         {
             if (_isBursting || Time.time < _cooldownEnd) return;
+            if (pump != null && pump.CurrentAirPressure <= 0f) return;
 
             Vector2 dir = GetBurstDirection();
             if (dir.sqrMagnitude < 0.001f) return;
