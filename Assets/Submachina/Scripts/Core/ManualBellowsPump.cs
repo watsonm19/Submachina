@@ -26,7 +26,7 @@ namespace Submachina.Core
      *   3. Subscribe to events (OnPerfectPump, OnAirLock, etc.) for audio/visual juice.
      *   4. Set IsThrusting / IsMining from other systems to drive exertion decay.
      */
-    public class ManualBellowsPump : MonoBehaviour
+    public class ManualBellowsPump : MonoBehaviour, ISweetSpotPump
     {
         // =====================
         // Air Pressure
@@ -125,6 +125,12 @@ namespace Submachina.Core
         // =====================
         // Input
         // =====================
+
+        [FoldoutGroup("Input")]
+        [Tooltip("Master switch for the manual pump-to-generate-air mechanic. " +
+                 "Disabled by default now that O2PickupPump gates air intake — this component " +
+                 "still acts as the air tank (storage, decay, health bleed, atom write).")]
+        [SerializeField] private bool enableManualPumping;
 
         [FoldoutGroup("Input")]
         [Tooltip("Button InputAction for the pump. If unassigned, Spacebar is used as a fallback.")]
@@ -341,6 +347,9 @@ namespace Submachina.Core
          */
         private void ProcessInput()
         {
+            // Manual pumping retired in favour of O2PickupPump — tank-only mode
+            if (!enableManualPumping) return;
+
             if (GetPumpPressed())  HandlePress();
             if (GetPumpReleased()) HandleRelease();
         }

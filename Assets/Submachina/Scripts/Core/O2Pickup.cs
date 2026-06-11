@@ -27,6 +27,12 @@ namespace Submachina.Core
         [Tooltip("How much O2 this bubble restores when collected.")]
         [SerializeField, Min(0f)] private float replenishAmount = 10f;
 
+        [FoldoutGroup("Settings")]
+        [Tooltip("If true, the player collects this pickup just by touching it. " +
+                 "Disabled by default — collection now goes through O2PickupPump's " +
+                 "sweet spot mechanic, which calls Collect() directly.")]
+        [SerializeField] private bool collectOnContact;
+
         // =====================
         // References
         // =====================
@@ -66,6 +72,8 @@ namespace Submachina.Core
          */
         private void OnTriggerEnter2D(Collider2D other)
         {
+            // Contact collection is off in the pump-gated flow — O2PickupPump calls Collect()
+            if (!collectOnContact) return;
             if (!other.CompareTag("Player")) return;
 
             Collect();
@@ -74,12 +82,16 @@ namespace Submachina.Core
         /**
          * Restores O2 and destroys this pickup.
          * Separated from OnTriggerEnter2D so it can be called from
-         * other systems (e.g., a magnet upgrade that auto-collects pickups).
+         * other systems (e.g., O2PickupPump, or a magnet upgrade).
+         *
+         * airMultiplier scales the air granted — lets the collector grade the
+         * reward by timing quality. Example: replenishAmount=10, multiplier=0.35
+         * → a weak pump stop restores 3.5 air instead of 10.
          */
-        public void Collect()
+        public void Collect(float airMultiplier = 1f)
         {
             if (pump != null)
-                pump.AddAir(replenishAmount);
+                pump.AddAir(replenishAmount * airMultiplier);
             else
                 Debug.LogWarning("[O2Pickup] No ManualBellowsPump assigned — pickup consumed but air not restored.");
 

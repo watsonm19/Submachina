@@ -28,8 +28,16 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("References")]
-        [Tooltip("The ManualBellowsPump on the submarine.")]
-        [SerializeField] private ManualBellowsPump pump;
+        [Tooltip("Any pump implementing ISweetSpotPump (ManualBellowsPump or O2PickupPump).")]
+        [ValidateInput(nameof(IsValidPump), "Component must implement ISweetSpotPump.")]
+        [SerializeField] private MonoBehaviour pump;
+
+        /** Resolved interface view of the assigned pump component. */
+        private ISweetSpotPump _pump;
+
+        /** Odin inspector validation — only accept components that implement ISweetSpotPump. */
+        private bool IsValidPump(MonoBehaviour candidate) =>
+            candidate == null || candidate is ISweetSpotPump;
 
         // =====================
         // Layout
@@ -75,12 +83,22 @@ namespace Submachina.Core
         [SerializeField] private Color sweetSpotMarkerColor = new Color(0.2f, 1f, 0.25f, 0.9f);
 
         // =====================
+        // Visibility
+        // =====================
+
+        [FoldoutGroup("Visibility")]
+        [Tooltip("Start with the bar hidden. Wire O2PickupPump.OnPickupEnteredRange → Show() " +
+                 "and OnPickupLeftRange / OnLoopStopped → Hide() to show it contextually.")]
+        [SerializeField] private bool startHidden;
+
+        // =====================
         // State
         // =====================
 
         private SpriteRenderer _chargeBg, _chargeFill;
         private SpriteRenderer _sweetLeft, _sweetRight;
         private Sprite _whiteSprite;
+        private bool _visible = true;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -88,6 +106,7 @@ namespace Submachina.Core
 
         private void Awake()
         {
+            _pump = pump as ISweetSpotPump;
             _whiteSprite = CreateWhiteSprite();
             BuildBar();
         }
@@ -98,15 +117,39 @@ namespace Submachina.Core
          */
         private void Start()
         {
-            if (pump == null) return;
-            _sweetLeft.transform.localPosition  = new Vector3(BarFillX(pump.SweetSpotMin), worldOffset.y, -0.01f);
-            _sweetRight.transform.localPosition = new Vector3(BarFillX(pump.SweetSpotMax), worldOffset.y, -0.01f);
+            if (startHidden) SetVisible(false);
+
+            if (_pump == null) return;
+            _sweetLeft.transform.localPosition  = new Vector3(BarFillX(_pump.SweetSpotMin), worldOffset.y, -0.01f);
+            _sweetRight.transform.localPosition = new Vector3(BarFillX(_pump.SweetSpotMax), worldOffset.y, -0.01f);
         }
 
         private void Update()
         {
-            if (pump == null) return;
+            if (!_visible || _pump == null) return;
             UpdateChargeBar();
+        }
+
+        // -------------------------------------------------------
+        // Visibility API
+        // -------------------------------------------------------
+
+        /** Shows the bar. Wire to O2PickupPump.OnPickupEnteredRange. */
+        public void Show() => SetVisible(true);
+
+        /** Hides the bar. Wire to O2PickupPump.OnPickupLeftRange and OnLoopStopped. */
+        public void Hide() => SetVisible(false);
+
+        /** Toggles all bar renderers at once — background, fill, and sweet spot markers. */
+        public void SetVisible(bool visible)
+        {
+            _visible = visible;
+            if (_chargeBg == null) return;   // called before Awake built the bar
+
+            _chargeBg.enabled    = visible;
+            _chargeFill.enabled  = visible;
+            _sweetLeft.enabled   = visible;
+            _sweetRight.enabled  = visible;
         }
 
         // -------------------------------------------------------
@@ -153,7 +196,7 @@ namespace Submachina.Core
          */
         private void UpdateChargeBar()
         {
-            float charge    = pump.ChargeProgress;
+            float charge    = _pump.ChargeProgress;
             float fillWidth = barWidth * charge;
 
             // Anchor fill to the left edge of the background
@@ -163,7 +206,7 @@ namespace Submachina.Core
                 -0.01f);
             _chargeFill.transform.localScale = new Vector3(fillWidth, barHeight, 1f);
 
-            if (pump.IsAirLocked)
+            if (_pump.IsAirLocked)
             {
                 _chargeBg.color   = airLockColor;
                 _chargeFill.color = airLockColor;
@@ -172,7 +215,7 @@ namespace Submachina.Core
             {
                 _chargeBg.color = backgroundBarColor;
                 _chargeFill.color = charge <= 0f    ? Color.clear
-                    : pump.IsInSweetSpot             ? chargeSweetSpotColor
+                    : _pump.IsInSweetSpot            ? chargeSweetSpotColor
                                                      : chargeNormalColor;
             }
         }
