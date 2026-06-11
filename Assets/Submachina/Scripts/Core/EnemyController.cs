@@ -87,15 +87,6 @@ namespace Submachina.Core
         [Tooltip("Speed of the lunge burst during the attack phase.")]
         [SerializeField, Min(0f)] private float lungeSpeed = 8f;
 
-        [FoldoutGroup("Attack")]
-        [Tooltip("Width and height of the strike hitbox in world units.")]
-        [SerializeField] private Vector2 hitboxSize = new Vector2(2f, 1.5f);
-
-        [FoldoutGroup("Attack")]
-        [Tooltip("How far in front of the enemy the hitbox center is placed. " +
-                 "Example: 1.2 = hitbox starts 1.2 units in the lunge direction.")]
-        [SerializeField, Min(0f)] private float hitboxOffset = 1.2f;
-
         // =====================
         // Death Drops
         // =====================
@@ -209,7 +200,6 @@ namespace Submachina.Core
 
                 case AiState.Attacking:
                     _stateTimer += Time.fixedDeltaTime;
-                    CheckAttackHit();
                     if (_stateTimer >= attackDuration) EnterCooldown();
                     break;
 
@@ -324,33 +314,18 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Checks a box in front of the enemy for the player during the Attacking phase.
-         * Only triggers once per attack (guarded by _hasHitThisAttack) to prevent
-         * the full lunge duration from dealing multiple hits.
-         *
-         * Hitbox center: enemy position + attackDir * hitboxOffset
-         * The box angle matches the attack direction so it rotates with the lunge.
-         *
-         * Example: enemy at (0,0) lunging right → hitbox center at (1.2, 0),
-         * covering roughly a 2×1.5 unit area in front of the enemy.
+         * Deals damage on physical contact with the player during the lunge.
+         * Only fires once per attack cycle (guarded by _hasHitThisAttack) so
+         * sustained contact during the slide doesn't stack damage.
          */
-        private void CheckAttackHit()
+        private void OnCollisionEnter2D(Collision2D collision)
         {
+            if (_state != AiState.Attacking) return;
             if (_hasHitThisAttack) return;
+            if (!collision.collider.CompareTag("Player")) return;
 
-            Vector2 hitboxCenter = (Vector2)transform.position + _attackDirection * hitboxOffset;
-            float angle = Mathf.Atan2(_attackDirection.y, _attackDirection.x) * Mathf.Rad2Deg;
-
-            Collider2D[] hits = Physics2D.OverlapBoxAll(hitboxCenter, hitboxSize, angle);
-
-            foreach (Collider2D col in hits)
-            {
-                if (!col.CompareTag("Player")) continue;
-
-                _playerHealth?.TakeDamage(attackDamage);
-                _hasHitThisAttack = true;
-                break;
-            }
+            _playerHealth?.TakeDamage(attackDamage);
+            _hasHitThisAttack = true;
         }
 
         // -------------------------------------------------------
@@ -420,13 +395,6 @@ namespace Submachina.Core
             Vector3 origin = Application.isPlaying ? _spawnPosition : transform.position;
             Gizmos.DrawLine(origin + Vector3.left * patrolRange, origin + Vector3.right * patrolRange);
 
-            // Attack hitbox preview (only during wind-up/attacking in play mode)
-            if (Application.isPlaying && (_state == AiState.WindUp || _state == AiState.Attacking))
-            {
-                Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.5f);
-                Vector3 hitboxCenter = transform.position + (Vector3)(_attackDirection * hitboxOffset);
-                Gizmos.DrawWireCube(hitboxCenter, new Vector3(hitboxSize.x, hitboxSize.y, 0.1f));
-            }
         }
 #endif
     }
