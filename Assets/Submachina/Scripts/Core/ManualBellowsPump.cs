@@ -46,6 +46,11 @@ namespace Submachina.Core
                  "Example: 3× → drains 3× faster under exertion (~11 seconds from full).")]
         [SerializeField, Min(1f)] private float exertionDecayMultiplier = 3f;
 
+        [FoldoutGroup("Air Pressure")]
+        [Tooltip("Extra flat air drained per second while mining, on top of the normal decay. " +
+                 "Example: 2 → mining drains 2 additional units/s regardless of base rate.")]
+        [SerializeField, Min(0f)] private float miningExtraDecayRate = 2f;
+
         // =====================
         // Charge Cycle
         // =====================
@@ -166,9 +171,10 @@ namespace Submachina.Core
         /** True while the Air Lock penalty is active. */
         public bool IsAirLocked => _state == PumpState.AirLocked;
 
-        /** Current active decay rate, accounting for exertion. Read by HUD for display. */
+        /** Current active decay rate, accounting for exertion and mining bonus. Read by HUD for display. */
         public float ActiveDecayRate =>
-            baseDecayRate * (IsMining || IsThrusting ? exertionDecayMultiplier : 1f);
+            baseDecayRate * (IsMining || IsThrusting ? exertionDecayMultiplier : 1f)
+            + (IsMining ? miningExtraDecayRate : 0f);
 
         /** Max air capacity — read by O2Bar for normalisation. */
         public float MaxAir => maxAirPressure;
@@ -442,6 +448,23 @@ namespace Submachina.Core
             _chargeProgress = 0f;
             _rapidPressCount = 0;
             OnAirLock?.Invoke();
+        }
+
+        /**
+         * Instantly drains a flat amount of air (e.g. from a dash or ability cost).
+         * Fires OnAirExhausted if the drain pushes pressure to zero for the first time.
+         */
+        public void ConsumeAir(float amount)
+        {
+            _currentAirPressure = Mathf.Max(0f, _currentAirPressure - amount);
+
+            if (_currentAirPressure <= 0f && !_airExhaustedFired)
+            {
+                _airExhaustedFired = true;
+                OnAirExhausted?.Invoke();
+            }
+
+            WriteAtom();
         }
 
         /**

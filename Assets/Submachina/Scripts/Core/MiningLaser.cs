@@ -33,6 +33,10 @@ namespace Submachina.Core
         [Tooltip("TurretAim on the submarine's Turret child. Laser fires from the turret in its aim direction.")]
         [SerializeField] private TurretAim turretAim;
 
+        [FoldoutGroup("References")]
+        [Tooltip("The submarine's ManualBellowsPump. IsMining is toggled while the laser fires to increase air drain.")]
+        [SerializeField] private ManualBellowsPump pump;
+
         // =====================
         // Input
         // =====================
@@ -124,7 +128,10 @@ namespace Submachina.Core
         {
             if (mineAction == null || turretAim == null) return;
 
-            if (mineAction.action.IsPressed())
+            bool firing = mineAction.action.IsPressed();
+            if (pump != null) pump.IsMining = firing;
+
+            if (firing)
                 FireLaser();
             else
                 StopLaser();

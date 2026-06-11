@@ -44,6 +44,10 @@ namespace Submachina.Core
         [Tooltip("TurretAim child object — used as fallback direction when the sub is stationary.")]
         [SerializeField] private TurretAim turretAim;
 
+        [FoldoutGroup("References")]
+        [Tooltip("The submarine's ManualBellowsPump — a flat air cost is consumed on each burst.")]
+        [SerializeField] private ManualBellowsPump pump;
+
         // =====================
         // Input
         // =====================
@@ -68,6 +72,10 @@ namespace Submachina.Core
         [FoldoutGroup("Burst")]
         [Tooltip("Seconds before the player can burst again.")]
         [SerializeField, Min(0f)] private float burstCooldown = 1.5f;
+
+        [FoldoutGroup("Burst")]
+        [Tooltip("Flat air cost consumed from the pump each time the burst fires.")]
+        [SerializeField, Min(0f)] private float airCost = 15f;
 
         [FoldoutGroup("Burst")]
         [Tooltip("Linear damping during the burst phase. Much lower than normal so the impulse carries. " +
@@ -153,6 +161,7 @@ namespace Submachina.Core
             Vector2 dir = GetBurstDirection();
             if (dir.sqrMagnitude < 0.001f) return;
 
+            if (pump != null) pump.ConsumeAir(airCost);
             StartCoroutine(BurstRoutine(dir.normalized));
         }
 
