@@ -92,6 +92,15 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float weakPumpAir = 5f;
 
         // =====================
+        // Sweet Spot Cooldown
+        // =====================
+
+        [FoldoutGroup("Sweet Spot Cooldown")]
+        [Tooltip("Seconds the pump is unusable after a Perfect Pump. " +
+                 "Set to 0 to disable the cooldown entirely.")]
+        [SerializeField, Min(0f)] private float perfectPumpCooldown = 0f;
+
+        // =====================
         // Air Lock (Anti-Spam)
         // =====================
 
@@ -167,6 +176,14 @@ namespace Submachina.Core
         [Tooltip("Fired once when air pressure first hits zero. Wire: critical alarm, screen vignette.")]
         public UnityEvent OnAirExhausted;
 
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when a Perfect Pump starts the cooldown. Wire: pressure-release SFX, dimmed pump UI.")]
+        public UnityEvent OnCooldownStarted;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when the cooldown expires and the pump is usable again. Wire: ready click SFX, UI re-light.")]
+        public UnityEvent OnCooldownEnded;
+
         // =====================
         // Public Read-Only State
         // =====================
@@ -179,6 +196,12 @@ namespace Submachina.Core
 
         /** True while the Air Lock penalty is active. */
         public bool IsAirLocked => _state == PumpState.AirLocked;
+
+        /** True while the post-Perfect-Pump cooldown is active. */
+        public bool IsOnCooldown => _state == PumpState.CoolingDown;
+
+        /** Seconds left on the sweet spot cooldown — read by HUD for a radial/timer display. */
+        public float CooldownRemaining => IsOnCooldown ? Mathf.Max(0f, _cooldownTimer) : 0f;
 
         /** Current active decay rate, accounting for exertion and mining bonus. Read by HUD for display. */
         public float ActiveDecayRate =>
@@ -233,6 +256,9 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private float AirLockRemaining => Mathf.Max(0f, _airLockTimer);
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        private float CooldownTimeRemaining => CooldownRemaining;
+
         [FoldoutGroup("Debug")]
         [Tooltip("Show the debug overlay in Play mode. Disable once real HUD art is in.")]
         [SerializeField] private bool showDebugGUI = true;
@@ -241,13 +267,14 @@ namespace Submachina.Core
         // Internal State
         // =====================
 
-        private enum PumpState { Idle, Charging, Overshot, AirLocked }
+        private enum PumpState { Idle, Charging, Overshot, AirLocked, CoolingDown }
 
         private PumpState _state  = PumpState.Idle;
         private float _currentAirPressure;
         private float _currentMaxAir;
         private float _chargeProgress;
         private float _airLockTimer;
+        private float _cooldownTimer;
         private float _lastPressTime   = -999f;
         private int   _rapidPressCount = 0;
         private bool  _airExhaustedFired;
@@ -339,9 +366,10 @@ namespace Submachina.Core
         /**
          * Drives the pump state machine each frame.
          *
-         * AirLocked: counts down the penalty timer, then returns to Idle.
-         * Charging:  advances chargeProgress; transitions to Overshot if it hits 1.0
-         *            (held too long — vents without reward).
+         * AirLocked:   counts down the penalty timer, then returns to Idle.
+         * CoolingDown: counts down the sweet spot cooldown, fires OnCooldownEnded on expiry.
+         * Charging:    advances chargeProgress; transitions to Overshot if it hits 1.0
+         *              (held too long — vents without reward).
          * Idle/Overshot: passive, waiting for input events.
          */
         private void UpdateStateMachine()
@@ -351,6 +379,15 @@ namespace Submachina.Core
                 case PumpState.AirLocked:
                     _airLockTimer -= Time.deltaTime;
                     if (_airLockTimer <= 0f) _state = PumpState.Idle;
+                    break;
+
+                case PumpState.CoolingDown:
+                    _cooldownTimer -= Time.deltaTime;
+                    if (_cooldownTimer <= 0f)
+                    {
+                        _state = PumpState.Idle;
+                        OnCooldownEnded?.Invoke();
+                    }
                     break;
 
                 case PumpState.Charging:
@@ -410,7 +447,8 @@ namespace Submachina.Core
          */
         private void HandlePress()
         {
-            if (_state == PumpState.AirLocked) return;
+            // Pump is inoperable during penalties and the sweet spot cooldown
+            if (_state == PumpState.AirLocked || _state == PumpState.CoolingDown) return;
 
             // Rolling spam window: increment if within window, reset if outside
             if (Time.time - _lastPressTime <= spamWindowDuration)
@@ -439,11 +477,12 @@ namespace Submachina.Core
          *   chargeProgress < sweetSpotMin or > sweetSpotMax → Weak Pump (+weakPumpAir)
          *   State was Overshot (charge already hit 1.0 while held) → no air
          *
-         * Perfect Pump also resets the spam counter as a reward for good play.
+         * Perfect Pump also resets the spam counter as a reward for good play,
+         * and starts the sweet spot cooldown if perfectPumpCooldown > 0.
          */
         private void HandleRelease()
         {
-            if (_state == PumpState.AirLocked) return;
+            if (_state == PumpState.AirLocked || _state == PumpState.CoolingDown) return;
 
             // Released after overshoot — already vented, no reward
             if (_state == PumpState.Overshot)
@@ -461,15 +500,30 @@ namespace Submachina.Core
                 AddAir(perfectPumpAir);
                 _rapidPressCount = 0;   // good timing resets spam penalty window
                 OnPerfectPump?.Invoke();
+                _chargeProgress = 0f;
+
+                // A successful pump optionally locks the pump out for a breather
+                if (perfectPumpCooldown > 0f) StartCooldown();
+                else _state = PumpState.Idle;
+                return;
             }
-            else
-            {
-                AddAir(weakPumpAir);
-                OnWeakPump?.Invoke();
-            }
+
+            AddAir(weakPumpAir);
+            OnWeakPump?.Invoke();
 
             _chargeProgress = 0f;
             _state = PumpState.Idle;
+        }
+
+        /**
+         * Enters the CoolingDown state for perfectPumpCooldown seconds.
+         * The pump ignores all input until the timer expires and OnCooldownEnded fires.
+         */
+        private void StartCooldown()
+        {
+            _state = PumpState.CoolingDown;
+            _cooldownTimer = perfectPumpCooldown;
+            OnCooldownStarted?.Invoke();
         }
 
         /**
@@ -626,6 +680,7 @@ namespace Submachina.Core
             string stateText = _state switch
             {
                 PumpState.AirLocked => $"⚠ AIR LOCK  ({_airLockTimer:F1}s remaining)",
+                PumpState.CoolingDown => $"⏳ COOLDOWN  ({_cooldownTimer:F1}s remaining)",
                 PumpState.Charging  =>
                     _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax
                         ? "★ SWEET SPOT — release now!"
@@ -635,6 +690,7 @@ namespace Submachina.Core
             };
 
             GUI.color = _state == PumpState.AirLocked ? Color.red
+                : _state == PumpState.CoolingDown ? new Color(0.45f, 0.7f, 1f)
                 : _state == PumpState.Overshot ? new Color(1f, 0.65f, 0f)
                 : (_state == PumpState.Charging &&
                    _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax)
