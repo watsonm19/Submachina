@@ -66,6 +66,24 @@ namespace Submachina.Core
         [SerializeField, Min(1f)] private float minMaxCapacity = 20f;
 
         // =====================
+        // Depth Scaling
+        // =====================
+
+        [FoldoutGroup("Depth Scaling")]
+        [Tooltip("CurrentDepth atom written by DepthTracker. Leave unassigned to disable depth scaling.")]
+        [SerializeField] private FloatVariable currentDepth;
+
+        [FoldoutGroup("Depth Scaling")]
+        [Tooltip("Extra decay added per metre of depth, as a fraction of the active decay rate. " +
+                 "Example: 0.005 → at 100m the multiplier is 1.5 (50% more drain).")]
+        [SerializeField, Min(0f)] private float drainPerMetre = 0.005f;
+
+        [FoldoutGroup("Depth Scaling")]
+        [Tooltip("Maximum multiplier allowed from depth scaling. " +
+                 "Example: 3.0 → decay can at most triple regardless of depth.")]
+        [SerializeField, Min(1f)] private float maxDepthMultiplier = 3f;
+
+        // =====================
         // Charge Cycle
         // =====================
 
@@ -275,6 +293,11 @@ namespace Submachina.Core
         private string CurrentState => _state.ToString();
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        private float DepthMultiplier => currentDepth != null
+            ? Mathf.Min(1f + currentDepth.Value * drainPerMetre, maxDepthMultiplier)
+            : 1f;
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private int SpamCount => _rapidPressCount;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
@@ -368,7 +391,9 @@ namespace Submachina.Core
         {
             if (_currentAirPressure <= 0f) return;
 
-            _currentAirPressure -= ActiveDecayRate * Time.deltaTime;
+            // Scale decay by depth — deeper = faster air consumption
+            // Example: drainPerMetre=0.005, depth=100 → multiplier=1.5 (50% more drain)
+            _currentAirPressure -= ActiveDecayRate * DepthMultiplier * Time.deltaTime;
 
             if (_currentAirPressure <= 0f)
             {

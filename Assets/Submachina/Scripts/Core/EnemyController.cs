@@ -1,4 +1,5 @@
 using UnityEngine;
+using DG.Tweening;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -88,6 +89,23 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float lungeSpeed = 8f;
 
         // =====================
+        // Intent
+        // =====================
+
+        [FoldoutGroup("Intent")]
+        [Tooltip("Child GameObject shown above the enemy during the WindUp telegraph. " +
+                 "Assign a child with a '!' sprite or any visual you'd like.")]
+        [SerializeField] private GameObject intentIndicator;
+
+        [FoldoutGroup("Intent")]
+        [Tooltip("Scale punch size when the intent indicator first appears.")]
+        [SerializeField, Min(0f)] private float intentPunchScale = 0.4f;
+
+        [FoldoutGroup("Intent")]
+        [Tooltip("Duration of the intent indicator's scale punch animation.")]
+        [SerializeField, Min(0.05f)] private float intentPunchDuration = 0.15f;
+
+        // =====================
         // Death Drops
         // =====================
 
@@ -117,7 +135,7 @@ namespace Submachina.Core
         // State
         // =====================
 
-        private enum AiState { Patrol, Chase, WindUp, Attacking, AttackCooldown }
+        private enum AiState { Patrol, Chase, WindUp, Attacking, AttackCooldown, Dead }
 
         private AiState _state = AiState.Patrol;
         private Rigidbody2D _rb;
@@ -160,6 +178,9 @@ namespace Submachina.Core
             // Auto-wire death event
             Health health = GetComponent<Health>();
             if (health != null) health.onDeath.AddListener(OnDeath);
+
+            // Ensure intent indicator is hidden at spawn regardless of prefab state
+            SetIntentIndicator(false);
         }
 
         private void FixedUpdate()
@@ -179,6 +200,8 @@ namespace Submachina.Core
          */
         private void UpdateState()
         {
+            // Dead state is terminal — no transitions possible
+            if (_state == AiState.Dead) return;
             if (_player == null) return;
             float dist = Vector2.Distance(transform.position, _player.position);
 
@@ -214,6 +237,7 @@ namespace Submachina.Core
         {
             switch (_state)
             {
+                case AiState.Dead: return;
                 case AiState.Patrol: Patrol(); break;
                 case AiState.Chase: Chase(); break;
                 case AiState.Attacking: Lunge(); break;
@@ -235,12 +259,14 @@ namespace Submachina.Core
         {
             _state = AiState.Patrol;
             SetSpriteColor(_baseColor);
+            SetIntentIndicator(false);
         }
 
         private void EnterChase()
         {
             _state = AiState.Chase;
             SetSpriteColor(_baseColor);
+            SetIntentIndicator(false);
         }
 
         /**
@@ -257,8 +283,9 @@ namespace Submachina.Core
                 ? ((Vector2)_player.position - (Vector2)transform.position).normalized
                 : Vector2.right;
 
-            // Orange tint = "about to attack" telegraph
+            // Orange tint + intent indicator = "about to attack" telegraph
             SetSpriteColor(new Color(1f, 0.5f, 0.1f));
+            SetIntentIndicator(true);
         }
 
         private void EnterAttacking()
@@ -277,6 +304,7 @@ namespace Submachina.Core
             _attackCooldownRemaining = attackCooldown;
             _rb.linearVelocity = Vector2.zero;
             SetSpriteColor(_baseColor);
+            SetIntentIndicator(false);
         }
 
         // -------------------------------------------------------
@@ -333,11 +361,19 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Called by Health.onDeath. Scatters O2 bubbles with a small random
-         * offset so they don't all stack on the same position.
+         * Called by Health.onDeath. Immediately freezes all AI so that attacks
+         * mid-wind-up or mid-lunge cannot complete, then scatters O2 bubbles.
          */
         private void OnDeath()
         {
+            // Freeze AI immediately — prevents completing an in-progress attack
+            _state = AiState.Dead;
+            _rb.linearVelocity = Vector2.zero;
+            Collider2D col = GetComponent<Collider2D>();
+            if (col != null) col.enabled = false;
+            SetIntentIndicator(false);
+
+            // Scatter O2 bubble drops
             for (int i = 0; i < bubbleDropCount; i++)
             {
                 if (o2BubblePrefab == null) break;
@@ -369,6 +405,20 @@ namespace Submachina.Core
         private void SetSpriteColor(Color color)
         {
             if (_spriteRenderer != null) _spriteRenderer.color = color;
+        }
+
+        /**
+         * Shows or hides the intent indicator child object.
+         * On show, fires a scale punch so the "!" pops in rather than appearing flat.
+         */
+        private void SetIntentIndicator(bool show)
+        {
+            if (intentIndicator == null) return;
+            if (intentIndicator.activeSelf == show) return;
+
+            intentIndicator.SetActive(show);
+            if (show)
+                intentIndicator.transform.DOPunchScale(Vector3.one * intentPunchScale, intentPunchDuration, 1, 0f);
         }
 
         // -------------------------------------------------------

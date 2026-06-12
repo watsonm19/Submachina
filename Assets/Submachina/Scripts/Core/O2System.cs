@@ -36,6 +36,24 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float drainRate = 5f;
 
         // =====================
+        // Depth Scaling
+        // =====================
+
+        [FoldoutGroup("Depth Scaling")]
+        [Tooltip("CurrentDepth atom written by DepthTracker. Leave unassigned to disable depth scaling.")]
+        [SerializeField] private FloatVariable currentDepth;
+
+        [FoldoutGroup("Depth Scaling")]
+        [Tooltip("Extra O2 drain added per metre of depth, as a fraction of drainRate. " +
+                 "Example: 0.005 → at 100m the multiplier is 1.5 (50% more drain).")]
+        [SerializeField, Min(0f)] private float drainPerMetre = 0.005f;
+
+        [FoldoutGroup("Depth Scaling")]
+        [Tooltip("Maximum drain multiplier allowed from depth scaling. " +
+                 "Example: 3.0 → drain can at most triple regardless of depth.")]
+        [SerializeField, Min(1f)] private float maxDepthMultiplier = 3f;
+
+        // =====================
         // Health Bleed
         // =====================
 
@@ -78,6 +96,14 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private bool IsBleeding => _isDepleted;
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        private float EffectiveDrainRate => drainRate * DepthMultiplier;
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        private float DepthMultiplier => currentDepth != null
+            ? Mathf.Min(1f + currentDepth.Value * drainPerMetre, maxDepthMultiplier)
+            : 1f;
+
         // =====================
         // State
         // =====================
@@ -119,7 +145,9 @@ namespace Submachina.Core
         {
             bool wasDepletedBefore = _isDepleted;
 
-            _currentO2 = Mathf.Max(0f, _currentO2 - drainRate * Time.deltaTime);
+            // Scale drain by depth — deeper = faster O2 consumption
+            // Example: drainPerMetre=0.005, depth=100 → multiplier=1.5 (50% more drain)
+            _currentO2 = Mathf.Max(0f, _currentO2 - drainRate * DepthMultiplier * Time.deltaTime);
             _isDepleted = _currentO2 <= 0f;
 
             WriteAtom();
