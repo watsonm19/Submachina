@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.InputSystem;
 using Sirenix.OdinInspector;
 
@@ -81,6 +82,18 @@ namespace Submachina.Core
         [Tooltip("Linear damping during the burst phase. Much lower than normal so the impulse carries. " +
                  "Normal damping is restored automatically after burstDuration.")]
         [SerializeField, Min(0f)] private float burstDrag = 0.4f;
+
+        // =====================
+        // Events
+        // =====================
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired the instant the burst launches — before the impulse force is applied.")]
+        [SerializeField] private UnityEvent onBurstStart;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when the burst ends and normal drag is restored.")]
+        [SerializeField] private UnityEvent onBurstEnd;
 
         // =====================
         // Visual Feedback
@@ -205,6 +218,7 @@ namespace Submachina.Core
         {
             _isBursting = true;
             if (physicsController != null) physicsController.IsDashing = true;
+            onBurstStart?.Invoke();
 
             // Phase 1 — burst
             _rb.linearDamping = burstDrag;
@@ -220,6 +234,7 @@ namespace Submachina.Core
             // Phase 3 — recovery
             _rb.linearDamping = _originalDrag;
             if (physicsController != null) physicsController.IsDashing = false;
+            onBurstEnd?.Invoke();
 
             _isBursting = false;
             _cooldownEnd = Time.time + burstCooldown;
