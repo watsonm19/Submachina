@@ -24,15 +24,18 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Settings")]
-        [Tooltip("How much O2 this bubble restores when collected.")]
+        [Tooltip("How much current air pressure this bubble restores when collected.")]
         [SerializeField, Min(0f)] private float replenishAmount = 10f;
+
+        [FoldoutGroup("Settings")]
+        [Tooltip("How much max air capacity this bubble restores when collected.")]
+        [SerializeField, Min(0f)] private float capacityRestoreAmount = 10f;
 
         [FoldoutGroup("Settings")]
         [Tooltip("If true, the player collects this pickup just by touching it. " +
                  "Disabled by default — collection now goes through O2PickupPump's " +
                  "sweet spot mechanic, which calls Collect() directly.")]
         [SerializeField] private bool collectOnContact;
-
         // =====================
         // References
         // =====================
@@ -91,7 +94,10 @@ namespace Submachina.Core
         public void Collect(float airMultiplier = 1f)
         {
             if (pump != null)
+            {
+                pump.RestoreCapacity(capacityRestoreAmount);
                 pump.AddAir(replenishAmount * airMultiplier);
+            }
             else
                 Debug.LogWarning("[O2Pickup] No ManualBellowsPump assigned — pickup consumed but air not restored.");
 

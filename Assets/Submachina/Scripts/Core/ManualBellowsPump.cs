@@ -51,6 +51,15 @@ namespace Submachina.Core
                  "Example: 2 → mining drains 2 additional units/s regardless of base rate.")]
         [SerializeField, Min(0f)] private float miningExtraDecayRate = 2f;
 
+        [FoldoutGroup("Air Pressure")]
+        [Tooltip("Rate at which max air capacity shrinks per second. " +
+                 "Only O2 bubble pickups can restore it. Example: 0.5 → max drops by 30 over a minute.")]
+        [SerializeField, Min(0f)] private float maxCapacityDecayRate = 0.5f;
+
+        [FoldoutGroup("Air Pressure")]
+        [Tooltip("Floor for max air capacity — it will never decay below this value.")]
+        [SerializeField, Min(1f)] private float minMaxCapacity = 20f;
+
         // =====================
         // Charge Cycle
         // =====================
@@ -81,6 +90,15 @@ namespace Submachina.Core
         [FoldoutGroup("Pump Rewards")]
         [Tooltip("Air restored on a Weak Pump (release outside sweet spot, before overshoot).")]
         [SerializeField, Min(0f)] private float weakPumpAir = 5f;
+
+        // =====================
+        // Sweet Spot Cooldown
+        // =====================
+
+        [FoldoutGroup("Sweet Spot Cooldown")]
+        [Tooltip("Seconds the pump is unusable after a Perfect Pump. " +
+                 "Set to 0 to disable the cooldown entirely.")]
+        [SerializeField, Min(0f)] private float perfectPumpCooldown = 0f;
 
         // =====================
         // Air Lock (Anti-Spam)
@@ -164,6 +182,14 @@ namespace Submachina.Core
         [Tooltip("Fired once when air pressure first hits zero. Wire: critical alarm, screen vignette.")]
         public UnityEvent OnAirExhausted;
 
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when a Perfect Pump starts the cooldown. Wire: pressure-release SFX, dimmed pump UI.")]
+        public UnityEvent OnCooldownStarted;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when the cooldown expires and the pump is usable again. Wire: ready click SFX, UI re-light.")]
+        public UnityEvent OnCooldownEnded;
+
         // =====================
         // Public Read-Only State
         // =====================
@@ -177,13 +203,23 @@ namespace Submachina.Core
         /** True while the Air Lock penalty is active. */
         public bool IsAirLocked => _state == PumpState.AirLocked;
 
+        /** True while the post-Perfect-Pump cooldown is active. */
+        public bool IsOnCooldown => _state == PumpState.CoolingDown;
+
+        /** Seconds left on the sweet spot cooldown — read by HUD for a radial/timer display. */
+        public float CooldownRemaining => IsOnCooldown ? Mathf.Max(0f, _cooldownTimer) : 0f;
+
         /** Current active decay rate, accounting for exertion and mining bonus. Read by HUD for display. */
         public float ActiveDecayRate =>
             baseDecayRate * (IsMining || IsThrusting ? exertionDecayMultiplier : 1f)
             + (IsMining ? miningExtraDecayRate : 0f);
 
-        /** Max air capacity — read by O2Bar for normalisation. */
-        public float MaxAir => maxAirPressure;
+        /** Current max air capacity — shrinks over time, restored by O2 bubbles. */
+        public float MaxAir => _currentMaxAir;
+
+        /** The original max capacity set in the Inspector — used by O2Bar as the fixed denominator
+         *  so the bar visually shrinks as capacity degrades. */
+        public float OriginalMaxAir => maxAirPressure;
 
         /** Lower bound of the sweet spot window — read by BellowsBar to position markers. */
         public float SweetSpotMin => sweetSpotMin;
@@ -226,6 +262,9 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private float AirLockRemaining => Mathf.Max(0f, _airLockTimer);
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        private float CooldownTimeRemaining => CooldownRemaining;
+
         [FoldoutGroup("Debug")]
         [Tooltip("Show the debug overlay in Play mode. Disable once real HUD art is in.")]
         [SerializeField] private bool showDebugGUI = true;
@@ -234,12 +273,14 @@ namespace Submachina.Core
         // Internal State
         // =====================
 
-        private enum PumpState { Idle, Charging, Overshot, AirLocked }
+        private enum PumpState { Idle, Charging, Overshot, AirLocked, CoolingDown }
 
         private PumpState _state  = PumpState.Idle;
         private float _currentAirPressure;
+        private float _currentMaxAir;
         private float _chargeProgress;
         private float _airLockTimer;
+        private float _cooldownTimer;
         private float _lastPressTime   = -999f;
         private int   _rapidPressCount = 0;
         private bool  _airExhaustedFired;
@@ -251,6 +292,7 @@ namespace Submachina.Core
 
         private void Awake()
         {
+            _currentMaxAir      = maxAirPressure;
             _currentAirPressure = maxAirPressure;
             WriteAtom();
         }
@@ -267,6 +309,7 @@ namespace Submachina.Core
 
         private void Update()
         {
+            DecayMaxCapacity();
             DecayAirPressure();
             UpdateStateMachine();
             ProcessInput();
@@ -276,6 +319,25 @@ namespace Submachina.Core
         // -------------------------------------------------------
         // Air Pressure
         // -------------------------------------------------------
+
+        /**
+         * Slowly lowers the max air capacity each frame.
+         * If current pressure exceeds the new ceiling it is clamped down with it.
+         * Floored at minMaxCapacity so the sub always has some capacity remaining.
+         */
+        private void DecayMaxCapacity()
+        {
+            if (maxCapacityDecayRate <= 0f) return;
+
+            _currentMaxAir = Mathf.Max(minMaxCapacity, _currentMaxAir - maxCapacityDecayRate * Time.deltaTime);
+
+            // If current pressure is above the new ceiling, pull it down too
+            if (_currentAirPressure > _currentMaxAir)
+            {
+                _currentAirPressure = _currentMaxAir;
+                WriteAtom();
+            }
+        }
 
         /**
          * Drains air pressure each frame at the active decay rate.
@@ -310,9 +372,10 @@ namespace Submachina.Core
         /**
          * Drives the pump state machine each frame.
          *
-         * AirLocked: counts down the penalty timer, then returns to Idle.
-         * Charging:  advances chargeProgress; transitions to Overshot if it hits 1.0
-         *            (held too long — vents without reward).
+         * AirLocked:   counts down the penalty timer, then returns to Idle.
+         * CoolingDown: counts down the sweet spot cooldown, fires OnCooldownEnded on expiry.
+         * Charging:    advances chargeProgress; transitions to Overshot if it hits 1.0
+         *              (held too long — vents without reward).
          * Idle/Overshot: passive, waiting for input events.
          */
         private void UpdateStateMachine()
@@ -322,6 +385,15 @@ namespace Submachina.Core
                 case PumpState.AirLocked:
                     _airLockTimer -= Time.deltaTime;
                     if (_airLockTimer <= 0f) _state = PumpState.Idle;
+                    break;
+
+                case PumpState.CoolingDown:
+                    _cooldownTimer -= Time.deltaTime;
+                    if (_cooldownTimer <= 0f)
+                    {
+                        _state = PumpState.Idle;
+                        OnCooldownEnded?.Invoke();
+                    }
                     break;
 
                 case PumpState.Charging:
@@ -384,7 +456,8 @@ namespace Submachina.Core
          */
         private void HandlePress()
         {
-            if (_state == PumpState.AirLocked) return;
+            // Pump is inoperable during penalties and the sweet spot cooldown
+            if (_state == PumpState.AirLocked || _state == PumpState.CoolingDown) return;
 
             // Rolling spam window: increment if within window, reset if outside
             if (Time.time - _lastPressTime <= spamWindowDuration)
@@ -413,11 +486,12 @@ namespace Submachina.Core
          *   chargeProgress < sweetSpotMin or > sweetSpotMax → Weak Pump (+weakPumpAir)
          *   State was Overshot (charge already hit 1.0 while held) → no air
          *
-         * Perfect Pump also resets the spam counter as a reward for good play.
+         * Perfect Pump also resets the spam counter as a reward for good play,
+         * and starts the sweet spot cooldown if perfectPumpCooldown > 0.
          */
         private void HandleRelease()
         {
-            if (_state == PumpState.AirLocked) return;
+            if (_state == PumpState.AirLocked || _state == PumpState.CoolingDown) return;
 
             // Released after overshoot — already vented, no reward
             if (_state == PumpState.Overshot)
@@ -435,15 +509,30 @@ namespace Submachina.Core
                 AddAir(perfectPumpAir);
                 _rapidPressCount = 0;   // good timing resets spam penalty window
                 OnPerfectPump?.Invoke();
+                _chargeProgress = 0f;
+
+                // A successful pump optionally locks the pump out for a breather
+                if (perfectPumpCooldown > 0f) StartCooldown();
+                else _state = PumpState.Idle;
+                return;
             }
-            else
-            {
-                AddAir(weakPumpAir);
-                OnWeakPump?.Invoke();
-            }
+
+            AddAir(weakPumpAir);
+            OnWeakPump?.Invoke();
 
             _chargeProgress = 0f;
             _state = PumpState.Idle;
+        }
+
+        /**
+         * Enters the CoolingDown state for perfectPumpCooldown seconds.
+         * The pump ignores all input until the timer expires and OnCooldownEnded fires.
+         */
+        private void StartCooldown()
+        {
+            _state = PumpState.CoolingDown;
+            _cooldownTimer = perfectPumpCooldown;
+            OnCooldownStarted?.Invoke();
         }
 
         /**
@@ -477,12 +566,21 @@ namespace Submachina.Core
         }
 
         /**
-         * Restores air by amount, clamped to maxAirPressure.
+         * Raises the max air capacity by amount, clamped to the original maxAirPressure ceiling.
+         * Called by O2 bubble pickups — the only way to push the capacity back up.
+         */
+        public void RestoreCapacity(float amount)
+        {
+            _currentMaxAir = Mathf.Min(maxAirPressure, _currentMaxAir + amount);
+        }
+
+        /**
+         * Restores air by amount, clamped to the current dynamic max capacity.
          * Resets the exhausted flag so OnAirExhausted can fire again next drain cycle.
          */
         public void AddAir(float amount)
         {
-            _currentAirPressure = Mathf.Min(maxAirPressure, _currentAirPressure + amount);
+            _currentAirPressure = Mathf.Min(_currentMaxAir, _currentAirPressure + amount);
             _airExhaustedFired = false;
             _pendingHealthDamage = 0f;
             WriteAtom();
@@ -591,6 +689,7 @@ namespace Submachina.Core
             string stateText = _state switch
             {
                 PumpState.AirLocked => $"⚠ AIR LOCK  ({_airLockTimer:F1}s remaining)",
+                PumpState.CoolingDown => $"⏳ COOLDOWN  ({_cooldownTimer:F1}s remaining)",
                 PumpState.Charging  =>
                     _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax
                         ? "★ SWEET SPOT — release now!"
@@ -600,6 +699,7 @@ namespace Submachina.Core
             };
 
             GUI.color = _state == PumpState.AirLocked ? Color.red
+                : _state == PumpState.CoolingDown ? new Color(0.45f, 0.7f, 1f)
                 : _state == PumpState.Overshot ? new Color(1f, 0.65f, 0f)
                 : (_state == PumpState.Charging &&
                    _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax)

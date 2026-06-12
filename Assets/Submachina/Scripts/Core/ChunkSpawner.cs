@@ -48,6 +48,10 @@ namespace Submachina.Core
         [Tooltip("The player's ManualBellowsPump — injected into enemies so O2 drops work on kill.")]
         [SerializeField] private ManualBellowsPump pump;
 
+        [FoldoutGroup("References")]
+        [Tooltip("O2 bubble prefab scattered passively throughout each chunk.")]
+        [SerializeField] private GameObject o2BubblePrefab;
+
         // =====================
         // World Settings
         // =====================
@@ -152,7 +156,7 @@ namespace Submachina.Core
             WorldChunk chunk = cellGO.AddComponent<WorldChunk>();
             chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, depth,
                 rockPrefab, resourcePrefab, resourceManager,
-                enemyPrefab, pump);
+                enemyPrefab, o2BubblePrefab, pump);
 
             _chunks[cell] = chunk;
         }
