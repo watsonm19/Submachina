@@ -1,21 +1,19 @@
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.InputSystem;
-using UnityAtoms.BaseAtoms;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
 {
     /**
-     * ManualBellowsPump — a standalone prototype of the submarine's manual air
-     * compression mechanic. Drop this on the submarine root to test immediately.
+     * ManualBellowsPump — the submarine's manual air compression mechanic.
      *
-     * The core loop: hold the pump button to build charge, release within the
-     * sweet spot for a Perfect Pump. Panic mashing the button triggers an Air Lock
+     * Handles the pump input loop only: hold to build charge, release within
+     * the sweet spot for a Perfect Pump. Panic mashing triggers an Air Lock
      * penalty. Holding too long vents the charge uselessly.
      *
-     * NOTE: This is currently decoupled from the existing O2System. Integration
-     * with the rest of the HUD/game loop is a separate step once the feel is dialled in.
+     * All air tank state (pressure, capacity, decay, health bleed) lives in
+     * O2System. This component calls O2System.AddAir() when a pump action succeeds.
      *
      * Intake pump handoff: when an O2PickupPump is assigned to IntakePump, manual
      * pumping is suppressed whenever an O2 pickup is in that pump's range or its
@@ -26,62 +24,20 @@ namespace Submachina.Core
      * falls back to Spacebar via Keyboard.current (New Input System).
      *
      * Wiring:
-     *   1. Add to the submarine root.
-     *   2. Optionally assign a PumpAction InputActionReference.
-     *   3. Subscribe to events (OnPerfectPump, OnAirLock, etc.) for audio/visual juice.
-     *   4. Set IsThrusting / IsMining from other systems to drive exertion decay.
+     *   1. Add to the submarine root alongside O2System.
+     *   2. Assign the scene O2System.
+     *   3. Optionally assign a PumpAction InputActionReference.
+     *   4. Subscribe to events (OnPerfectPump, OnAirLock, etc.) for audio/visual juice.
      */
     public class ManualBellowsPump : MonoBehaviour, ISweetSpotPump
     {
         // =====================
-        // Air Pressure
+        // References
         // =====================
 
-        [FoldoutGroup("Air Pressure")]
-        [Tooltip("Maximum air pressure the sub can hold.")]
-        [SerializeField, Min(1f)] private float maxAirPressure = 100f;
-
-        [FoldoutGroup("Air Pressure")]
-        [Tooltip("Air units lost per second at rest. " +
-                 "Example: 3 → fully drained in ~33 seconds.")]
-        [SerializeField, Min(0f)] private float baseDecayRate = 3f;
-
-        [FoldoutGroup("Air Pressure")]
-        [Tooltip("Multiplier on decay when IsThrusting or IsMining is true. " +
-                 "Example: 3× → drains 3× faster under exertion (~11 seconds from full).")]
-        [SerializeField, Min(1f)] private float exertionDecayMultiplier = 3f;
-
-        [FoldoutGroup("Air Pressure")]
-        [Tooltip("Extra flat air drained per second while mining, on top of the normal decay. " +
-                 "Example: 2 → mining drains 2 additional units/s regardless of base rate.")]
-        [SerializeField, Min(0f)] private float miningExtraDecayRate = 2f;
-
-        [FoldoutGroup("Air Pressure")]
-        [Tooltip("Rate at which max air capacity shrinks per second. " +
-                 "Only O2 bubble pickups can restore it. Example: 0.5 → max drops by 30 over a minute.")]
-        [SerializeField, Min(0f)] private float maxCapacityDecayRate = 0.5f;
-
-        [FoldoutGroup("Air Pressure")]
-        [Tooltip("Floor for max air capacity — it will never decay below this value.")]
-        [SerializeField, Min(1f)] private float minMaxCapacity = 20f;
-
-        // =====================
-        // Depth Scaling
-        // =====================
-
-        [FoldoutGroup("Depth Scaling")]
-        [Tooltip("CurrentDepth atom written by DepthTracker. Leave unassigned to disable depth scaling.")]
-        [SerializeField] private FloatVariable currentDepth;
-
-        [FoldoutGroup("Depth Scaling")]
-        [Tooltip("Extra decay added per metre of depth, as a fraction of the active decay rate. " +
-                 "Example: 0.005 → at 100m the multiplier is 1.5 (50% more drain).")]
-        [SerializeField, Min(0f)] private float drainPerMetre = 0.005f;
-
-        [FoldoutGroup("Depth Scaling")]
-        [Tooltip("Maximum multiplier allowed from depth scaling. " +
-                 "Example: 3.0 → decay can at most triple regardless of depth.")]
-        [SerializeField, Min(1f)] private float maxDepthMultiplier = 3f;
+        [FoldoutGroup("References")]
+        [Tooltip("The submarine's O2System — receives air when a pump action succeeds.")]
+        [SerializeField] private O2System o2System;
 
         // =====================
         // Charge Cycle
@@ -142,42 +98,18 @@ namespace Submachina.Core
         [SerializeField, Min(0.1f)] private float airLockDuration = 2.5f;
 
         // =====================
-        // Health Bleed
-        // =====================
-
-        [FoldoutGroup("Health Bleed")]
-        [Tooltip("Player Health component. Damaged while air is completely empty.")]
-        [SerializeField] private Health playerHealth;
-
-        [FoldoutGroup("Health Bleed")]
-        [Tooltip("Health drained per second while air is at zero. " +
-                 "Example: 8 → ~1 HP per 0.125s, similar to O2System bleed.")]
-        [SerializeField, Min(0f)] private float healthBleedRate = 8f;
-
-        // =====================
-        // Atoms
-        // =====================
-
-        [FoldoutGroup("Atoms")]
-        [Tooltip("Written each frame with current air pressure. " +
-                 "Assign the same CurrentO2 atom used by the HUD bar — no HUD changes needed.")]
-        [SerializeField] private FloatVariable currentO2Atom;
-
-        // =====================
         // Input
         // =====================
 
         [FoldoutGroup("Input")]
         [Tooltip("Master switch for the manual pump-to-generate-air mechanic. " +
-                 "With this off, the component still acts as the air tank " +
-                 "(storage, decay, health bleed, atom write).")]
+                 "With this off, the component is disabled entirely.")]
         [SerializeField] private bool enableManualPumping = true;
 
         [FoldoutGroup("Input")]
         [Tooltip("Optional O2PickupPump on the same sub. When assigned, manual pumping is " +
                  "suppressed while an O2 pickup is within the intake pump's range or its loop " +
-                 "is running — the intake pump owns the pump input near bubbles. " +
-                 "Leave empty to run the manual bellows standalone.")]
+                 "is running — the intake pump owns the pump input near bubbles.")]
         [SerializeField] private O2PickupPump intakePump;
 
         [FoldoutGroup("Input")]
@@ -209,10 +141,6 @@ namespace Submachina.Core
         public UnityEvent OnAirLock;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired once when air pressure first hits zero. Wire: critical alarm, screen vignette.")]
-        public UnityEvent OnAirExhausted;
-
-        [FoldoutGroup("Events")]
         [Tooltip("Fired when a Perfect Pump starts the cooldown. Wire: pressure-release SFX, dimmed pump UI.")]
         public UnityEvent OnCooldownStarted;
 
@@ -221,11 +149,8 @@ namespace Submachina.Core
         public UnityEvent OnCooldownEnded;
 
         // =====================
-        // Public Read-Only State
+        // Public Read-Only State (ISweetSpotPump)
         // =====================
-
-        /** Current air pressure — read by HUD, O2 integration, etc. */
-        public float CurrentAirPressure => _currentAirPressure;
 
         /** Current charge progress (0–1) — read by HUD charge meter. */
         public float ChargeProgress => _chargeProgress;
@@ -239,18 +164,6 @@ namespace Submachina.Core
         /** Seconds left on the sweet spot cooldown — read by HUD for a radial/timer display. */
         public float CooldownRemaining => IsOnCooldown ? Mathf.Max(0f, _cooldownTimer) : 0f;
 
-        /** Current active decay rate, accounting for exertion and mining bonus. Read by HUD for display. */
-        public float ActiveDecayRate =>
-            baseDecayRate * (IsMining || IsThrusting ? exertionDecayMultiplier : 1f)
-            + (IsMining ? miningExtraDecayRate : 0f);
-
-        /** Current max air capacity — shrinks over time, restored by O2 bubbles. */
-        public float MaxAir => _currentMaxAir;
-
-        /** The original max capacity set in the Inspector — used by O2Bar as the fixed denominator
-         *  so the bar visually shrinks as capacity degrades. */
-        public float OriginalMaxAir => maxAirPressure;
-
         /** Lower bound of the sweet spot window — read by BellowsBar to position markers. */
         public float SweetSpotMin => sweetSpotMin;
 
@@ -263,27 +176,9 @@ namespace Submachina.Core
             _chargeProgress >= sweetSpotMin &&
             _chargeProgress <= sweetSpotMax;
 
-        /** True while the intake pump owns the pump input — an O2 pickup is in its range
-         *  or its loop is running. Manual pumping is unavailable while this is true.
-         *  Read by HUD to grey out the bellows prompt. */
+        /** True while the intake pump owns the pump input — manual pumping is unavailable. */
         public bool IsBlockedByIntakePump =>
             intakePump != null && (intakePump.IsLooping || intakePump.IsPickupInRange);
-
-        // =====================
-        // Public Exertion Flags
-        // =====================
-
-        /**
-         * Set true by SubmarinePhysicsController while thrust input is active.
-         * Increases air drain to reflect the physical exertion of hard maneuvering.
-         */
-        public bool IsThrusting { get; set; }
-
-        /**
-         * Set true by MiningLaser while the laser is actively firing.
-         * Increases air drain to reflect the effort of operating the drill.
-         */
-        public bool IsMining { get; set; }
 
         // =====================
         // Debug (Inspector)
@@ -291,11 +186,6 @@ namespace Submachina.Core
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private string CurrentState => _state.ToString();
-
-        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private float DepthMultiplier => currentDepth != null
-            ? Mathf.Min(1f + currentDepth.Value * drainPerMetre, maxDepthMultiplier)
-            : 1f;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private int SpamCount => _rapidPressCount;
@@ -316,27 +206,16 @@ namespace Submachina.Core
 
         private enum PumpState { Idle, Charging, Overshot, AirLocked, CoolingDown }
 
-        private PumpState _state  = PumpState.Idle;
-        private float _currentAirPressure;
-        private float _currentMaxAir;
-        private float _chargeProgress;
-        private float _airLockTimer;
-        private float _cooldownTimer;
-        private float _lastPressTime   = -999f;
-        private int   _rapidPressCount = 0;
-        private bool  _airExhaustedFired;
-        private float _pendingHealthDamage;
+        private PumpState _state          = PumpState.Idle;
+        private float     _chargeProgress;
+        private float     _airLockTimer;
+        private float     _cooldownTimer;
+        private float     _lastPressTime  = -999f;
+        private int       _rapidPressCount;
 
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
-
-        private void Awake()
-        {
-            _currentMaxAir      = maxAirPressure;
-            _currentAirPressure = maxAirPressure;
-            WriteAtom();
-        }
 
         private void OnEnable()
         {
@@ -350,62 +229,8 @@ namespace Submachina.Core
 
         private void Update()
         {
-            DecayMaxCapacity();
-            DecayAirPressure();
             UpdateStateMachine();
             ProcessInput();
-            if (_currentAirPressure <= 0f) BleedHealth();
-        }
-
-        // -------------------------------------------------------
-        // Air Pressure
-        // -------------------------------------------------------
-
-        /**
-         * Slowly lowers the max air capacity each frame.
-         * If current pressure exceeds the new ceiling it is clamped down with it.
-         * Floored at minMaxCapacity so the sub always has some capacity remaining.
-         */
-        private void DecayMaxCapacity()
-        {
-            if (maxCapacityDecayRate <= 0f) return;
-
-            _currentMaxAir = Mathf.Max(minMaxCapacity, _currentMaxAir - maxCapacityDecayRate * Time.deltaTime);
-
-            // If current pressure is above the new ceiling, pull it down too
-            if (_currentAirPressure > _currentMaxAir)
-            {
-                _currentAirPressure = _currentMaxAir;
-                WriteAtom();
-            }
-        }
-
-        /**
-         * Drains air pressure each frame at the active decay rate.
-         * Decay accelerates under exertion (thrusting or mining).
-         * OnAirExhausted fires exactly once when pressure first reaches zero.
-         *
-         * Example: baseDecay=3, exertionMultiplier=3 → 9/s while thrusting (~11s from full).
-         */
-        private void DecayAirPressure()
-        {
-            if (_currentAirPressure <= 0f) return;
-
-            // Scale decay by depth — deeper = faster air consumption
-            // Example: drainPerMetre=0.005, depth=100 → multiplier=1.5 (50% more drain)
-            _currentAirPressure -= ActiveDecayRate * DepthMultiplier * Time.deltaTime;
-
-            if (_currentAirPressure <= 0f)
-            {
-                _currentAirPressure = 0f;
-                if (!_airExhaustedFired)
-                {
-                    _airExhaustedFired = true;
-                    OnAirExhausted?.Invoke();
-                }
-            }
-
-            WriteAtom();
         }
 
         // -------------------------------------------------------
@@ -462,7 +287,6 @@ namespace Submachina.Core
          */
         private void ProcessInput()
         {
-            // Tank-only mode — air comes exclusively from external sources (O2PickupPump)
             if (!enableManualPumping) return;
 
             // The intake pump owns the input near O2 bubbles — abandon any in-flight
@@ -511,7 +335,6 @@ namespace Submachina.Core
          */
         private void HandlePress()
         {
-            // Pump is inoperable during penalties and the sweet spot cooldown
             if (_state == PumpState.AirLocked || _state == PumpState.CoolingDown) return;
 
             // Rolling spam window: increment if within window, reset if outside
@@ -535,10 +358,10 @@ namespace Submachina.Core
         }
 
         /**
-         * Called on button release. Evaluates charge position and awards air:
+         * Called on button release. Evaluates charge position and calls O2System.AddAir:
          *
-         *   chargeProgress in [sweetSpotMin, sweetSpotMax] → Perfect Pump (+perfectPumpAir)
-         *   chargeProgress < sweetSpotMin or > sweetSpotMax → Weak Pump (+weakPumpAir)
+         *   chargeProgress in [sweetSpotMin, sweetSpotMax] → Perfect Pump (perfectPumpAir)
+         *   chargeProgress < sweetSpotMin or > sweetSpotMax → Weak Pump (weakPumpAir)
          *   State was Overshot (charge already hit 1.0 while held) → no air
          *
          * Perfect Pump also resets the spam counter as a reward for good play,
@@ -561,18 +384,17 @@ namespace Submachina.Core
 
             if (inSweetSpot)
             {
-                AddAir(perfectPumpAir);
+                o2System?.AddAir(perfectPumpAir);
                 _rapidPressCount = 0;   // good timing resets spam penalty window
                 OnPerfectPump?.Invoke();
                 _chargeProgress = 0f;
 
-                // A successful pump optionally locks the pump out for a breather
                 if (perfectPumpCooldown > 0f) StartCooldown();
                 else _state = PumpState.Idle;
                 return;
             }
 
-            AddAir(weakPumpAir);
+            o2System?.AddAir(weakPumpAir);
             OnWeakPump?.Invoke();
 
             _chargeProgress = 0f;
@@ -603,74 +425,13 @@ namespace Submachina.Core
             OnAirLock?.Invoke();
         }
 
-        /**
-         * Instantly drains a flat amount of air (e.g. from a dash or ability cost).
-         * Fires OnAirExhausted if the drain pushes pressure to zero for the first time.
-         */
-        public void ConsumeAir(float amount)
-        {
-            _currentAirPressure = Mathf.Max(0f, _currentAirPressure - amount);
-
-            if (_currentAirPressure <= 0f && !_airExhaustedFired)
-            {
-                _airExhaustedFired = true;
-                OnAirExhausted?.Invoke();
-            }
-
-            WriteAtom();
-        }
-
-        /**
-         * Raises the max air capacity by amount, clamped to the original maxAirPressure ceiling.
-         * Called by O2 bubble pickups — the only way to push the capacity back up.
-         */
-        public void RestoreCapacity(float amount)
-        {
-            _currentMaxAir = Mathf.Min(maxAirPressure, _currentMaxAir + amount);
-        }
-
-        /**
-         * Restores air by amount, clamped to the current dynamic max capacity.
-         * Resets the exhausted flag so OnAirExhausted can fire again next drain cycle.
-         */
-        public void AddAir(float amount)
-        {
-            _currentAirPressure = Mathf.Min(_currentMaxAir, _currentAirPressure + amount);
-            _airExhaustedFired = false;
-            _pendingHealthDamage = 0f;
-            WriteAtom();
-        }
-
-        /**
-         * Accumulates fractional health damage and applies it as whole integers
-         * to avoid calling TakeDamage every frame.
-         * Example: bleedRate=8, deltaTime=0.016 → 1 damage applied every ~8 frames.
-         */
-        private void BleedHealth()
-        {
-            if (playerHealth == null || playerHealth.IsDead) return;
-
-            _pendingHealthDamage += healthBleedRate * Time.deltaTime;
-            int damage = Mathf.FloorToInt(_pendingHealthDamage);
-            if (damage <= 0) return;
-
-            _pendingHealthDamage -= damage;
-            playerHealth.TakeDamage(damage);
-        }
-
-        private void WriteAtom()
-        {
-            if (currentO2Atom != null) currentO2Atom.Value = _currentAirPressure;
-        }
-
         // -------------------------------------------------------
         // Debug GUI
         // -------------------------------------------------------
 
         /**
-         * Draws a debug overlay in the top-left corner during Play mode.
-         * Shows air pressure, the charge meter with sweet spot highlighted,
-         * and the current state. Disable via showDebugGUI once real HUD is built.
+         * Draws a debug overlay showing air pressure (from O2System) and the charge
+         * meter with sweet spot highlighted. Disable via showDebugGUI once real HUD is built.
          */
         private void OnGUI()
         {
@@ -697,10 +458,14 @@ namespace Submachina.Core
             float bx = X + PAD;
             float bw = W - PAD * 2f;
 
-            // ── Air Pressure bar ─────────────────────────────
-            float airPct = _currentAirPressure / maxAirPressure;
+            // ── Air Pressure bar (from O2System) ─────────────────
+            float airPressure = o2System != null ? o2System.CurrentAirPressure : 0f;
+            float originalMax = o2System != null ? o2System.OriginalMaxAir     : 1f;
+            float airPct      = airPressure / originalMax;
+            float decayRate   = o2System != null ? o2System.ActiveDecayRate    : 0f;
+
             GUI.Label(new Rect(bx, y, bw, 16f),
-                $"Air:  {_currentAirPressure:F1} / {maxAirPressure:F0}   (decay {ActiveDecayRate:F1}/s)");
+                $"Air:  {airPressure:F1} / {originalMax:F0}   (decay {decayRate:F1}/s)");
             y += 17f;
 
             // Track
@@ -710,12 +475,12 @@ namespace Submachina.Core
             // Fill — green → yellow → red
             GUI.color = airPct > 0.5f
                 ? Color.Lerp(Color.yellow, Color.green, (airPct - 0.5f) * 2f)
-                : Color.Lerp(Color.red,    Color.yellow, airPct * 2f);
+                : Color.Lerp(Color.red, Color.yellow, airPct * 2f);
             GUI.DrawTexture(new Rect(bx, y, bw * airPct, BAR), Texture2D.whiteTexture);
             GUI.color = Color.white;
             y += BAR + PAD;
 
-            // ── Charge bar ───────────────────────────────────
+            // ── Charge bar ───────────────────────────────────────
             GUI.Label(new Rect(bx, y, bw, 16f),
                 $"Charge: {_chargeProgress:F2}   sweet spot [{sweetSpotMin:F2} – {sweetSpotMax:F2}]");
             y += 17f;
@@ -730,7 +495,7 @@ namespace Submachina.Core
                 new Rect(bx + bw * sweetSpotMin, y, bw * (sweetSpotMax - sweetSpotMin), BAR),
                 Texture2D.whiteTexture);
 
-            // Charge fill — colour reflects position relative to sweet spot
+            // Charge fill
             bool charged = _state == PumpState.Charging || _state == PumpState.Overshot;
             GUI.color = !charged ? new Color(0.35f, 0.35f, 0.35f)
                 : (_chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax)
@@ -740,22 +505,22 @@ namespace Submachina.Core
             GUI.color = Color.white;
             y += BAR + PAD;
 
-            // ── State label ──────────────────────────────────
+            // ── State label ──────────────────────────────────────
             string stateText = _state switch
             {
-                PumpState.AirLocked => $"⚠ AIR LOCK  ({_airLockTimer:F1}s remaining)",
+                PumpState.AirLocked   => $"⚠ AIR LOCK  ({_airLockTimer:F1}s remaining)",
                 PumpState.CoolingDown => $"⏳ COOLDOWN  ({_cooldownTimer:F1}s remaining)",
-                PumpState.Charging  =>
+                PumpState.Charging    =>
                     _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax
                         ? "★ SWEET SPOT — release now!"
                         : $"Charging... ({_chargeProgress:F2})",
-                PumpState.Overshot  => "OVERSHOT — vented, release to reset",
-                _                   => $"Idle  |  spam: {_rapidPressCount}/{spamPressLimit}  |  Space / pump button"
+                PumpState.Overshot    => "OVERSHOT — vented, release to reset",
+                _                     => $"Idle  |  spam: {_rapidPressCount}/{spamPressLimit}  |  Space / pump button"
             };
 
-            GUI.color = _state == PumpState.AirLocked ? Color.red
-                : _state == PumpState.CoolingDown ? new Color(0.45f, 0.7f, 1f)
-                : _state == PumpState.Overshot ? new Color(1f, 0.65f, 0f)
+            GUI.color = _state == PumpState.AirLocked   ? Color.red
+                : _state == PumpState.CoolingDown        ? new Color(0.45f, 0.7f, 1f)
+                : _state == PumpState.Overshot           ? new Color(1f, 0.65f, 0f)
                 : (_state == PumpState.Charging &&
                    _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax)
                     ? Color.green : Color.white;
@@ -778,19 +543,12 @@ namespace Submachina.Core
         }
 
         [FoldoutGroup("Debug")]
-        [Button("Drain 30 Air"), GUIColor(1f, 0.6f, 0.2f)]
-        private void DebugDrainAir()
+        [Button("Perfect Pump"), GUIColor(0.4f, 1f, 0.4f)]
+        private void DebugPerfectPump()
         {
             if (!Application.isPlaying) { Debug.Log("[BellowsPump] Play mode only."); return; }
-            _currentAirPressure = Mathf.Max(0f, _currentAirPressure - 30f);
-        }
-
-        [FoldoutGroup("Debug")]
-        [Button("Fill Air"), GUIColor(0.4f, 1f, 0.4f)]
-        private void DebugFillAir()
-        {
-            if (!Application.isPlaying) { Debug.Log("[BellowsPump] Play mode only."); return; }
-            AddAir(maxAirPressure);
+            o2System?.AddAir(perfectPumpAir);
+            OnPerfectPump?.Invoke();
         }
 #endif
     }

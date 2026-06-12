@@ -32,7 +32,7 @@ namespace Submachina.Core
         private ResourceManager _resourceManager;
         private GameObject _enemyPrefab;
         private GameObject _o2BubblePrefab;
-        private ManualBellowsPump _pump;
+        private O2System _o2System;
 
         // -------------------------------------------------------
         // Initialization
@@ -52,7 +52,7 @@ namespace Submachina.Core
          */
         public void Initialize(float topY, float height, float halfWidth, float depth,
             GameObject rockPrefab, GameObject resourcePrefab, ResourceManager resourceManager,
-            GameObject enemyPrefab, GameObject o2BubblePrefab, ManualBellowsPump pump)
+            GameObject enemyPrefab, GameObject o2BubblePrefab, O2System o2System)
         {
             _topY = topY;
             _height = height;
@@ -62,7 +62,7 @@ namespace Submachina.Core
             _resourceManager = resourceManager;
             _enemyPrefab = enemyPrefab;
             _o2BubblePrefab = o2BubblePrefab;
-            _pump = pump;
+            _o2System = o2System;
 
             GenerateObstacles(depth);
             GenerateResources(depth);
@@ -183,7 +183,7 @@ namespace Submachina.Core
                     Quaternion.identity, transform);
 
                 O2Pickup pickup = go.GetComponent<O2Pickup>();
-                if (pickup != null) pickup.SetPump(_pump);
+                if (pickup != null) pickup.SetO2System(_o2System);
             }
         }
 
@@ -212,7 +212,7 @@ namespace Submachina.Core
                 GameObject go = Instantiate(_enemyPrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
 
                 EnemyController enemy = go.GetComponent<EnemyController>();
-                if (enemy != null) enemy.SetPump(_pump);
+                if (enemy != null) enemy.SetO2System(_o2System);
             }
         }
 

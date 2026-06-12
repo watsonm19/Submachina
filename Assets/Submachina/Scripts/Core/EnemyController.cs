@@ -114,8 +114,8 @@ namespace Submachina.Core
         [SerializeField] private GameObject o2BubblePrefab;
 
         [FoldoutGroup("Death Drops")]
-        [Tooltip("Player's ManualBellowsPump — injected by WorldChunk when spawned via chunks.")]
-        [SerializeField] private ManualBellowsPump pump;
+        [Tooltip("The submarine's O2System — injected by WorldChunk when spawned via chunks.")]
+        [SerializeField] private O2System o2System;
 
         [FoldoutGroup("Death Drops")]
         [Tooltip("Number of O2 bubbles dropped on death.")]
@@ -384,7 +384,7 @@ namespace Submachina.Core
                     Quaternion.identity);
 
                 O2Pickup pickup = bubble.GetComponent<O2Pickup>();
-                if (pickup != null) pickup.SetPump(pump);
+                if (pickup != null) pickup.SetO2System(o2System);
             }
         }
 
@@ -393,9 +393,9 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /** Injected by WorldChunk when spawned procedurally via chunks. */
-        public void SetPump(ManualBellowsPump bellowsPump)
+        public void SetO2System(O2System system)
         {
-            pump = bellowsPump;
+            o2System = system;
         }
 
         // -------------------------------------------------------

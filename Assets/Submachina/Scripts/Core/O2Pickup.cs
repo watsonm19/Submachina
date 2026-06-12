@@ -13,7 +13,7 @@ namespace Submachina.Core
      *
      * Setup:
      *   - Attach to a prefab with a CircleCollider2D set as Is Trigger.
-     *   - Assign the scene's O2System in the slot below.
+     *   - Assign the scene's O2System (injected at runtime by WorldChunk).
      *   - Tag the player GameObject as "Player".
      */
     [RequireComponent(typeof(Collider2D))]
@@ -41,8 +41,8 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("References")]
-        [Tooltip("The player's ManualBellowsPump. Injected at spawn time by WorldChunk.")]
-        [SerializeField] private ManualBellowsPump pump;
+        [Tooltip("The submarine's O2System. Injected at spawn time by WorldChunk.")]
+        [SerializeField] private O2System o2System;
 
         // =====================
         // Events
@@ -93,13 +93,13 @@ namespace Submachina.Core
          */
         public void Collect(float airMultiplier = 1f)
         {
-            if (pump != null)
+            if (o2System != null)
             {
-                pump.RestoreCapacity(capacityRestoreAmount);
-                pump.AddAir(replenishAmount * airMultiplier);
+                o2System.RestoreCapacity(capacityRestoreAmount);
+                o2System.AddAir(replenishAmount * airMultiplier);
             }
             else
-                Debug.LogWarning("[O2Pickup] No ManualBellowsPump assigned — pickup consumed but air not restored.");
+                Debug.LogWarning("[O2Pickup] No O2System assigned — pickup consumed but air not restored.");
 
             // Notify listeners (VFX/SFX such as a ripple) before the object goes away.
             onCollected?.Invoke();
@@ -107,10 +107,10 @@ namespace Submachina.Core
             Destroy(gameObject);
         }
 
-        /** Assigns the pump at spawn time. Called by WorldChunk when spawning pickups. */
-        public void SetPump(ManualBellowsPump bellowsPump)
+        /** Assigns the O2System at spawn time. Called by WorldChunk when spawning pickups. */
+        public void SetO2System(O2System system)
         {
-            pump = bellowsPump;
+            o2System = system;
         }
     }
 }

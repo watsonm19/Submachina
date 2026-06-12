@@ -153,8 +153,8 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("References")]
-        [Tooltip("The submarine's ManualBellowsPump. IsThrusting is set while movement input is active to increase air drain.")]
-        [SerializeField] private ManualBellowsPump pump;
+        [Tooltip("The submarine's O2System. IsThrusting is set while movement input is active to increase air drain.")]
+        [SerializeField] private O2System o2System;
 
         // =====================
         // Input
@@ -248,7 +248,7 @@ namespace Submachina.Core
                 ? thrustAction.action.ReadValue<Vector2>()
                 : Vector2.zero;
 
-            if (pump != null) pump.IsThrusting = _thrustInput.sqrMagnitude > 0.01f;
+            if (o2System != null) o2System.IsThrusting = _thrustInput.sqrMagnitude > 0.01f;
         }
 
         private void LateUpdate()

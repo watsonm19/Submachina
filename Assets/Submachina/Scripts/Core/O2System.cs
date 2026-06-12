@@ -6,34 +6,62 @@ using Sirenix.OdinInspector;
 namespace Submachina.Core
 {
     /**
-     * Manages the player's oxygen supply — the core survival pressure of Submachina.
+     * O2System — the submarine's air tank and core survival pressure system.
      *
-     * O2 drains at a constant rate throughout the run. When it hits zero, it
-     * begins bleeding the player's health instead. Killing enemies drops O2
-     * bubbles that replenish the supply, tying combat directly to survival.
+     * Single source of truth for all air state. Owns:
+     *   - Current air pressure and dynamic max capacity
+     *   - Passive decay (scaled by exertion and depth)
+     *   - Max capacity degradation (only restored by O2 bubble pickups)
+     *   - Health bleed when air hits zero
+     *   - The CurrentO2 atom written to the HUD each frame
      *
-     * The current O2 value is written to a FloatVariable Atom each frame so
-     * the HUD bar and any other interested system can read it without coupling.
+     * External systems interact via:
+     *   - IsThrusting / IsMining flags (set by SubmarinePhysicsController and MiningLaser)
+     *   - AddAir / ConsumeAir / RestoreCapacity (called by O2Pickup and abilities)
      *
      * Setup:
-     *   - Add to the GameManager object alongside DepthTracker.
-     *   - Assign the CurrentO2 FloatVariable atom (create one in Data/).
-     *   - Assign the player's Health component so health bleed works.
+     *   - Add to the submarine root alongside ManualBellowsPump.
+     *   - Assign the CurrentO2 FloatVariable atom (shared with O2Bar).
+     *   - Assign the player's Health component for health bleed.
+     *   - Optionally assign the CurrentDepth atom from DepthTracker for depth scaling.
      */
     public class O2System : MonoBehaviour
     {
         // =====================
-        // O2 Settings
+        // Air Capacity
         // =====================
 
-        [FoldoutGroup("O2 Settings")]
-        [Tooltip("Maximum O2 the player can carry.")]
-        [SerializeField, Min(1f)] private float maxO2 = 100f;
+        [FoldoutGroup("Air Capacity")]
+        [Tooltip("Maximum air pressure the sub can hold. Also the starting amount.")]
+        [SerializeField, Min(1f)] private float maxAirPressure = 100f;
 
-        [FoldoutGroup("O2 Settings")]
-        [Tooltip("O2 units drained per second during normal play. " +
-                 "Example: 5 = empty tank in 20 seconds at full capacity.")]
-        [SerializeField, Min(0f)] private float drainRate = 5f;
+        [FoldoutGroup("Air Capacity")]
+        [Tooltip("Rate at which max capacity shrinks per second. " +
+                 "Only O2 bubble pickups can restore it. Example: 0.5 → max drops by 30 over a minute.")]
+        [SerializeField, Min(0f)] private float maxCapacityDecayRate = 0.5f;
+
+        [FoldoutGroup("Air Capacity")]
+        [Tooltip("Floor for max air capacity — never decays below this value.")]
+        [SerializeField, Min(1f)] private float minMaxCapacity = 20f;
+
+        // =====================
+        // Decay
+        // =====================
+
+        [FoldoutGroup("Decay")]
+        [Tooltip("Air units lost per second at rest. " +
+                 "Example: 3 → fully drained in ~33 seconds at full capacity.")]
+        [SerializeField, Min(0f)] private float baseDecayRate = 3f;
+
+        [FoldoutGroup("Decay")]
+        [Tooltip("Multiplier on decay when IsThrusting or IsMining is true. " +
+                 "Example: 3× → drains 3× faster under exertion (~11 seconds from full).")]
+        [SerializeField, Min(1f)] private float exertionDecayMultiplier = 3f;
+
+        [FoldoutGroup("Decay")]
+        [Tooltip("Extra flat air drained per second while mining, on top of exertion decay. " +
+                 "Example: 2 → mining drains 2 additional units/s regardless of base rate.")]
+        [SerializeField, Min(0f)] private float miningExtraDecayRate = 2f;
 
         // =====================
         // Depth Scaling
@@ -44,13 +72,13 @@ namespace Submachina.Core
         [SerializeField] private FloatVariable currentDepth;
 
         [FoldoutGroup("Depth Scaling")]
-        [Tooltip("Extra O2 drain added per metre of depth, as a fraction of drainRate. " +
+        [Tooltip("Extra decay added per metre of depth, as a fraction of the active decay rate. " +
                  "Example: 0.005 → at 100m the multiplier is 1.5 (50% more drain).")]
         [SerializeField, Min(0f)] private float drainPerMetre = 0.005f;
 
         [FoldoutGroup("Depth Scaling")]
-        [Tooltip("Maximum drain multiplier allowed from depth scaling. " +
-                 "Example: 3.0 → drain can at most triple regardless of depth.")]
+        [Tooltip("Maximum multiplier allowed from depth scaling. " +
+                 "Example: 3.0 → decay can at most triple regardless of depth.")]
         [SerializeField, Min(1f)] private float maxDepthMultiplier = 3f;
 
         // =====================
@@ -58,11 +86,11 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Health Bleed")]
-        [Tooltip("Health drained per second while O2 is empty.")]
+        [Tooltip("Health drained per second while air is at zero.")]
         [SerializeField, Min(0f)] private float healthBleedRate = 8f;
 
         [FoldoutGroup("Health Bleed")]
-        [Tooltip("The player's Health component. Receives damage when O2 runs out.")]
+        [Tooltip("Player Health component — damaged while air is empty.")]
         [SerializeField] private Health playerHealth;
 
         // =====================
@@ -70,8 +98,8 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Atoms")]
-        [Tooltip("Written each frame with the current O2 value (0 to maxO2). " +
-                 "Read by the HUD bar and any other system that cares about O2.")]
+        [Tooltip("Written each frame with the current air pressure. " +
+                 "Read by O2Bar and any other system that cares about O2.")]
         [SerializeField] private FloatVariable currentO2;
 
         // =====================
@@ -79,11 +107,11 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when O2 first reaches zero.")]
+        [Tooltip("Fired when air first reaches zero.")]
         public UnityEvent onO2Depleted;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when O2 is replenished from zero back to above zero.")]
+        [Tooltip("Fired when air is restored from zero back above zero.")]
         public UnityEvent onO2Restored;
 
         // =====================
@@ -91,13 +119,13 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private float O2Percent => maxO2 > 0 ? (_currentO2 / maxO2) * 100f : 0f;
+        private float AirPercent => maxAirPressure > 0 ? (_currentAirPressure / maxAirPressure) * 100f : 0f;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private bool IsBleeding => _isDepleted;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private float EffectiveDrainRate => drainRate * DepthMultiplier;
+        private float EffectiveDecayRate => ActiveDecayRate * DepthMultiplier;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private float DepthMultiplier => currentDepth != null
@@ -105,15 +133,39 @@ namespace Submachina.Core
             : 1f;
 
         // =====================
-        // State
+        // Exertion Flags
         // =====================
 
-        private float _currentO2;
-        private bool _isDepleted;
-        private float _pendingHealthDamage; // accumulates fractional damage to apply as whole numbers
+        /** Set true by SubmarinePhysicsController while thrust input is active. */
+        public bool IsThrusting { get; set; }
 
-        // Public accessor so O2Bar and other scripts can read max without an extra atom
-        public float MaxO2 => maxO2;
+        /** Set true by MiningLaser while the laser is actively firing. */
+        public bool IsMining { get; set; }
+
+        // =====================
+        // Public Properties
+        // =====================
+
+        public float CurrentAirPressure => _currentAirPressure;
+        public float MaxAir             => _currentMaxAir;
+        public float OriginalMaxAir     => maxAirPressure;
+
+        /**
+         * Active decay rate accounting for exertion state — read by HUD and debug displays.
+         * Example: baseDecay=3, exertionMult=3, mining → 3×3 + 2 = 11/s
+         */
+        public float ActiveDecayRate =>
+            baseDecayRate * (IsMining || IsThrusting ? exertionDecayMultiplier : 1f)
+            + (IsMining ? miningExtraDecayRate : 0f);
+
+        // =====================
+        // Internal State
+        // =====================
+
+        private float _currentAirPressure;
+        private float _currentMaxAir;
+        private bool  _isDepleted;
+        private float _pendingHealthDamage;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -121,14 +173,15 @@ namespace Submachina.Core
 
         private void Awake()
         {
-            // Start with a full tank
-            _currentO2 = maxO2;
+            _currentMaxAir      = maxAirPressure;
+            _currentAirPressure = maxAirPressure;
             WriteAtom();
         }
 
         private void Update()
         {
-            DrainO2();
+            DecayMaxCapacity();
+            DecayAirPressure();
             if (_isDepleted) BleedHealth();
         }
 
@@ -137,39 +190,59 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Drains O2 by drainRate * deltaTime each frame.
-         * Fires onO2Depleted the first time it hits zero and sets the bleed flag.
-         * Fires onO2Restored if O2 rises back above zero after being depleted.
+         * Slowly lowers the max air capacity each frame.
+         * If current pressure exceeds the new ceiling it is clamped down with it.
+         * Floored at minMaxCapacity so the sub always has some capacity remaining.
          */
-        private void DrainO2()
+        private void DecayMaxCapacity()
         {
+            if (maxCapacityDecayRate <= 0f) return;
+
+            _currentMaxAir = Mathf.Max(minMaxCapacity, _currentMaxAir - maxCapacityDecayRate * Time.deltaTime);
+
+            // Pull current pressure down if it exceeds the new ceiling
+            if (_currentAirPressure > _currentMaxAir)
+            {
+                _currentAirPressure = _currentMaxAir;
+                WriteAtom();
+            }
+        }
+
+        /**
+         * Drains air each frame at the exertion-scaled and depth-scaled rate.
+         * Fires onO2Depleted the first time air hits zero.
+         *
+         * Example: baseDecayRate=3, exertionMult=3, depth=100m, drainPerMetre=0.005
+         *   → at rest:       3 × 1.5  = 4.5/s
+         *   → while thrusting: 9 × 1.5 = 13.5/s
+         *   → while mining:   11 × 1.5 = 16.5/s  (9 + 2 extra, × depth mult)
+         */
+        private void DecayAirPressure()
+        {
+            if (_currentAirPressure <= 0f) return;
+
             bool wasDepletedBefore = _isDepleted;
 
-            // Scale drain by depth — deeper = faster O2 consumption
-            // Example: drainPerMetre=0.005, depth=100 → multiplier=1.5 (50% more drain)
-            _currentO2 = Mathf.Max(0f, _currentO2 - drainRate * DepthMultiplier * Time.deltaTime);
-            _isDepleted = _currentO2 <= 0f;
+            _currentAirPressure -= ActiveDecayRate * DepthMultiplier * Time.deltaTime;
+            _currentAirPressure  = Mathf.Max(0f, _currentAirPressure);
+            _isDepleted          = _currentAirPressure <= 0f;
 
             WriteAtom();
 
-            // Fire depletion event on first crossing
             if (!wasDepletedBefore && _isDepleted)
                 onO2Depleted?.Invoke();
         }
 
         /**
-         * Accumulates fractional health damage from the bleed rate and applies
-         * it as whole integer values to avoid calling TakeDamage every single frame.
-         *
-         * Example: bleedRate=8, deltaTime=0.016 → 0.128 damage/frame.
-         *   After ~8 frames (~0.125s), 1 whole point of damage is applied.
+         * Accumulates fractional health damage and applies it as whole integers
+         * to avoid calling TakeDamage every single frame.
+         * Example: bleedRate=8, deltaTime=0.016 → 1 HP applied every ~8 frames.
          */
         private void BleedHealth()
         {
             if (playerHealth == null || playerHealth.IsDead) return;
 
             _pendingHealthDamage += healthBleedRate * Time.deltaTime;
-
             int damage = Mathf.FloorToInt(_pendingHealthDamage);
             if (damage <= 0) return;
 
@@ -182,18 +255,16 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Adds O2, clamped to maxO2. Called by O2Pickup when the player
-         * collects a bubble dropped by an enemy.
-         *
-         * Also clears the depletion state and fires onO2Restored if coming
-         * back from empty, resetting the health bleed accumulator.
+         * Adds air, clamped to the current dynamic max capacity.
+         * Clears the depletion state and fires onO2Restored if returning from empty.
+         * Called by O2 bubble pickups and the manual pump.
          */
-        public void AddO2(float amount)
+        public void AddAir(float amount)
         {
             bool wasDepletedBefore = _isDepleted;
 
-            _currentO2 = Mathf.Min(maxO2, _currentO2 + amount);
-            _isDepleted = _currentO2 <= 0f;
+            _currentAirPressure  = Mathf.Min(_currentMaxAir, _currentAirPressure + amount);
+            _isDepleted          = _currentAirPressure <= 0f;
             _pendingHealthDamage = 0f;
 
             WriteAtom();
@@ -202,11 +273,37 @@ namespace Submachina.Core
                 onO2Restored?.Invoke();
         }
 
-        /** Instantly fills O2 to max. Useful for boss transitions or debug. */
-        public void RefillO2()
+        /**
+         * Instantly drains a flat amount of air (e.g. from CavitationBurst ability cost).
+         * Fires onO2Depleted if the drain pushes air to zero.
+         */
+        public void ConsumeAir(float amount)
         {
-            _currentO2 = maxO2;
-            _isDepleted = false;
+            bool wasDepletedBefore = _isDepleted;
+
+            _currentAirPressure = Mathf.Max(0f, _currentAirPressure - amount);
+            _isDepleted         = _currentAirPressure <= 0f;
+
+            WriteAtom();
+
+            if (!wasDepletedBefore && _isDepleted)
+                onO2Depleted?.Invoke();
+        }
+
+        /**
+         * Raises the max air capacity by amount, clamped to the original maxAirPressure ceiling.
+         * Called by O2 bubble pickups — the only way to push the capacity back up.
+         */
+        public void RestoreCapacity(float amount)
+        {
+            _currentMaxAir = Mathf.Min(maxAirPressure, _currentMaxAir + amount);
+        }
+
+        /** Instantly fills air to max. Useful for boss transitions or debug. */
+        public void RefillAir()
+        {
+            _currentAirPressure  = _currentMaxAir;
+            _isDepleted          = false;
             _pendingHealthDamage = 0f;
             WriteAtom();
         }
@@ -217,7 +314,7 @@ namespace Submachina.Core
 
         private void WriteAtom()
         {
-            if (currentO2 != null) currentO2.Value = _currentO2;
+            if (currentO2 != null) currentO2.Value = _currentAirPressure;
         }
 
         // -------------------------------------------------------
@@ -226,22 +323,19 @@ namespace Submachina.Core
 
 #if UNITY_EDITOR
         [FoldoutGroup("Debug")]
-        [Button("Drain All O2"), GUIColor(1f, 0.4f, 0.2f)]
+        [Button("Drain All Air"), GUIColor(1f, 0.4f, 0.2f)]
         private void DebugDrainAll()
         {
             if (!Application.isPlaying) { Debug.Log("[O2System] Play mode only."); return; }
-            _currentO2 = 0f;
-            _isDepleted = true;
-            WriteAtom();
-            onO2Depleted?.Invoke();
+            ConsumeAir(_currentAirPressure);
         }
 
         [FoldoutGroup("Debug")]
-        [Button("Refill O2"), GUIColor(0.4f, 0.8f, 1f)]
+        [Button("Refill Air"), GUIColor(0.4f, 0.8f, 1f)]
         private void DebugRefill()
         {
             if (!Application.isPlaying) { Debug.Log("[O2System] Play mode only."); return; }
-            RefillO2();
+            RefillAir();
         }
 #endif
     }

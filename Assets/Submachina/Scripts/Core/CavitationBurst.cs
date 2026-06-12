@@ -46,8 +46,8 @@ namespace Submachina.Core
         [SerializeField] private TurretAim turretAim;
 
         [FoldoutGroup("References")]
-        [Tooltip("The submarine's ManualBellowsPump — a flat air cost is consumed on each burst.")]
-        [SerializeField] private ManualBellowsPump pump;
+        [Tooltip("The submarine's O2System — a flat air cost is consumed on each burst.")]
+        [SerializeField] private O2System o2System;
 
         // =====================
         // Input
@@ -170,12 +170,12 @@ namespace Submachina.Core
         private void TryBurst()
         {
             if (_isBursting || Time.time < _cooldownEnd) return;
-            if (pump != null && pump.CurrentAirPressure <= 0f) return;
+            if (o2System != null && o2System.CurrentAirPressure <= 0f) return;
 
             Vector2 dir = GetBurstDirection();
             if (dir.sqrMagnitude < 0.001f) return;
 
-            if (pump != null) pump.ConsumeAir(airCost);
+            o2System?.ConsumeAir(airCost);
             StartCoroutine(BurstRoutine(dir.normalized));
         }
 
