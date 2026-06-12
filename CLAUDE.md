@@ -48,3 +48,7 @@
 - **Screenshot capture** — `Core.Editor.EditorCapture` (`Assets/Scripts/Core/Editor/EditorCapture.cs`). Renders a camera to a PNG via URP render requests in edit mode: deterministic, no Play-mode transition. **Prefer this over the `unity-synaptic` MCP screenshot tools**, which can return blank/cleared buffers.
   - To verify visual output yourself, call it from `run_csharp`: `Core.Editor.EditorCapture.Capture(Camera.main, 1920, 1080)` — returns the saved asset path (defaults to `Assets/Captures/`), then Read the PNG. Overload takes an explicit path: `Capture(cam, w, h, "Assets/Foo/shot.png")`.
   - Menu equivalents for the developer: `Tools/Custom/Capture Game Camera` and `Tools/Custom/Capture Scene View`.
+
+### --- Key Design Directives ---
+Follow best Unity coding and game design practices through composition, reusability, and abstraction of key concepts to reduce redundancy when appropriate. Help fill in the gaps or suggest alternatives where the ideas and planning can
+be improved.

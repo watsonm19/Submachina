@@ -11,7 +11,8 @@ namespace Submachina.Core
      * with this active, O2 bubbles can ONLY be collected through a well-timed pump.
      *
      * The core loop:
-     *   1. Press the pump button → the charge bar starts looping 0→1, wrapping
+     *   1. The loop starts automatically when a pickup enters range (autoActivateInRange),
+     *      or by pressing the pump button. The charge bar loops 0→1, wrapping
      *      back to zero each time it fills (unlike ManualBellowsPump's single charge).
      *   2. Press the button again to stop the pump — the outcome is graded:
      *        - Pickup within pickupRadius + sweet spot → full collect; air flows
@@ -38,6 +39,21 @@ namespace Submachina.Core
      */
     public class O2PickupPump : MonoBehaviour, ISweetSpotPump
     {
+        // =====================
+        // Activation
+        // =====================
+
+        [FoldoutGroup("Activation")]
+        [Tooltip("Automatically start the loop when an O2 pickup enters range, and stop it " +
+                 "(no reward, no penalty) when the last pickup leaves. The player still has " +
+                 "to press the pump input to time the collect. Disable for fully manual start/stop.")]
+        [SerializeField] private bool autoActivateInRange = true;
+
+        [FoldoutGroup("Activation")]
+        [Tooltip("Block manual loop starts while no pickup is in range — prevents pointless " +
+                 "loops that can only end in an Air Lock. Disable to allow free-running loops.")]
+        [SerializeField] private bool requirePickupToStart = true;
+
         // =====================
         // Pump Cycle
         // =====================
@@ -345,7 +361,11 @@ namespace Submachina.Core
 
             switch (_state)
             {
-                case PumpState.Idle:    StartLoop();   break;
+                // Idle: starting is gated on a pickup being in range (if required)
+                case PumpState.Idle when !requirePickupToStart || _pickupInRange:
+                    StartLoop();
+                    break;
+
                 case PumpState.Looping: TryCollect();  break;
                 // AirLocked: presses are ignored until the penalty expires
             }
@@ -366,6 +386,17 @@ namespace Submachina.Core
             _chargeProgress = 0f;
             _state = PumpState.Looping;
             OnLoopStarted?.Invoke();
+        }
+
+        /**
+         * Stops the loop with no reward and no penalty — used by auto-activation
+         * when the last pickup drifts out of range mid-loop.
+         */
+        private void StopLoop()
+        {
+            _chargeProgress = 0f;
+            _state = PumpState.Idle;
+            OnLoopStopped?.Invoke();
         }
 
         /**
@@ -471,6 +502,15 @@ namespace Submachina.Core
                 _pickupInRange = inRange;
                 if (inRange) OnPickupEnteredRange?.Invoke();
                 else         OnPickupLeftRange?.Invoke();
+            }
+
+            // Auto-activation: the loop runs itself whenever a pickup is nearby.
+            // Starts on range-enter (or after an Air Lock expires with one still close),
+            // stops quietly when the last pickup drifts away.
+            if (autoActivateInRange)
+            {
+                if      (_state == PumpState.Idle    &&  inRange) StartLoop();
+                else if (_state == PumpState.Looping && !inRange) StopLoop();
             }
 
             // Prompt transitions — only meaningful while idle

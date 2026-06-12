@@ -17,6 +17,11 @@ namespace Submachina.Core
      * NOTE: This is currently decoupled from the existing O2System. Integration
      * with the rest of the HUD/game loop is a separate step once the feel is dialled in.
      *
+     * Intake pump handoff: when an O2PickupPump is assigned to IntakePump, manual
+     * pumping is suppressed whenever an O2 pickup is in that pump's range or its
+     * loop is running — the two pumps share one input, and the intake pump wins
+     * near bubbles. With no intake pump assigned, this component runs standalone.
+     *
      * Input: Assign a Button InputAction to PumpAction. If left empty,
      * falls back to Spacebar via Keyboard.current (New Input System).
      *
@@ -146,9 +151,16 @@ namespace Submachina.Core
 
         [FoldoutGroup("Input")]
         [Tooltip("Master switch for the manual pump-to-generate-air mechanic. " +
-                 "Disabled by default now that O2PickupPump gates air intake — this component " +
-                 "still acts as the air tank (storage, decay, health bleed, atom write).")]
-        [SerializeField] private bool enableManualPumping;
+                 "With this off, the component still acts as the air tank " +
+                 "(storage, decay, health bleed, atom write).")]
+        [SerializeField] private bool enableManualPumping = true;
+
+        [FoldoutGroup("Input")]
+        [Tooltip("Optional O2PickupPump on the same sub. When assigned, manual pumping is " +
+                 "suppressed while an O2 pickup is within the intake pump's range or its loop " +
+                 "is running — the intake pump owns the pump input near bubbles. " +
+                 "Leave empty to run the manual bellows standalone.")]
+        [SerializeField] private O2PickupPump intakePump;
 
         [FoldoutGroup("Input")]
         [Tooltip("Button InputAction for the pump. If unassigned, Spacebar is used as a fallback.")]
@@ -232,6 +244,12 @@ namespace Submachina.Core
             _state == PumpState.Charging &&
             _chargeProgress >= sweetSpotMin &&
             _chargeProgress <= sweetSpotMax;
+
+        /** True while the intake pump owns the pump input — an O2 pickup is in its range
+         *  or its loop is running. Manual pumping is unavailable while this is true.
+         *  Read by HUD to grey out the bellows prompt. */
+        public bool IsBlockedByIntakePump =>
+            intakePump != null && (intakePump.IsLooping || intakePump.IsPickupInRange);
 
         // =====================
         // Public Exertion Flags
@@ -419,8 +437,20 @@ namespace Submachina.Core
          */
         private void ProcessInput()
         {
-            // Manual pumping retired in favour of O2PickupPump — tank-only mode
+            // Tank-only mode — air comes exclusively from external sources (O2PickupPump)
             if (!enableManualPumping) return;
+
+            // The intake pump owns the input near O2 bubbles — abandon any in-flight
+            // charge so the manual pump can't get stuck mid-cycle, then ignore presses
+            if (IsBlockedByIntakePump)
+            {
+                if (_state == PumpState.Charging || _state == PumpState.Overshot)
+                {
+                    _chargeProgress = 0f;
+                    _state = PumpState.Idle;
+                }
+                return;
+            }
 
             if (GetPumpPressed())  HandlePress();
             if (GetPumpReleased()) HandleRelease();
