@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.InputSystem;
 using Sirenix.OdinInspector;
 
@@ -93,6 +94,18 @@ namespace Submachina.Core
         [SerializeField] private Material arcMaterial;
 
         // =====================
+        // Events
+        // =====================
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired each time an attack swing is triggered (cooldown passed).")]
+        [SerializeField] private UnityEvent onAttack;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when the swing hits at least one enemy.")]
+        [SerializeField] private UnityEvent onDamageDealt;
+
+        // =====================
         // Debug
         // =====================
 
@@ -160,6 +173,7 @@ namespace Submachina.Core
             if (turretAim == null) return;
 
             _attackCooldownEnd = Time.time + attackCooldown;
+            onAttack?.Invoke();
 
             Vector2 origin = turretAim.transform.position;
             Vector2 aimDir = turretAim.AimDirection;
@@ -181,6 +195,8 @@ namespace Submachina.Core
                     hitCount++;
                 }
             }
+
+            if (hitCount > 0) onDamageDealt?.Invoke();
 
             Debug.Log($"[PlayerAttack] Swing hit {hitCount} enemies.");
             StartCoroutine(FlashArc());
