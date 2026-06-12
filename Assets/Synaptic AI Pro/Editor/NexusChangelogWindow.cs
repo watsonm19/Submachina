@@ -162,6 +162,49 @@ namespace SynapticPro
                 richText = true
             };
 
+            // v1.2.24
+            GUILayout.Label(L("v1.2.24 - Visual fixes (Rain / Bloom / Terrain) + menu reorganization", "v1.2.24 - 視覚系修正 (雨 / Bloom / Terrain) + メニュー整理"), sectionStyle);
+            GUILayout.Space(5);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+            GUILayout.Label(L("<b>★ Fix (ESC-0136): Rain particles flying sideways</b>", "<b>★ 修正 (ESC-0136): 雨パーティクルが横向きに飛ぶ問題</b>"), itemStyle);
+            GUILayout.Label(L("• CreateRainEffect now sets gravityModifier = 1 and rotates the Box shape by (90, 0, 0) so emission points downward by default", "• CreateRainEffect で gravityModifier = 1 を設定し、Box shape の rotation を (90, 0, 0) にして放出方向を真下に向けるよう修正"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ Fix (ESC-0136): Bloom / neon glow not appearing in URP</b>", "<b>★ 修正 (ESC-0136): URP で Bloom / ネオン発光が画面に出ない問題</b>"), itemStyle);
+            GUILayout.Label(L("• CreatePostProcessVolume previously added only a BoxCollider. Now reflection-based URP detection generates a full Volume + VolumeProfile + Bloom Override (threshold 0.9 / intensity 1.0 / scatter 0.7)", "• 旧 CreatePostProcessVolume は BoxCollider しか追加していなかった。URP 検出時に reflection で Volume + VolumeProfile + Bloom Override (threshold 0.9 / intensity 1.0 / scatter 0.7) まで自動生成"), itemStyle);
+            GUILayout.Label(L("• Non-URP projects still get the original BoxCollider only — no compile-time dependency on URP package", "• URP 非インストール環境は従来通り BoxCollider のみ生成 (URP パッケージへの compile-time 依存無し)"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ Fix (ESC-0144): CREATE_TERRAIN only made flat terrain</b>", "<b>★ 修正 (ESC-0144): CREATE_TERRAIN が平坦地形しか作れなかった問題</b>"), itemStyle);
+            GUILayout.Label(L("• Added terrainType parameter (flat / hills / mountains / valleys / plateau / noise) and Perlin fBm heightmap generation with seed / heightScale / noiseFrequency / noiseOctaves controls", "• terrainType パラメータ (flat / hills / mountains / valleys / plateau / noise) と Perlin fBm ハイトマップ生成を追加。seed / heightScale / noiseFrequency / noiseOctaves で調整可"), itemStyle);
+            GUILayout.Label(L("• Default remains \"flat\" for backward compatibility", "• デフォルトは互換性のため \"flat\" のまま"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ Fix (ESC-0149): HTTP \"operation\" message type silently dropped</b>", "<b>★ 修正 (ESC-0149): HTTP 経由の \"operation\" メッセージ型が silent drop されていた問題</b>"), itemStyle);
+            GUILayout.Label(L("• ProcessMessage switch now handles \"operation\" alongside \"unity_operation\" and \"tool_call\" so http-server.js requests work", "• ProcessMessage の switch に \"operation\" ケースを追加し、http-server.js のリクエストが正しく処理されるように"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ Fix (ESC-0112): console read count/limit mismatch in PlayMode</b>", "<b>★ 修正 (ESC-0112): PlayMode で console read の count/limit が一致しない問題</b>"), itemStyle);
+            GUILayout.Label(L("• LogEntries reflection now wrapped with StartGettingEntries / EndGettingEntries try/finally, so the realtime buffer + Unity internal log count are combined correctly", "• LogEntries の reflection 呼び出しを StartGettingEntries / EndGettingEntries で囲んで realtime バッファと Unity 内部ログ件数を正しく合算"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ Added (ESC-0113): External AI Reconnect via HTTP /reconnect</b>", "<b>★ 追加 (ESC-0113): HTTP /reconnect エンドポイントで外部 AI から再接続可能に</b>"), itemStyle);
+            GUILayout.Label(L("• POST http://localhost:8086/reconnect now dispatches a system_command to invoke QuickReconnect on the Unity side. CLINE etc. can trigger reconnect without touching Unity", "• POST http://localhost:8086/reconnect が system_command を発行し Unity 側で QuickReconnect を呼ぶ。CLINE 等から Unity を触らずに再接続実行可"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ UX (ESC-0162): Notice added near Complete MCP Setup button</b>", "<b>★ UX (ESC-0162): Complete MCP Setup ボタン付近に注意書きを追加</b>"), itemStyle);
+            GUILayout.Label(L("• HelpBox above the button explicitly tells Synaptic Code users to use the HTTP Server tab instead. The two entry points sit adjacent and the misclick was common", "• ボタン上部に HelpBox を追加し、Synaptic Code 利用時は HTTP Server タブを使うよう明示。隣接タブの誤クリックが多発していたため"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ UX: Tools/Synaptic Pro menu consolidated 17 → 5 items</b>", "<b>★ UX: Tools/Synaptic Pro メニューを 17 → 5 項目に集約</b>"), itemStyle);
+            GUILayout.Label(L("• Kept on top: Synaptic Setup, AI Reconnect (No Dialog), Join Discord, About, What's New", "• トップに残したのは: Synaptic Setup / AI Reconnect (No Dialog) / Join Discord / About / What's New"), itemStyle);
+            GUILayout.Label(L("• Moved into Synaptic Setup → Diagnostics tab: AI Connection Status, AI Reconnect, Auto Reconnect toggle, MCP Server Start/Stop (advanced), Show Port Mapping, Detect Cinemachine Version, Update Shaders for Pipeline, Reset Changelog Preference", "• Synaptic Setup → Diagnostics タブに統合: AI Connection Status / AI Reconnect / Auto Reconnect トグル / MCP Server Start/Stop (高度機能) / Show Port Mapping / Detect Cinemachine Version / Update Shaders for Pipeline / Reset Changelog Preference"), itemStyle);
+            GUILayout.Label(L("• External scripts that called the removed menu paths via unity_execute_menu_item must update — the underlying methods are still public, only the [MenuItem] attribute was removed", "• unity_execute_menu_item で旧メニューパスを叩いていた外部スクリプトは要更新。メソッド本体は public のまま残り [MenuItem] 属性だけ外している"), itemStyle);
+
+            EditorGUILayout.EndVertical();
+            GUILayout.Space(15);
+
             // v1.2.23
             GUILayout.Label(L("v1.2.23 - run_csharp result capture + HTTP server stability", "v1.2.23 - run_csharp 戻り値捕捉 + HTTP サーバー安定化"), sectionStyle);
             GUILayout.Space(5);
@@ -735,7 +778,8 @@ namespace SynapticPro
         /// <summary>
         /// Reset the "don't show" preference (for testing)
         /// </summary>
-        [MenuItem("Tools/Synaptic Pro/Reset Changelog Preference", false, 101)]
+        // v1.2.24: Diagnostics タブに統合、メニューからは除外
+        // [MenuItem("Tools/Synaptic Pro/Reset Changelog Preference", false, 101)]
         public static void ResetPreference()
         {
             EditorPrefs.DeleteKey(PREF_KEY_LAST_VERSION);

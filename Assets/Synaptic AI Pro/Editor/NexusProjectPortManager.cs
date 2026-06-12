@@ -390,7 +390,8 @@ namespace SynapticPro
         /// <summary>
         /// Display mapping information (for debugging)
         /// </summary>
-        [MenuItem("Tools/Synaptic Pro/Show Port Mapping")]
+        // v1.2.24: Diagnostics タブに統合、メニューからは除外
+        // [MenuItem("Tools/Synaptic Pro/Show Port Mapping")]
         public static void ShowPortMapping()
         {
             var mapping = LoadMapping();

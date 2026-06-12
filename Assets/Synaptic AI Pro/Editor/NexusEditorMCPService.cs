@@ -739,6 +739,7 @@ namespace SynapticPro
             {
                 case "unity_operation":
                 case "tool_call":
+                case "operation": // ESC-0149: http-server.js sends "operation" — earlier switch dropped it as "Unknown message type"
                     ExecuteUnityOperation(message);
                     break;
                     
@@ -750,7 +751,11 @@ namespace SynapticPro
                     SynLog.Warn($"[Nexus Editor MCP] {message.content}");
                     OnMessageReceived?.Invoke($"❗ {message.content}");
                     break;
-                    
+
+                case "system_command":
+                    HandleSystemCommand(message);
+                    break;
+
                 default:
                     SynLog.Info($"[Nexus Editor MCP] Unknown message type: {message.type}");
                     break;
@@ -1714,7 +1719,9 @@ namespace SynapticPro
         /// Persisted — MCP will auto-connect on future editor sessions.
         /// HTTP server client is independent of this toggle.
         /// </summary>
-        [MenuItem("Tools/Synaptic Pro/MCP Server: Start", false, 10)]
+        // v1.2.24: トップメニューを Diagnostics タブに集約。public は維持して
+        // Setup Window のボタンから呼び出す。MenuItem 復活が必要なら属性 uncomment.
+        // [MenuItem("Tools/Synaptic Pro/MCP Server: Start", false, 10)]
         public static void StartMCP()
         {
             enableMCP = true;
@@ -1733,7 +1740,7 @@ namespace SynapticPro
             }
         }
 
-        [MenuItem("Tools/Synaptic Pro/MCP Server: Start", true)]
+        // [MenuItem("Tools/Synaptic Pro/MCP Server: Start", true)]
         public static bool StartMCPValidate()
         {
             enableMCP = EditorPrefs.GetBool(mcpEnabledKey, true);
@@ -1744,7 +1751,7 @@ namespace SynapticPro
         /// Stop MCP: disconnect and skip all future auto-connect/reconnect attempts.
         /// Persisted across editor sessions. HTTP server client is unaffected.
         /// </summary>
-        [MenuItem("Tools/Synaptic Pro/MCP Server: Stop", false, 10)]
+        // [MenuItem("Tools/Synaptic Pro/MCP Server: Stop", false, 10)]
         public static void StopMCP()
         {
             enableMCP = false;
@@ -1754,7 +1761,7 @@ namespace SynapticPro
             DisconnectFromMCPServer();
         }
 
-        [MenuItem("Tools/Synaptic Pro/MCP Server: Stop", true)]
+        // [MenuItem("Tools/Synaptic Pro/MCP Server: Stop", true)]
         public static bool StopMCPValidate()
         {
             enableMCP = EditorPrefs.GetBool(mcpEnabledKey, true);
@@ -1764,7 +1771,7 @@ namespace SynapticPro
         /// <summary>
         /// MCP Service status for debugging
         /// </summary>
-        [MenuItem("Tools/Synaptic Pro/AI Connection Status", false, 11)]
+        // [MenuItem("Tools/Synaptic Pro/AI Connection Status", false, 11)]
         public static void ShowMCPStatus()
         {
             string connectionStatus = IsConnected ? "✅ Connected" : "❌ Disconnected";
@@ -1802,7 +1809,9 @@ If you have issues, try 'AI Reconnect'.";
         /// <summary>
         /// Manual reconnect for debugging
         /// </summary>
-        [MenuItem("Tools/Synaptic Pro/AI Reconnect", false, 12)]
+        // v1.2.24: Dialog 版は QuickReconnect (No Dialog) と機能重複なのでメニュー外し。
+        // public 維持で Setup Window Diagnostics タブから呼び出し可。
+        // [MenuItem("Tools/Synaptic Pro/AI Reconnect", false, 12)]
         public static void ManualReconnect()
         {
             SynLog.Info("[Nexus Editor MCP] Manual reconnect requested");
@@ -1833,19 +1842,42 @@ If you have issues, try 'AI Reconnect'.";
         }
         
         /// <summary>
-        /// Simple reconnect button (for toolbar)
+        /// Dialog-less reconnect — usable from menu, HTTP /reconnect, and unity_reconnect MCP tool.
         /// </summary>
-        // [MenuItem("Tools/🔗 AI Reconnect", false, 0)]
+        [MenuItem("Tools/Synaptic Pro/AI Reconnect (No Dialog)", false, 11)]
         public static void QuickReconnect()
         {
             SynLog.Info("[Nexus Editor MCP] Quick reconnect requested");
             ReconnectToMCPServer();
         }
+
+        /// <summary>
+        /// Dispatch for system_command messages from the bridge (HTTP /reconnect, unity_reconnect tool, etc.)
+        /// </summary>
+        private static void HandleSystemCommand(MCPMessage message)
+        {
+            string cmd = message.command ?? message.content ?? "";
+            SynLog.Info($"[Nexus Editor MCP] System command: {cmd}");
+
+            switch (cmd)
+            {
+                case "reconnect":
+                case "quick_reconnect":
+                    EditorApplication.delayCall += () => QuickReconnect();
+                    _ = SendOperationResult(message.id, true, "Reconnect scheduled");
+                    break;
+
+                default:
+                    _ = SendOperationResult(message.id, false, $"Unknown system command: {cmd}");
+                    break;
+            }
+        }
         
         /// <summary>
         /// Enable auto-reconnect (shown when currently OFF)
         /// </summary>
-        [MenuItem("Tools/Synaptic Pro/Auto Reconnect: Enable", false, 13)]
+        // v1.2.24: Diagnostics タブのトグルに統合。メニューからは除外。
+        // [MenuItem("Tools/Synaptic Pro/Auto Reconnect: Enable", false, 13)]
         public static void EnableAutoReconnect()
         {
             enableAutoReconnect = true;
@@ -1853,7 +1885,7 @@ If you have issues, try 'AI Reconnect'.";
             SynLog.Info("[Nexus Editor MCP] Auto-reconnect: enabled");
         }
 
-        [MenuItem("Tools/Synaptic Pro/Auto Reconnect: Enable", true)]
+        // [MenuItem("Tools/Synaptic Pro/Auto Reconnect: Enable", true)]
         public static bool EnableAutoReconnectValidate()
         {
             // Load from EditorPrefs to ensure correct state
@@ -1865,7 +1897,7 @@ If you have issues, try 'AI Reconnect'.";
         /// <summary>
         /// Disable auto-reconnect (shown when currently ON)
         /// </summary>
-        [MenuItem("Tools/Synaptic Pro/Auto Reconnect: Disable", false, 13)]
+        // [MenuItem("Tools/Synaptic Pro/Auto Reconnect: Disable", false, 13)]
         public static void DisableAutoReconnect()
         {
             enableAutoReconnect = false;
@@ -1873,7 +1905,7 @@ If you have issues, try 'AI Reconnect'.";
             SynLog.Info("[Nexus Editor MCP] Auto-reconnect: disabled");
         }
 
-        [MenuItem("Tools/Synaptic Pro/Auto Reconnect: Disable", true)]
+        // [MenuItem("Tools/Synaptic Pro/Auto Reconnect: Disable", true)]
         public static bool DisableAutoReconnectValidate()
         {
             // Load from EditorPrefs to ensure correct state

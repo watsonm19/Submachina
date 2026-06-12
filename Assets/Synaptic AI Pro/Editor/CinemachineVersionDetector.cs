@@ -28,7 +28,8 @@ namespace SynapticPro
             DetectAndSetSymbols();
         }
 
-        [MenuItem("Tools/Synaptic Pro/Detect Cinemachine Version")]
+        // v1.2.24: Diagnostics タブに統合、メニューからは除外
+        // [MenuItem("Tools/Synaptic Pro/Detect Cinemachine Version")]
         public static void DetectAndSetSymbols()
         {
             var cinemachineVersion = GetCinemachineVersion();

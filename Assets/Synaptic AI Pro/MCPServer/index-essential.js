@@ -34,6 +34,51 @@ let desktopAppSocket = null; // デスクトップアプリ接続用
 const BridgeHandler = require('./bridge-handler');
 const bridgeHandler = new BridgeHandler();
 
+// =====================================================
+// Tool Registry (for list_categories / list_tools / search_tools / execute メタツール)
+// =====================================================
+let TOOL_REGISTRY_RAW = {};
+let CATEGORIES = {};
+let ALL_TOOLS = {};
+
+function loadToolRegistry() {
+    try {
+        const registryPath = path.join(__dirname, 'tool-registry.json');
+        const data = fs.readFileSync(registryPath, 'utf8');
+        TOOL_REGISTRY_RAW = JSON.parse(data);
+
+        CATEGORIES = {};
+        ALL_TOOLS = {};
+
+        for (const [toolName, toolData] of Object.entries(TOOL_REGISTRY_RAW)) {
+            const category = (toolData.category || 'Other').toLowerCase();
+            if (!CATEGORIES[category]) {
+                CATEGORIES[category] = {
+                    description: `${toolData.category} tools`,
+                    tools: {}
+                };
+            }
+            const cleanName = toolName.replace(/^unity_/, '');
+            CATEGORIES[category].tools[cleanName] = {
+                fullName: toolName,
+                title: toolData.title,
+                description: toolData.description
+            };
+            ALL_TOOLS[cleanName] = {
+                fullName: toolName,
+                category: category,
+                title: toolData.title,
+                description: toolData.description
+            };
+        }
+
+        console.error(`[Essential] Loaded ${Object.keys(TOOL_REGISTRY_RAW).length} tools from tool-registry.json`);
+    } catch (err) {
+        console.error('[Essential] Failed to load tool-registry.json:', err.message);
+    }
+}
+loadToolRegistry();
+
 // Unity WebSocket接続の管理（関数として定義）
 function setupWebSocketHandlers() {
     if (!wss) return;
@@ -1684,22 +1729,7 @@ async function setupMCPServer() {
         };
     });
 
-    mcpServer.registerTool('unity_find_missing_references', {
-        title: 'Find Missing References',
-        description: 'Find GameObjects with missing script references or components',
-        inputSchema: z.object({
-            searchScope: z.enum(['scene', 'project', 'both']).optional().default('scene'),
-            fixAutomatically: z.boolean().optional().default(false)
-        })
-    }, async (params) => {
-        const result = await sendUnityCommand('find_missing_references', params);
-        return {
-            content: [{
-                type: 'text',
-                text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-            }]
-        };
-    });
+    // (duplicate unity_find_missing_references removed — the richer definition above at L1603 wins)
 
     mcpServer.registerTool('unity_create_animator_controller', {
         title: 'Create Animator Controller',
@@ -1959,6 +1989,297 @@ async function setupMCPServer() {
         };
     });
 
+    // ===== 追加 essential ツール (頻出だが既存にない) =====
+    mcpServer.registerTool('unity_execute_menu_item', {
+        title: 'Execute Menu Item',
+        description: 'Execute any Unity Editor menu item by its path (e.g. "Edit/Play", "Assets/Refresh", "Window/General/Console").',
+        inputSchema: z.object({
+            menuPath: z.string().describe('Full menu path (e.g. "Assets/Refresh")')
+        })
+    }, async (params) => {
+        const result = await sendUnityCommand('execute_menu_item', params);
+        return {
+            content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+        };
+    });
+
+    mcpServer.registerTool('unity_get_gameobject_details', {
+        title: 'Get GameObject Details',
+        description: 'Get detailed info about a specific GameObject including components and serialized fields.',
+        inputSchema: z.object({
+            objectName: z.string().describe('GameObject name in the active scene')
+        })
+    }, async (params) => {
+        const result = await sendUnityCommand('get_gameobject_details', params);
+        return {
+            content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+        };
+    });
+
+    mcpServer.registerTool('unity_create_script', {
+        title: 'Create C# Script',
+        description: 'Create a new C# script asset in the project. Triggers compile after save.',
+        inputSchema: z.object({
+            name: z.string().describe('Script class/file name (no .cs)'),
+            path: z.string().optional().describe('Folder path under Assets (default: Assets/Scripts)'),
+            template: z.string().optional().describe('Template name (e.g. "MonoBehaviour")'),
+            content: z.string().optional().describe('Full file content; overrides template if given')
+        })
+    }, async (params) => {
+        const result = await sendUnityCommand('create_script', params);
+        return {
+            content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+        };
+    });
+
+    mcpServer.registerTool('unity_read_script', {
+        title: 'Read Script Content',
+        description: 'Read the full source of a Unity C# script. Provide scriptPath or fileName.',
+        inputSchema: z.object({
+            scriptPath: z.string().optional().describe('Asset path to .cs file (e.g. "Assets/Scripts/Player.cs")'),
+            fileName: z.string().optional().describe('Script file name (Player.cs) to search for')
+        })
+    }, async (params) => {
+        const result = await sendUnityCommand('read_script', params);
+        return {
+            content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+        };
+    });
+
+    // ===== Essential 追加分: Scene/Material/Asset の基本操作で頻出するもの =====
+    mcpServer.registerTool('unity_manage_scene', {
+        title: 'Manage Scene',
+        description: 'Scene management: save current scene, load from path, or create a new empty scene.',
+        inputSchema: z.object({
+            operation: z.enum(['save', 'load', 'new']).describe('save / load / new'),
+            path: z.string().optional().describe('Scene file path (e.g. "Assets/Scenes/Main.unity"). Required for save/load.')
+        })
+    }, async (params) => {
+        const result = await sendUnityCommand('manage_scene', params);
+        return {
+            content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+        };
+    });
+
+    mcpServer.registerTool('unity_set_material_property', {
+        title: 'Set Material Property',
+        description: 'Modify a single property on an existing material (color/float/vector/texture). Faster than recreating the material.',
+        inputSchema: z.object({
+            materialPath: z.string().describe('Path to the material asset (e.g. "Assets/Materials/Water.mat")'),
+            propertyName: z.string().describe('Shader property name (e.g. "_BaseColor", "_Smoothness")'),
+            propertyType: z.enum(['float', 'color', 'vector', 'texture']).describe('Property type'),
+            value: z.string().describe('Float: "1.5" / Color: "#FF0000" or "1,0.5,0,1" / Vector: "1,2,3,4" / Texture: asset path')
+        })
+    }, async (params) => {
+        const result = await sendUnityCommand('set_material_property', params);
+        return {
+            content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+        };
+    });
+
+    mcpServer.registerTool('unity_delete_asset', {
+        title: 'Delete Asset',
+        description: 'Delete an asset from the project (defaults to moving to trash).',
+        inputSchema: z.object({
+            assetPath: z.string().describe('Asset path to delete (e.g. "Assets/Prefabs/Old.prefab")'),
+            moveToTrash: z.boolean().optional().default(true).describe('Move to trash instead of permanent delete')
+        })
+    }, async (params) => {
+        const result = await sendUnityCommand('delete_asset', params);
+        return {
+            content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+        };
+    });
+
+    mcpServer.registerTool('unity_rename_asset', {
+        title: 'Rename Asset',
+        description: 'Rename an asset file in place.',
+        inputSchema: z.object({
+            oldPath: z.string().describe('Current asset path'),
+            newName: z.string().describe('New name (without folder; same folder is kept)')
+        })
+    }, async (params) => {
+        const result = await sendUnityCommand('rename_asset', params);
+        return {
+            content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+        };
+    });
+
+    // ===== Meta-tools (SuperSave 互換): list_categories / list_tools / search_tools / execute / run_csharp =====
+    mcpServer.registerTool('list_categories', {
+        title: 'List Tool Categories',
+        description: 'List all available Unity tool categories from the full 355+ tool registry. Use this to discover tools beyond the Essential set.',
+        inputSchema: z.object({})
+    }, async () => {
+        const categories = Object.entries(CATEGORIES).map(([name, data]) => ({
+            name, description: data.description, toolCount: Object.keys(data.tools).length
+        }));
+        const totalTools = Object.keys(TOOL_REGISTRY_RAW).length;
+        return {
+            content: [{
+                type: 'text',
+                text: `Available Categories (${categories.length} categories, ${totalTools} total tools):\n\n` +
+                    categories.map(c => `• ${c.name} (${c.toolCount} tools)\n  ${c.description}`).join('\n\n') +
+                    '\n\nUse list_tools(category) to see tools, or execute(tool, params) to run.'
+            }]
+        };
+    });
+
+    mcpServer.registerTool('list_tools', {
+        title: 'List Tools in Category',
+        description: 'List all tools in a specific category with titles and descriptions.',
+        inputSchema: z.object({
+            category: z.string().describe('Category name (e.g., "gameobject", "material", "lighting")')
+        })
+    }, async (params) => {
+        const category = params.category.toLowerCase();
+        if (!CATEGORIES[category]) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Unknown category: "${category}"\n\nAvailable categories: ${Object.keys(CATEGORIES).join(', ')}`
+                }]
+            };
+        }
+        const categoryData = CATEGORIES[category];
+        const tools = Object.entries(categoryData.tools).map(([name, data]) =>
+            `• ${name} (${data.fullName})\n  ${data.title}\n  ${data.description}`);
+        return {
+            content: [{
+                type: 'text',
+                text: `Category: ${category}\n${categoryData.description}\n\nTools (${tools.length}):\n\n${tools.join('\n\n')}\n\nUse execute(tool_name, params) to run a tool.`
+            }]
+        };
+    });
+
+    mcpServer.registerTool('search_tools', {
+        title: 'Search Tools',
+        description: 'Search across all 355+ tools by keyword in name/title/description.',
+        inputSchema: z.object({
+            query: z.string().describe('Search keyword (e.g., "shader", "input", "weather")'),
+            category: z.string().optional().describe('Optional: filter by category'),
+            limit: z.number().optional().default(20).describe('Max results (default: 20)')
+        })
+    }, async (params) => {
+        const query = (params.query || '').toLowerCase();
+        const categoryFilter = params.category?.toLowerCase();
+        const limit = params.limit || 20;
+        const results = [];
+        for (const [toolName, toolData] of Object.entries(TOOL_REGISTRY_RAW)) {
+            const title = toolData.title || toolName;
+            const description = toolData.description || '';
+            const category = (toolData.category || 'Other').toLowerCase();
+            if (categoryFilter && category !== categoryFilter) continue;
+            if (!query) {
+                results.push({ name: toolName, title, description, category: toolData.category, score: 0 });
+                if (results.length >= limit) break;
+                continue;
+            }
+            let score = 0;
+            if (toolName.toLowerCase().includes(query)) score += 100;
+            if (title.toLowerCase().includes(query)) score += 80;
+            if (description.toLowerCase().includes(query)) score += 40;
+            if (score > 0) results.push({ name: toolName, title, description, category: toolData.category, score });
+        }
+        const sorted = results.sort((a, b) => b.score - a.score).slice(0, limit);
+        if (sorted.length === 0) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: `No tools found for query: "${params.query}"\n\nTry different keywords or use list_categories.`
+                }]
+            };
+        }
+        const toolList = sorted.map(t => `• ${t.name}\n  ${t.title} [${t.category}]\n  ${t.description.slice(0, 100)}${t.description.length > 100 ? '...' : ''}`);
+        return {
+            content: [{
+                type: 'text',
+                text: `Found ${sorted.length} tools for "${params.query}":\n\n${toolList.join('\n\n')}\n\nUse execute(tool_name, params) to run a tool.`
+            }]
+        };
+    });
+
+    mcpServer.registerTool('execute', {
+        title: 'Execute Any Tool',
+        description: 'Execute any of the 355+ Unity tools by name. Essential tools are directly registered (unity_*); use this fallback for anything else. Tool name accepts both "unity_create_terrain" and "create_terrain".',
+        inputSchema: z.object({
+            tool: z.string().describe('Tool name (e.g., "create_terrain", "unity_setup_volumetric_fog")'),
+            params: z.any().optional().describe('Parameters as JSON object')
+        })
+    }, async (params) => {
+        const toolName = params.tool;
+        let toolParams = params.params || {};
+        if (typeof toolParams === 'string') {
+            try { toolParams = JSON.parse(toolParams); }
+            catch (e) {
+                const m = toolParams.match(/^(\w+)=(.+)$/);
+                toolParams = m ? { [m[1]]: m[2] } : {};
+            }
+        }
+        const strippedName = toolName.startsWith('unity_') ? toolName.substring(6) : toolName;
+        const toolInfo = ALL_TOOLS[strippedName];
+        if (!toolInfo) {
+            const similar = Object.keys(ALL_TOOLS).filter(t =>
+                t.includes(strippedName) || strippedName.includes(t) ||
+                t.split('_').some(part => strippedName.includes(part))
+            ).slice(0, 5);
+            let errorMsg = `Unknown tool: "${toolName}"`;
+            if (similar.length > 0) errorMsg += `\n\nDid you mean: ${similar.join(', ')}?`;
+            errorMsg += `\n\nUse list_categories() then list_tools(category), or search_tools(query).`;
+            return { content: [{ type: 'text', text: errorMsg }] };
+        }
+        const commandName = strippedName.toLowerCase();
+        try {
+            const result = await sendUnityCommand(commandName, toolParams);
+            return {
+                content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+            };
+        } catch (error) {
+            let errorDetail = `Error executing "${strippedName}":\n  Message: ${error.message}\n`;
+            errorDetail += `\nTool info: ${toolInfo.title} (${toolInfo.category})`;
+            return { content: [{ type: 'text', text: errorDetail }] };
+        }
+    });
+
+    mcpServer.registerTool('run_csharp', {
+        title: 'Run C# Code',
+        description: 'Execute arbitrary C# code against the running Unity Editor (equivalent of Blender run_python). UnityEngine / UnityEditor / System.Linq / Newtonsoft.Json are pre-imported. Use when no dedicated tool covers the operation. Does NOT trigger AssemblyReload.\n\nEnd snippet with `return X;` to capture X into `result`. Bare expression (no trailing `;`) also returns its value. Debug.Log/LogWarning/LogError captured into `output`.\n\nKNOWN LIMITATION: Mono.CSharp parser cannot instantiate generic TYPES — `new List<int>()` etc. silently return null. Use arrays or ArrayList instead. Generic METHOD calls (`FindObjectsByType<T>()`) work fine.',
+        inputSchema: z.object({
+            code: z.string().describe('C# code. End with `return X;` to capture X. Pre-imported: System, System.Linq, System.Collections.Generic, UnityEngine, UnityEditor, Newtonsoft.Json.')
+        })
+    }, async (params) => {
+        try {
+            const result = await sendUnityCommand('run_csharp', params);
+            return {
+                content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }]
+            };
+        } catch (error) {
+            return {
+                content: [{ type: 'text', text: `run_csharp failed: ${error.message}` }]
+            };
+        }
+    });
+
+    // Dialog-less Unity reconnect — bypasses Tools > AI Reconnect dialog.
+    mcpServer.registerTool('unity_reconnect', {
+        title: 'Reconnect Unity Bridge',
+        description: 'Force Unity to re-establish its WebSocket connection to the MCP bridge. Use when tool calls time out or Unity-side state is stuck. No dialog.',
+        inputSchema: z.object({})
+    }, async () => {
+        if (!unityWebSocket || unityWebSocket.readyState !== WebSocket.OPEN) {
+            return {
+                content: [{ type: 'text', text: 'Unity not connected. Auto-reconnect should attach within a few seconds if Unity is open.' }],
+                isError: true
+            };
+        }
+        const id = ++requestId;
+        const message = JSON.stringify({ id, type: 'system_command', command: 'reconnect' });
+        unityWebSocket.send(message);
+        return {
+            content: [{ type: 'text', text: 'Reconnect signal sent to Unity. Bridge will re-attach in ~1 second.' }]
+        };
+    });
+
     // リソース定義
     mcpServer.registerResource('unity://project-stats', {
         title: 'Unity Project Statistics',
@@ -1999,11 +2320,12 @@ async function setupMCPServer() {
         // This is a simplified version - in production, you'd extract from the actual registry
 
         // For now, return a placeholder that indicates caching is enabled
+        const totalTools = Object.keys(TOOL_REGISTRY_RAW).length;
         const catalog = {
             version: '1.1.0',
-            total_tools: 246, // Exact count of unique Unity MCP tools (verified 2025-11-22)
-            note: 'This catalog contains all 246 Unity MCP tool definitions for caching purposes.',
-            cache_instructions: 'This resource should be read once at the beginning of your session and cached. It contains all 246 available Unity tools with their descriptions and input schemas.',
+            total_tools: totalTools,
+            note: `This catalog references ${totalTools} Unity MCP tool definitions for caching purposes.`,
+            cache_instructions: `This resource should be read once at the beginning of your session and cached. It references all ${totalTools} available Unity tools with their descriptions and input schemas.`,
             categories: [
                 'GameObject', 'Transform', 'Material', 'Lighting', 'Camera', 'Physics',
                 'UI', 'Animation', 'Cinemachine', 'Scene', 'GOAP', 'Audio', 'Screenshot', 'Utility'

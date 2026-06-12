@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (ESC-0108: HTTP server WebSocket dies after ~30s)
 - `http-server.js` heartbeat replaced `ws.ping()/pong` with last-message-seen timestamps. Mono `ClientWebSocket` doesn't auto-pong protocol-level pings (unlike .NET 5+), so the Node side terminated the link every interval. New `UNITY_STALE_TIMEOUT_MS` (default 60s) only closes when no inbound frame arrives — Unity already emits heartbeat / operation-response traffic, so live connections stay open.
+- **Special thanks to xvpower.** for the precise bug report and the verified local `lastSeen` heartbeat fix — exactly the patch that shipped here.
 
 ### Fixed (HTTP server died on macOS/Linux during domain reload)
 - Replaced `Process.Start` with piped stdout/stderr with a `nohup node ... >log 2>&1 </dev/null &` detach. The previous pipe wiring caused node to hit SIGPIPE on the next write after Unity's C# domain reloaded, killing the HTTP server every recompile.

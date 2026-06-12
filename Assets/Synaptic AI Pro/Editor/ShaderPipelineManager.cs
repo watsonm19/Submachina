@@ -83,7 +83,8 @@ namespace Synaptic.Editor
         /// Updates shader files based on the current pipeline.
         /// Enables shaders for the current pipeline and disables others.
         /// </summary>
-        [MenuItem("Tools/Synaptic Pro/Update Shaders for Pipeline")]
+        // v1.2.24: Diagnostics タブに統合、メニューからは除外
+        // [MenuItem("Tools/Synaptic Pro/Update Shaders for Pipeline")]
         public static void UpdateShadersForCurrentPipeline()
         {
             var currentPipeline = DetectCurrentPipeline();

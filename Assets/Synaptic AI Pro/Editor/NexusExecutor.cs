@@ -104,6 +104,22 @@ namespace SynapticPro
             public DateTime timestamp;
         }
 
+        // ESC-0112: Force early registration of the log callback on Editor load and
+        // after every domain reload. Without this the static constructor only fires
+        // when NexusUnityExecutor is first touched (e.g. first MCP tool call), so
+        // logs emitted before that point — and logs around the PlayMode reload that
+        // wipes statics — are dropped from logBuffer.
+        [InitializeOnLoadMethod]
+        private static void EnsureLogCallbackRegistered()
+        {
+            if (!isLogCallbackRegistered)
+            {
+                Application.logMessageReceived += OnLogMessageReceived;
+                isLogCallbackRegistered = true;
+                SynLog.Info("[NexusConsole] Log callback registered (InitializeOnLoadMethod)");
+            }
+        }
+
         static NexusUnityExecutor()
         {
             // Register log callback
@@ -12858,15 +12874,20 @@ public class {className} : MonoBehaviour
                 main.startLifetime = rainArea.y / dropSpeed;
                 main.startSpeed = dropSpeed;
                 main.startSize = dropSize;
-                
+                // ESC-0136 fix: 重力を有効化しないとパーティクルが横向きに飛ぶ
+                // (Boxシェイプの放出方向が水平になりがちで、垂直成分が出なかった)
+                main.gravityModifier = 1f;
+
                 var shape = particleSystem.shape;
                 shape.shapeType = ParticleSystemShapeType.Box;
                 shape.scale = new Vector3(rainArea.x, 0, rainArea.z);
                 shape.position = new Vector3(0, rainArea.y / 2, 0);
-                
+                // ESC-0136 fix: Boxの放出方向を真下に向ける (X軸90度回転で +Y → -Z 相当の下向き放出)
+                shape.rotation = new Vector3(90f, 0f, 0f);
+
                 var velocityOverLifetime = particleSystem.velocityOverLifetime;
                 velocityOverLifetime.enabled = true;
-                // Set all axes to the same mode (Constant) to avoid curve mode conflicts
+                // x: wind, y/z: 0 (下向き加速は gravityModifier + shape.rotation で表現)
                 velocityOverLifetime.x = new ParticleSystem.MinMaxCurve(windStrength);
                 velocityOverLifetime.y = new ParticleSystem.MinMaxCurve(0f);
                 velocityOverLifetime.z = new ParticleSystem.MinMaxCurve(0f);
@@ -16696,11 +16717,98 @@ Shader ""NexusGenerated/VolumetricFog""
             var volume = new GameObject("PostProcessVolume");
             volume.transform.SetParent(controller.transform);
             controller.postProcessVolume = volume;
-            
+
+            // ESC-0136 fix: 旧実装は BoxCollider だけ追加して URP の Volume システムを
+            // 一切作っていなかったため、Bloom も発光も画面に出なかった
+            // (「ネオン光らせて」→ Emission は設定されるが Bloom が無く滲まない症状)。
+            // URP がプロジェクトに入っていれば Volume + VolumeProfile + Bloom Override
+            // まで自動生成する。URP/HDRP/Built-in 未判定環境では BoxCollider のみ。
+            //
+            // 実装メモ: URP パッケージへの compile-time 依存を持たせると非 URP プロジェクト
+            // でビルドが落ちるため、すべて reflection 経由で生成する。
+            TrySetupURPVolume(volume);
+
             // Add collider for local volumes
             var col = volume.AddComponent<BoxCollider>();
             col.isTrigger = true;
             col.size = new Vector3(100, 100, 100);
+        }
+
+        private void TrySetupURPVolume(GameObject volume)
+        {
+            try
+            {
+                var pipelineAsset = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
+                if (pipelineAsset == null) return;
+                if (!pipelineAsset.GetType().Name.Contains("Universal")) return;
+
+                // URP 関連の型を assembly-qualified ではなく走査で取得 (アセンブリ名はバージョン差あり)
+                System.Type volumeType = null;
+                System.Type bloomType = null;
+                System.Type profileType = null;
+
+                foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (volumeType == null) volumeType = asm.GetType("UnityEngine.Rendering.Volume");
+                    if (profileType == null) profileType = asm.GetType("UnityEngine.Rendering.VolumeProfile");
+                    if (bloomType == null) bloomType = asm.GetType("UnityEngine.Rendering.Universal.Bloom");
+                    if (volumeType != null && profileType != null && bloomType != null) break;
+                }
+
+                if (volumeType == null || profileType == null || bloomType == null)
+                {
+                    SynLog.Warn("[NexusVisual] URP Volume/Bloom type not found; skipping Bloom setup.");
+                    return;
+                }
+
+                // Volume コンポーネント追加
+                var volComp = volume.AddComponent(volumeType);
+                volumeType.GetProperty("isGlobal")?.SetValue(volComp, true);
+                volumeType.GetProperty("priority")?.SetValue(volComp, 1f);
+
+                // VolumeProfile 生成
+                var profile = ScriptableObject.CreateInstance(profileType);
+                profile.name = "PostProcessProfile_Generated";
+
+                // Bloom Override 追加 (profile.Add(typeof(Bloom), true))
+                var addMethod = profileType.GetMethod("Add", new[] { typeof(System.Type), typeof(bool) });
+                var bloomOverride = addMethod?.Invoke(profile, new object[] { bloomType, true });
+                if (bloomOverride != null)
+                {
+                    // Bloom フィールド設定 (intensity, threshold). 過剰なグローを避けつつ Emission が
+                    // 画面で光って見える程度に設定。
+                    SetVolumeComponentFloat(bloomOverride, "threshold", 0.9f);
+                    SetVolumeComponentFloat(bloomOverride, "intensity", 1.0f);
+                    SetVolumeComponentFloat(bloomOverride, "scatter", 0.7f);
+                }
+
+                volumeType.GetProperty("sharedProfile")?.SetValue(volComp, profile);
+            }
+            catch (System.Exception e)
+            {
+                SynLog.Warn($"[NexusVisual] URP Volume setup skipped: {e.Message}");
+            }
+        }
+
+        private void SetVolumeComponentFloat(object component, string fieldName, float value)
+        {
+            // profile.Add(typeof(Bloom), true) で Bloom 追加時に各フィールドは ctor で
+            // 初期化済み (MinFloatParameter/ClampedFloatParameter の default インスタンスが入る)。
+            // よってここでは既存 paramInstance の value と overrideState を上書きするだけ。
+            try
+            {
+                var field = component.GetType().GetField(fieldName);
+                if (field == null) return;
+                var paramInstance = field.GetValue(component);
+                if (paramInstance == null) return;
+                // VolumeParameter<float> は value プロパティを持つ
+                var valProp = paramInstance.GetType().GetProperty("value");
+                valProp?.SetValue(paramInstance, value);
+                // overrideState を有効化 (これがないと profile の値が camera に反映されない)
+                var overrideProp = paramInstance.GetType().GetProperty("overrideState");
+                overrideProp?.SetValue(paramInstance, true);
+            }
+            catch { /* silent: best-effort field setter */ }
         }
         
         private string CreateVFXGraph(Dictionary<string, string> parameters)
@@ -29614,12 +29722,33 @@ Shader ""NexusGenerated/VolumetricFog""
                 var height = float.Parse(parameters.GetValueOrDefault("height", "30"));
                 var length = float.Parse(parameters.GetValueOrDefault("length", "100"));
                 var resolution = int.Parse(parameters.GetValueOrDefault("resolution", "513"));
-                
+
+                // ESC-0144: 旧実装は平坦な Terrain しか生成できず、「Terrain を作って」の指示で
+                // ハイトマップが書かれず誤解を招いていた。terrainType パラメータで地形タイプを
+                // 選択できるようにし、Perlin noise で実際に山地・丘陵・谷などを生成する。
+                //   flat      : 平坦 (旧来のデフォルト互換)
+                //   hills     : 緩やかな丘陵
+                //   mountains : 起伏の大きい山地
+                //   valleys   : 中央が低い谷地形
+                //   plateau   : 台地 (上面が平らになる)
+                //   noise     : 純粋なノイズ地形
+                var terrainType = parameters.GetValueOrDefault("terrainType", "flat").ToLower();
+                var seed = int.Parse(parameters.GetValueOrDefault("seed", "12345"));
+                var heightScale = float.Parse(parameters.GetValueOrDefault("heightScale", "1.0"));
+                var noiseFrequency = float.Parse(parameters.GetValueOrDefault("noiseFrequency", "2.0"));
+                var noiseOctaves = int.Parse(parameters.GetValueOrDefault("noiseOctaves", "4"));
+
                 // Create TerrainData
                 var terrainData = new TerrainData();
                 terrainData.heightmapResolution = resolution;
                 terrainData.size = new Vector3(width, height, length);
                 terrainData.name = name + "_Data";
+
+                // Apply heightmap if non-flat
+                if (terrainType != "flat")
+                {
+                    GenerateTerrainHeights(terrainData, terrainType, seed, heightScale, noiseFrequency, noiseOctaves);
+                }
                 
                 // Save TerrainData as asset
                 string folderPath = "Assets/Nexus_Generated/Terrains";
@@ -29690,6 +29819,73 @@ Shader ""NexusGenerated/VolumetricFog""
                     error = e.Message
                 });
             }
+        }
+
+        // ESC-0144: Perlin noise ベースの heightmap 生成。
+        // CreateTerrain で terrainType != "flat" の時に呼ばれ、地形の起伏を実際に書き込む。
+        private void GenerateTerrainHeights(TerrainData terrainData, string terrainType, int seed, float heightScale, float frequency, int octaves)
+        {
+            int res = terrainData.heightmapResolution;
+            var heights = new float[res, res];
+            var rng = new System.Random(seed);
+            float offsetX = (float)(rng.NextDouble() * 10000.0);
+            float offsetZ = (float)(rng.NextDouble() * 10000.0);
+
+            for (int z = 0; z < res; z++)
+            {
+                for (int x = 0; x < res; x++)
+                {
+                    float nx = (float)x / (res - 1);
+                    float nz = (float)z / (res - 1);
+
+                    // fractal Perlin (octaves で細部を重ねる)
+                    float h = 0f;
+                    float amp = 1f;
+                    float freq = frequency;
+                    float maxAmp = 0f;
+                    for (int o = 0; o < octaves; o++)
+                    {
+                        h += Mathf.PerlinNoise(nx * freq + offsetX, nz * freq + offsetZ) * amp;
+                        maxAmp += amp;
+                        amp *= 0.5f;
+                        freq *= 2f;
+                    }
+                    h /= maxAmp; // 0..1 に正規化
+
+                    // 地形タイプ別整形
+                    switch (terrainType)
+                    {
+                        case "hills":
+                            // 低めの丘陵
+                            h = h * 0.3f * heightScale;
+                            break;
+                        case "mountains":
+                            // 起伏強調、谷を深く山を高く
+                            h = Mathf.Pow(h, 1.5f) * heightScale;
+                            break;
+                        case "valleys":
+                            // 中央が低く周辺が高い谷状
+                            {
+                                float cx = nx - 0.5f;
+                                float cz = nz - 0.5f;
+                                float dist = Mathf.Sqrt(cx * cx + cz * cz) * 2f; // 0..1.41
+                                float bowl = Mathf.Clamp01(dist);
+                                h = (h * 0.4f + bowl * 0.4f) * heightScale;
+                            }
+                            break;
+                        case "plateau":
+                            // 上面をフラットに、肩のあたりだけ落ちる
+                            h = Mathf.Min(h * 1.5f, 0.7f) * heightScale;
+                            break;
+                        case "noise":
+                        default:
+                            h = h * heightScale;
+                            break;
+                    }
+                    heights[z, x] = Mathf.Clamp01(h);
+                }
+            }
+            terrainData.SetHeights(0, 0, heights);
         }
 
         private string ModifyTerrain(Dictionary<string, string> parameters)
@@ -32094,57 +32290,62 @@ Shader ""NexusGenerated/VolumetricFog""
                             SynLog.Info($"[NexusConsole] Retrieved {logs.Count} logs from buffer (buffer size: {logBuffer.Count})");
                         }
                         
-                        // If log buffer is insufficient, try to get from LogEntries
+                        // ESC-0112: LogEntries reflection MUST be wrapped with
+                        // StartGettingEntries/EndGettingEntries or GetEntryInternal returns
+                        // empty/garbage data, causing limit=50 to return only what's in the
+                        // realtime buffer (commonly 27 entries after a PlayMode domain reload
+                        // wipes the static buffer mid-session).
                         if (logs.Count < limit)
                         {
-                            // Define LogEntry structure
-                            var logEntry = Activator.CreateInstance(System.Type.GetType("UnityEditor.LogEntry, UnityEditor"));
-                            
-                            int startIndex = Math.Max(0, totalCount - limit);
-                            for (int i = startIndex; i < totalCount && logs.Count < limit; i++)
+                            var logEntryType = System.Type.GetType("UnityEditor.LogEntry, UnityEditor");
+                            var logEntry = Activator.CreateInstance(logEntryType);
+
+                            var startGettingEntriesMethod = logEntries.GetMethod("StartGettingEntries", BindingFlags.Public | BindingFlags.Static);
+                            var endGettingEntriesMethod = logEntries.GetMethod("EndGettingEntries", BindingFlags.Public | BindingFlags.Static);
+
+                            try
                             {
-                                getEntryInternalMethod.Invoke(null, new object[] { i, logEntry });
-                                
-                                // Explicitly specify BindingFlags (try Public -> NonPublic)
-                                var conditionField = logEntry.GetType().GetField("condition", BindingFlags.Instance | BindingFlags.Public);
-                                var modeField = logEntry.GetType().GetField("mode", BindingFlags.Instance | BindingFlags.Public);
-                                
-                                // If field not found, try NonPublic
-                                if (conditionField == null)
-                                    conditionField = logEntry.GetType().GetField("condition", BindingFlags.Instance | BindingFlags.NonPublic);
-                                if (modeField == null)
-                                    modeField = logEntry.GetType().GetField("mode", BindingFlags.Instance | BindingFlags.NonPublic);
-                                
-                                if (conditionField != null && modeField != null)
+                                startGettingEntriesMethod?.Invoke(null, null);
+
+                                int startIndex = Math.Max(0, totalCount - limit);
+                                for (int i = startIndex; i < totalCount && logs.Count < limit; i++)
                                 {
-                                    string condition = (string)conditionField.GetValue(logEntry);
-                                    int mode = (int)modeField.GetValue(logEntry);
-                                    
-                                    // Debug info (first item only)
-                                    if (i == startIndex && string.IsNullOrEmpty(condition))
+                                    getEntryInternalMethod.Invoke(null, new object[] { i, logEntry });
+
+                                    var conditionField = logEntryType.GetField("condition", BindingFlags.Instance | BindingFlags.Public)
+                                                       ?? logEntryType.GetField("condition", BindingFlags.Instance | BindingFlags.NonPublic);
+                                    var modeField = logEntryType.GetField("mode", BindingFlags.Instance | BindingFlags.Public)
+                                                  ?? logEntryType.GetField("mode", BindingFlags.Instance | BindingFlags.NonPublic);
+
+                                    if (conditionField != null && modeField != null)
                                     {
-                                        SynLog.Warn($"[NexusConsole] LogEntry appears empty. Fields found: condition={conditionField != null}, mode={modeField != null}");
-                                    }
-                                    
-                                    // mode: 1 = Error, 2 = Assert, 4 = Log, 8 = Fatal, 16 = DontPrefilter, 
-                                    // 32 = AssetImportError, 64 = AssetImportWarning, 128 = ScriptingError, 
-                                    // 256 = ScriptingWarning, 512 = ScriptingLog, 1024 = ScriptCompileError, 
-                                    // 2048 = ScriptCompileWarning, 4096 = StickyError, 8192 = MayIgnoreLineNumber
-                                    
-                                    string type = "info";
-                                    if ((mode & 1) != 0 || (mode & 128) != 0 || (mode & 1024) != 0) type = "error";
-                                    else if ((mode & 256) != 0 || (mode & 2048) != 0 || (mode & 64) != 0) type = "warning";
-                                    
-                                    if (logType == "all" || logType.ToLower() == type.ToLower())
-                                    {
-                                        logs.Add(new Dictionary<string, object>
+                                        string condition = (string)conditionField.GetValue(logEntry);
+                                        int mode = (int)modeField.GetValue(logEntry);
+
+                                        if (i == startIndex && string.IsNullOrEmpty(condition))
                                         {
-                                            ["message"] = condition,
-                                            ["type"] = type,
-                                            ["mode"] = mode
-                                        });
+                                            SynLog.Warn($"[NexusConsole] LogEntry appears empty. Fields found: condition={conditionField != null}, mode={modeField != null}");
+                                        }
+
+                                        string type = "info";
+                                        if ((mode & 1) != 0 || (mode & 128) != 0 || (mode & 1024) != 0) type = "error";
+                                        else if ((mode & 256) != 0 || (mode & 2048) != 0 || (mode & 64) != 0) type = "warning";
+
+                                        if (logType == "all" || logType.ToLower() == type.ToLower())
+                                        {
+                                            logs.Add(new Dictionary<string, object>
+                                            {
+                                                ["message"] = condition,
+                                                ["type"] = type,
+                                                ["mode"] = mode
+                                            });
+                                        }
                                     }
                                 }
+                            }
+                            finally
+                            {
+                                endGettingEntriesMethod?.Invoke(null, null);
                             }
                         }
                         
@@ -32158,6 +32359,9 @@ Shader ""NexusGenerated/VolumetricFog""
                         }, Formatting.Indented);
                         
                     case "clear":
+                        // ESC-0112: clear must wipe BOTH Unity's LogEntries AND our realtime buffer.
+                        // Without logBuffer.Clear(), subsequent reads keep returning stale entries
+                        // (buffer is the primary source in the read path).
                         if (logEntries != null)
                         {
                             var clearMethod = logEntries.GetMethod("Clear", BindingFlags.Public | BindingFlags.Static);
@@ -32166,7 +32370,8 @@ Shader ""NexusGenerated/VolumetricFog""
                                 clearMethod.Invoke(null, null);
                             }
                         }
-                        
+                        logBuffer.Clear();
+
                         return JsonConvert.SerializeObject(new
                         {
                             success = true,

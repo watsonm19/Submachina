@@ -33,6 +33,11 @@ let wss = null;
 let unityWebSocket = null;
 let mcpServer = null;
 
+// ESC-0121: in share mode, this process did not bind the Unity-WebSocket port.
+// All Unity-bound commands must be forwarded over HTTP to the leader process
+// instead of trying to write to our local (zombie) WebSocket.
+let shareModeLeaderPort = null;
+
 // =====================================================
 // Load Tool Registry from JSON file
 // =====================================================
@@ -194,7 +199,46 @@ async function sendUnityCommandOnce(command, params, id) {
     });
 }
 
+// ESC-0121: in share mode, this process did not bind the WebSocket port — the
+// real Unity socket lives in the leader process. Forward the command to the
+// leader via HTTP /execute instead of writing to our local zombie wss.
+async function forwardToLeader(command, params) {
+    const port = shareModeLeaderPort;
+    if (!port) throw new Error('share mode leader port not set');
+    const body = JSON.stringify({ tool: command, params });
+    const res = await new Promise((resolve, reject) => {
+        const req = require('http').request({
+            hostname: 'localhost',
+            port,
+            path: '/execute',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+        }, (resp) => {
+            let data = '';
+            resp.on('data', chunk => data += chunk);
+            resp.on('end', () => resolve({ status: resp.statusCode, body: data }));
+        });
+        req.on('error', reject);
+        req.setTimeout(120000, () => { req.destroy(new Error('forward timeout')); });
+        req.write(body);
+        req.end();
+    });
+    if (res.status >= 400) {
+        throw new Error(`leader /execute returned ${res.status}: ${res.body.slice(0, 200)}`);
+    }
+    try {
+        return JSON.parse(res.body);
+    } catch {
+        return res.body;
+    }
+}
+
 async function sendUnityCommand(command, params = {}) {
+    // Share mode: bypass local WebSocket entirely.
+    if (shareModeLeaderPort) {
+        return forwardToLeader(command, params);
+    }
+
     const MAX_RETRIES = 30;
     const RETRY_DELAY = 10000;
 
@@ -809,8 +853,8 @@ function startServerWithRetry(port, maxRetries = 5, retryDelay = 1000) {
                             req.on('timeout', () => { req.destroy(); rej(new Error('timeout')); });
                         });
                         // Existing server is healthy - don't kill it, just skip server binding
-                        console.error(`[SuperSave] Existing healthy server found on port ${port} - sharing connection`);
-                        resolve();
+                        console.error(`[SuperSave] Existing healthy server found on port ${port} - sharing connection (forwarding to leader)`);
+                        resolve({ shareMode: true, leaderPort: port });
                         return;
                     } catch (e) {
                         // Existing server is dead - safe to take over
@@ -850,15 +894,47 @@ function startServerWithRetry(port, maxRetries = 5, retryDelay = 1000) {
 async function main() {
     const PORT = process.env.PORT || 8090;
 
-    // Start WebSocket server
-    wss = new WebSocket.Server({ server });
-    setupWebSocketHandlers();
+    // ESC-0121: defer wss attachment until we know whether we'll be the leader.
+    // In share mode (port already held by a healthy leader), starting a WSS on
+    // a non-listening HTTP server produces a zombie that silently swallows
+    // tool calls for all follower sessions.
 
-    // Setup and start MCP
+    // Setup and start MCP (stdio side — same regardless of leader/follower)
     await setupMCPServer();
 
-    // Start HTTP server with retry logic for EADDRINUSE
-    await startServerWithRetry(PORT);
+    // Expose /execute and /health on the HTTP server so leaders can serve
+    // forwarded tool calls from follower sessions.
+    app.get('/health', (req, res) => {
+        res.json({
+            status: 'ok',
+            mode: 'supersave',
+            shareMode: !!shareModeLeaderPort,
+            unityConnected: !!(unityWebSocket && unityWebSocket.readyState === WebSocket.OPEN)
+        });
+    });
+    app.post('/execute', async (req, res) => {
+        try {
+            const { tool, params } = req.body || {};
+            if (!tool) return res.status(400).json({ error: 'tool is required' });
+            const result = await sendUnityCommand(tool, params || {});
+            res.json(result);
+        } catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // Try to bind the HTTP port; if already taken, fall into share mode.
+    const bindResult = await startServerWithRetry(PORT);
+    if (bindResult && bindResult.shareMode) {
+        shareModeLeaderPort = bindResult.leaderPort;
+        console.error(`[SuperSave] Follower mode active — forwarding Unity commands to leader on port ${shareModeLeaderPort}`);
+        // Do NOT attach wss — there is no listening HTTP server to bridge it.
+        return;
+    }
+
+    // Leader mode: now safe to attach WebSocket server to the listening HTTP server.
+    wss = new WebSocket.Server({ server });
+    setupWebSocketHandlers();
 }
 
 // Shutdown handler

@@ -106,6 +106,16 @@ function loadToolRegistry() {
 
 loadToolRegistry();
 
+// Register synthetic system tools that are handled inside http-server.js (not forwarded as Unity operations).
+toolRegistry['unity_reconnect'] = {
+    title: 'Reconnect Unity Bridge',
+    description: 'Force Unity to re-establish its WebSocket connection to the HTTP bridge. Use when tool calls time out or Unity-side state is stuck. Dialog-less.',
+    category: 'System',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false }
+};
+if (!toolCategories['System']) toolCategories['System'] = [];
+toolCategories['System'].push({ name: 'unity_reconnect', ...toolRegistry['unity_reconnect'] });
+
 // ===== Unity WebSocket Connection =====
 let unitySocket = null;
 let wss = null;
@@ -191,6 +201,35 @@ function setupWebSocket() {
     });
 
     console.error(`[HTTP] WebSocket server attached to HTTP server (port ${PORT})`);
+}
+
+// Send a system command (e.g. reconnect) directly to Unity, bypassing the tool registry.
+function sendSystemCommand(command, timeout = 5000) {
+    return new Promise((resolve, reject) => {
+        if (!unitySocket || unitySocket.readyState !== WebSocket.OPEN) {
+            reject(new Error('Unity not connected via WebSocket'));
+            return;
+        }
+
+        const operationId = `sys_${++requestCounter}_${Date.now()}`;
+        const message = {
+            type: 'system_command',
+            id: operationId,
+            command: command
+        };
+
+        const timer = setTimeout(() => {
+            pendingRequests.delete(operationId);
+            reject(new Error(`Timeout waiting for Unity system_command response (${timeout}ms)`));
+        }, timeout);
+
+        pendingRequests.set(operationId, {
+            resolve: (data) => { clearTimeout(timer); resolve(data); },
+            reject: (err) => { clearTimeout(timer); reject(err); }
+        });
+
+        unitySocket.send(JSON.stringify(message));
+    });
 }
 
 // Execute tool via Unity WebSocket
@@ -526,10 +565,37 @@ app.post('/execute', async (req, res) => {
             return res.status(400).json({ error: 'Missing tool name' });
         }
 
+        if (tool === 'unity_reconnect' || tool === 'reconnect') {
+            if (!unitySocket || unitySocket.readyState !== WebSocket.OPEN) {
+                return res.status(503).json({ error: 'Unity not connected. Auto-reconnect should attach within a few seconds.' });
+            }
+            const result = await sendSystemCommand('reconnect', 5000);
+            return res.json(result);
+        }
+
         const result = await executeOnUnity(tool, params || {}, timeout || 30000);
         res.json(result);
     } catch (e) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// Trigger Unity to reconnect its WebSocket (dialog-less).
+// Works whether or not Unity is currently connected:
+//   - If connected: sends system_command to invoke QuickReconnect on the Unity side
+//   - If not connected: returns 503 and relies on Unity's auto-reconnect to kick in
+app.post('/reconnect', async (req, res) => {
+    if (!unitySocket || unitySocket.readyState !== WebSocket.OPEN) {
+        return res.status(503).json({
+            success: false,
+            error: 'Unity not connected. Auto-reconnect should attach within a few seconds if Unity is open.'
+        });
+    }
+    try {
+        const result = await sendSystemCommand('reconnect', 5000);
+        res.json({ success: true, result });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 

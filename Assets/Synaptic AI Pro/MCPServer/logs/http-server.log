@@ -34,25 +34,29 @@
 [HTTP] Unity connected via WebSocket
 [HTTP] Unity disconnected
 [HTTP] Unity connected via WebSocket
-[2026-06-08T19:54:15.294Z] [HTTP] Loaded 356 tools in 32 categories
-[2026-06-08T19:54:15.302Z] [HTTP] WebSocket server attached to HTTP server (port 8086)
-[2026-06-08T19:54:15.302Z] 
-╔═══════════════════════════════════════════════════════════╗
-║  Synaptic AI Pro - HTTP Server                            ║
-╠═══════════════════════════════════════════════════════════╣
-║  Port: 8086                                               ║
-║  HTTP:      http://localhost:8086                        ║
-║  WebSocket: ws://localhost:8086                          ║
-╠═══════════════════════════════════════════════════════════╣
-║  Endpoints:                                               ║
-║    GET  /           - AI prompt + tools reference         ║
-║    GET  /health     - Connection status                   ║
-║    GET  /tools      - Full tool registry                  ║
-║    GET  /categories - Tool categories                     ║
-║    POST /execute    - Execute tool                        ║
-║    POST /batch      - Batch execute                       ║
-╠═══════════════════════════════════════════════════════════╣
-║  Waiting for Unity to connect...                          ║
-╚═══════════════════════════════════════════════════════════╝
-
-[2026-06-08T19:54:17.936Z] [HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
+[HTTP] Unity disconnected
+[HTTP] Unity connected via WebSocket
