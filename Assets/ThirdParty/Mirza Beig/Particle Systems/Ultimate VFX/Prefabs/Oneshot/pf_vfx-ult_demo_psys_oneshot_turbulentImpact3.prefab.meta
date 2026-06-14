@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 11ce829c7ac25d04faf119e825f822e3
+timeCreated: 1471387980
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 26701
+  packageName: Ultimate VFX
+  packageVersion: 3.5.2
+  assetPath: Assets/ThirdParty/Mirza Beig/Particle Systems/Ultimate VFX/Prefabs/Oneshot/pf_vfx-ult_demo_psys_oneshot_turbulentImpact3.prefab
+  uploadId: 308562
