@@ -34,8 +34,8 @@ namespace Submachina.Core
         [SerializeField] private TurretAim turretAim;
 
         [FoldoutGroup("References")]
-        [Tooltip("The submarine's ManualBellowsPump. IsMining is toggled while the laser fires to increase air drain.")]
-        [SerializeField] private ManualBellowsPump pump;
+        [Tooltip("The submarine's O2System. IsMining is toggled while the laser fires to increase air drain.")]
+        [SerializeField] private O2System o2System;
 
         [FoldoutGroup("References")]
         [Tooltip("MiningBeamVFX on the beam child object. Drives the Sci-Fi Arsenal beam visuals.")]
@@ -127,8 +127,8 @@ namespace Submachina.Core
             if (mineAction == null || turretAim == null || beamVFX == null) return;
 
             bool firing = mineAction.action.IsPressed()
-                && (pump == null || pump.CurrentAirPressure > 0f);
-            if (pump != null) pump.IsMining = firing;
+                && (o2System == null || o2System.CurrentAirPressure > 0f);
+            if (o2System != null) o2System.IsMining = firing;
 
             if (firing)
                 FireLaser();

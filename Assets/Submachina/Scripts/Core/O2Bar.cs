@@ -30,8 +30,8 @@ namespace Submachina.Core
         [SerializeField] private FloatVariable currentO2;
 
         [FoldoutGroup("References")]
-        [Tooltip("Reference to ManualBellowsPump to read MaxAir for normalisation.")]
-        [SerializeField] private ManualBellowsPump pump;
+        [Tooltip("Reference to O2System to read MaxAir and OriginalMaxAir for normalisation.")]
+        [SerializeField] private O2System o2System;
 
         [FoldoutGroup("References")]
         [Tooltip("A second Filled Image (same rect as the main bar, placed behind it in the hierarchy) " +
@@ -95,10 +95,10 @@ namespace Submachina.Core
          */
         private void UpdateBar()
         {
-            if (currentO2 == null || pump == null) return;
+            if (currentO2 == null || o2System == null) return;
 
-            float fill    = pump.OriginalMaxAir > 0f ? currentO2.Value / pump.OriginalMaxAir : 0f;
-            float maxFill = pump.OriginalMaxAir > 0f ? pump.MaxAir     / pump.OriginalMaxAir : 0f;
+            float fill    = o2System.OriginalMaxAir > 0f ? currentO2.Value       / o2System.OriginalMaxAir : 0f;
+            float maxFill = o2System.OriginalMaxAir > 0f ? o2System.MaxAir       / o2System.OriginalMaxAir : 0f;
 
             _barImage.fillAmount = fill;
             if (capacityBar != null) capacityBar.fillAmount = maxFill;
