@@ -185,12 +185,18 @@ namespace Submachina.Core
         [FoldoutGroup("Events")]
         [Tooltip("Fired when a sweet spot stop collects an O2Pickup at full reward. " +
                  "Wire: +air SFX, green flash.")]
-        public UnityEvent OnPickupCollected;
+        public UnityEvent OnSweetSpotPickup;
 
         [FoldoutGroup("Events")]
         [Tooltip("Fired when a stop outside the sweet spot still collects a pickup, " +
                  "at the weak reward multiplier. Wire: weak thud SFX, dim flash.")]
         public UnityEvent OnWeakPickup;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired whenever any pickup is collected — sweet spot OR weak. " +
+                 "Pairs with OnSweetSpotPickup / OnWeakPickup for finer-grained hooks. " +
+                 "Wire: shared collect effects that apply regardless of timing quality.")]
+        public UnityEvent OnPickupCollected;
 
         [FoldoutGroup("Events")]
         [Tooltip("Fired when the pump is stopped with no pickup in range and seizes up. " +
@@ -427,8 +433,9 @@ namespace Submachina.Core
             _chargeProgress = 0f;
             _state = PumpState.Idle;
 
-            if (inSweetSpot) OnPickupCollected?.Invoke();
+            if (inSweetSpot) OnSweetSpotPickup?.Invoke();
             else             OnWeakPickup?.Invoke();
+            OnPickupCollected?.Invoke();
             OnLoopStopped?.Invoke();
         }
 
