@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using MoreMountains.Feedbacks;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -11,17 +12,16 @@ namespace Submachina.Core
      * When the timer reaches miningDuration the resource is collected.
      * Moving the beam off-target or releasing the button resets the timer.
      *
-     * The beam is rendered as a LineRenderer. Assign a URP-compatible material
-     * (Particles/Unlit or similar) to make it visible in the Game view.
+     * The beam visual is driven by a MiningBeamVFX component on a child object,
+     * which renders the Sci-Fi Arsenal static beam with a line renderer, emitter
+     * particles at the turret tip, and impact sparks at the hit point.
      *
      * Setup:
      *   1. Add to the submarine root alongside SubmarinePhysicsController.
      *   2. Assign TurretAim (the Turret child object).
-     *   3. Create a "Mine" action (Button, hold behavior) in your Input Asset — assign it here.
-     *   4. Set Mining Layer to the "Resource" layer.
-     *   5. Add a "Resource" layer in Project Settings → Tags & Layers.
-     *      Set the CopperResource prefab to that layer.
-     *   6. Assign Laser Material — a URP Unlit/Particle material works well.
+     *   3. Assign Beam VFX (MiningBeamVFX on the beam child of the turret).
+     *   4. Create a "Mine" action (Button, hold behavior) in your Input Asset — assign it here.
+     *   5. Set Mining Layer to the "Resource" layer.
      */
     public class MiningLaser : MonoBehaviour
     {
@@ -36,6 +36,10 @@ namespace Submachina.Core
         [FoldoutGroup("References")]
         [Tooltip("The submarine's ManualBellowsPump. IsMining is toggled while the laser fires to increase air drain.")]
         [SerializeField] private ManualBellowsPump pump;
+
+        [FoldoutGroup("References")]
+        [Tooltip("MiningBeamVFX on the beam child object. Drives the Sci-Fi Arsenal beam visuals.")]
+        [SerializeField] private MiningBeamVFX beamVFX;
 
         // =====================
         // Input
@@ -62,24 +66,19 @@ namespace Submachina.Core
         [SerializeField] private LayerMask miningLayer;
 
         // =====================
-        // Laser Visual
+        // Feedbacks
         // =====================
 
-        [FoldoutGroup("Laser")]
-        [Tooltip("Width of the laser beam in world units.")]
-        [SerializeField, Min(0.01f)] private float laserWidth = 0.05f;
+        [FoldoutGroup("Feedbacks")]
+        [Tooltip("MMF_Players played once when mining begins on a target (or switches targets). " +
+                 "Stopped when the beam leaves the target or the button is released. " +
+                 "Use looping feedbacks (e.g. looping sound, sustained screen shake) for continuous effects.")]
+        [SerializeField] private MMF_Player[] miningFeedbacks;
 
-        [FoldoutGroup("Laser")]
-        [Tooltip("Color of the laser beam when not on a resource target.")]
-        [SerializeField] private Color idleBeamColor = new Color(0.2f, 1f, 0.8f, 0.8f);
-
-        [FoldoutGroup("Laser")]
-        [Tooltip("Color of the laser beam when actively mining a resource.")]
-        [SerializeField] private Color miningBeamColor = new Color(1f, 0.9f, 0.2f, 1f);
-
-        [FoldoutGroup("Laser")]
-        [Tooltip("Material for the laser LineRenderer. Assign a URP Unlit/Particle material.")]
-        [SerializeField] private Material laserMaterial;
+        [FoldoutGroup("Feedbacks")]
+        [Tooltip("MMF_Players played once when a resource is fully collected. " +
+                 "Called with PlayFeedbacks(hitPoint, 1.0).")]
+        [SerializeField] private MMF_Player[] collectFeedbacks;
 
         // =====================
         // Debug
@@ -98,10 +97,10 @@ namespace Submachina.Core
         // State
         // =====================
 
-        private LineRenderer _laserLine;
         private MiningResource _currentTarget;
         private float _miningTimer;
-        private float _miningDuration; // cached to survive target changes
+        private float _miningDuration;
+        private bool _miningFeedbacksPlaying;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -110,7 +109,6 @@ namespace Submachina.Core
         private void Awake()
         {
             _miningDuration = miningDuration;
-            BuildLaserRenderer();
         }
 
         private void OnEnable()
@@ -126,7 +124,7 @@ namespace Submachina.Core
 
         private void Update()
         {
-            if (mineAction == null || turretAim == null) return;
+            if (mineAction == null || turretAim == null || beamVFX == null) return;
 
             bool firing = mineAction.action.IsPressed()
                 && (pump == null || pump.CurrentAirPressure > 0f);
@@ -144,12 +142,14 @@ namespace Submachina.Core
 
         /**
          * Fires the beam from the turret in its aim direction.
-         * If a MiningResource is hit, accumulates the mining timer.
-         * Switching to a different resource resets the timer — encourages
-         * committing to one node at a time.
+         * If a MiningResource is hit, accumulates the mining timer and
+         * shows impact VFX at the hit point. Switching to a different
+         * resource resets progress — encourages committing to one node.
          */
         private void FireLaser()
         {
+            beamVFX.Show();
+
             Vector2 origin = turretAim.transform.position;
             Vector2 direction = turretAim.AimDirection;
 
@@ -167,9 +167,10 @@ namespace Submachina.Core
 
             if (hitResource != null)
             {
-                // Switched targets — reset progress on the previous one
+                // Switched targets — reset progress on the previous one and restart feedbacks
                 if (hitResource != _currentTarget)
                 {
+                    StopMiningFeedbacks();
                     _currentTarget?.SetMiningProgress(0f);
                     _currentTarget = hitResource;
                     _miningTimer = 0f;
@@ -180,11 +181,30 @@ namespace Submachina.Core
                 float progress = Mathf.Clamp01(_miningTimer / _miningDuration);
                 _currentTarget.SetMiningProgress(progress);
 
-                SetLaser(origin, beamEnd, miningBeamColor);
+                // Beam with impact VFX — progress drives visual intensity
+                beamVFX.SetBeam(origin, beamEnd, true, progress);
+
+                // Start mining feedbacks once when we begin on a target
+                if (!_miningFeedbacksPlaying)
+                {
+                    _miningFeedbacksPlaying = true;
+                    for (int i = 0; i < miningFeedbacks.Length; i++)
+                    {
+                        if (miningFeedbacks[i] != null) miningFeedbacks[i].PlayFeedbacks(beamEnd, 1f);
+                    }
+                }
 
                 // Collect when fully mined
                 if (_miningTimer >= _miningDuration)
                 {
+                    StopMiningFeedbacks();
+
+                    // Collection feedbacks — one-shot burst at full intensity
+                    for (int i = 0; i < collectFeedbacks.Length; i++)
+                    {
+                        if (collectFeedbacks[i] != null) collectFeedbacks[i].PlayFeedbacks(beamEnd, 1f);
+                    }
+
                     _currentTarget.Collect();
                     _currentTarget = null;
                     _miningTimer = 0f;
@@ -194,55 +214,42 @@ namespace Submachina.Core
             {
                 // Beam is in air — show idle beam, reset any in-progress target
                 ResetCurrentTarget();
-                SetLaser(origin, beamEnd, idleBeamColor);
+                beamVFX.SetBeam(origin, beamEnd, false);
             }
         }
 
         /**
-         * Disables the laser visual and resets mining progress on the
+         * Hides the beam VFX and resets mining progress on the
          * current target so it returns to its un-mined appearance.
          */
         private void StopLaser()
         {
-            _laserLine.enabled = false;
+            if (beamVFX != null) beamVFX.Hide();
             ResetCurrentTarget();
         }
 
         private void ResetCurrentTarget()
         {
             if (_currentTarget == null) return;
+            StopMiningFeedbacks();
             _currentTarget.SetMiningProgress(0f);
             _currentTarget = null;
             _miningTimer = 0f;
         }
 
-        // -------------------------------------------------------
-        // Renderer
-        // -------------------------------------------------------
-
-        private void BuildLaserRenderer()
+        /**
+         * Stops all mining feedbacks cleanly. Called on target switch,
+         * beam release, or collection so pooled objects aren't left dangling.
+         */
+        private void StopMiningFeedbacks()
         {
-            _laserLine = gameObject.AddComponent<LineRenderer>();
-            _laserLine.positionCount = 2;
-            _laserLine.useWorldSpace = true;
-            _laserLine.startWidth = laserWidth;
-            _laserLine.endWidth = laserWidth * 0.3f; // slight taper toward the tip
-            _laserLine.startColor = idleBeamColor;
-            _laserLine.endColor = idleBeamColor;
-            _laserLine.sortingOrder = 6;
-            _laserLine.enabled = false;
+            if (!_miningFeedbacksPlaying) return;
+            _miningFeedbacksPlaying = false;
 
-            if (laserMaterial != null)
-                _laserLine.material = laserMaterial;
-        }
-
-        private void SetLaser(Vector2 start, Vector2 end, Color color)
-        {
-            _laserLine.enabled = true;
-            _laserLine.SetPosition(0, start);
-            _laserLine.SetPosition(1, end);
-            _laserLine.startColor = color;
-            _laserLine.endColor = new Color(color.r, color.g, color.b, color.a * 0.3f);
+            for (int i = 0; i < miningFeedbacks.Length; i++)
+            {
+                if (miningFeedbacks[i] != null) miningFeedbacks[i].StopFeedbacks();
+            }
         }
     }
 }
