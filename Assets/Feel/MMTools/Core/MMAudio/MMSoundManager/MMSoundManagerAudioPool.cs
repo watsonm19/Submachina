@@ -58,7 +58,10 @@ namespace MoreMountains.Tools
 					yield return null;
 				}
 			}
-			if (source.resource != null)
+			// LOCAL FIX: in Unity 6, setting AudioSource.clip also populates AudioSource.resource,
+			// which made this block wait for the full clip to finish and bypass playbackDuration.
+			// Only treat this as resource-based playback when no clip was passed in.
+			if ((clip == null) && (source.resource != null))
 			{
 				while (source.isPlaying)
 				{
@@ -90,7 +93,9 @@ namespace MoreMountains.Tools
 						yield return null;
 					}
 				}
-				if (source.resource != null)
+				// LOCAL FIX: same Unity 6 clip/resource aliasing issue as above — without the clip == null
+				// guard, this waits for the full clip and ignores playbackDuration.
+				if ((clip == null) && (source.resource != null))
 				{
 					while (source.isPlaying)
 					{
