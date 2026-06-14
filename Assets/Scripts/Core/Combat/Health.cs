@@ -59,6 +59,14 @@ public class Health : MonoBehaviour
     public UnityEvent<int, int> onHealthChanged;
 
     [FoldoutGroup("Events")]
+    [Tooltip("Fired when damage is taken. Passes the damage amount dealt.")]
+    public UnityEvent<int> onDamaged;
+
+    [FoldoutGroup("Events")]
+    [Tooltip("Fired when healing is received. Passes the actual HP restored (clamped to max).")]
+    public UnityEvent<int> onHealed;
+
+    [FoldoutGroup("Events")]
     [Tooltip("Fired when HP drops to or below the low-health threshold. Fires once per crossing.")]
     public UnityEvent onLowHealth;
 
@@ -69,6 +77,11 @@ public class Health : MonoBehaviour
     // =====================
     // MMF Feedbacks
     // =====================
+
+    [FoldoutGroup("Feedbacks")]
+    [Tooltip("MMF_Players to play when damage is taken. Called with PlayFeedbacks(position, damage). " +
+             "Wire hit flash, screen shake, etc.")]
+    [SerializeField] private MMF_Player[] damageFeedbacks;
 
     [FoldoutGroup("Feedbacks")]
     [Tooltip("MMF_Players to play on death. Called with PlayFeedbacks(position, 1.0). " +
@@ -129,8 +142,22 @@ public class Health : MonoBehaviour
         if (IsDead) return;
 
         // Apply damage, clamped to zero
+        int actualDamage = Mathf.Min(CurrentHP, hitData.damage);
         CurrentHP = Mathf.Max(0, CurrentHP - hitData.damage);
         onHealthChanged?.Invoke(CurrentHP, maxHP);
+        if (actualDamage > 0)
+        {
+            onDamaged?.Invoke(actualDamage);
+
+            // Play damage MMF feedbacks with intensity = damage dealt
+            if (damageFeedbacks != null)
+            {
+                for (int i = 0; i < damageFeedbacks.Length; i++)
+                {
+                    if (damageFeedbacks[i] != null) damageFeedbacks[i].PlayFeedbacks(transform.position, actualDamage);
+                }
+            }
+        }
 
         // Low-health threshold: fire once when crossing below
         if (!_lowHealthFired && HealthPercent <= lowHealthThreshold)
@@ -170,8 +197,12 @@ public class Health : MonoBehaviour
     {
         if (IsDead) return;
 
+        // Track actual HP restored (clamped to max)
+        int prevHP = CurrentHP;
         CurrentHP = Mathf.Min(maxHP, CurrentHP + amount);
+        int actualHeal = CurrentHP - prevHP;
         onHealthChanged?.Invoke(CurrentHP, maxHP);
+        if (actualHeal > 0) onHealed?.Invoke(actualHeal);
 
         // Reset low-health flag if healed above threshold
         if (_lowHealthFired && HealthPercent > lowHealthThreshold)

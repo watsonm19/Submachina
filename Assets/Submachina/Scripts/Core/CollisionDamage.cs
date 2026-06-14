@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.Events;
+using MoreMountains.Feedbacks;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -46,6 +48,24 @@ namespace Submachina.Core
         [Tooltip("Only register impacts with objects on these layers. " +
                  "Set to the Rock / Environment layer to avoid collisions with enemies, etc.")]
         [SerializeField] private LayerMask collisionLayers = ~0; // default: all layers
+
+        // =====================
+        // Events
+        // =====================
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when a qualifying collision impact deals damage. " +
+                 "Passes the impact speed (m/s) for intensity-driven effects.")]
+        public UnityEvent<float> onCollisionDamage;
+
+        // =====================
+        // Feedbacks
+        // =====================
+
+        [FoldoutGroup("Feedbacks")]
+        [Tooltip("MMF_Players to play on collision damage. Intensity passed as normalized " +
+                 "value based on impact speed relative to minImpactSpeed.")]
+        [SerializeField] private MMF_Player[] collisionFeedbacks;
 
         // =====================
         // Debug
@@ -102,6 +122,16 @@ namespace Submachina.Core
 
             _health.TakeDamage(damagePerImpact);
             _cooldownEnd = Time.time + damageCooldown;
+
+            // Fire event and feedbacks
+            onCollisionDamage?.Invoke(impactSpeed);
+            if (collisionFeedbacks != null)
+            {
+                for (int i = 0; i < collisionFeedbacks.Length; i++)
+                {
+                    if (collisionFeedbacks[i] != null) collisionFeedbacks[i].PlayFeedbacks(transform.position, damagePerImpact);
+                }
+            }
         }
 
         // -------------------------------------------------------
