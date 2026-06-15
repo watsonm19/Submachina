@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
-using MoreMountains.Feedbacks;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -56,21 +55,6 @@ namespace Submachina.Core
         [FoldoutGroup("Mining")]
         [Tooltip("Layer containing mining resource colliders. Create a 'Resource' layer and assign it here.")]
         [SerializeField] private LayerMask miningLayer;
-
-        // =====================
-        // Feedbacks
-        // =====================
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("MMF_Players played once when mining begins on a target (or switches targets). " +
-                 "Stopped when the beam leaves the target or the button is released. " +
-                 "Use looping feedbacks (e.g. looping sound, sustained screen shake) for continuous effects.")]
-        [SerializeField] private MMF_Player[] miningFeedbacks;
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("MMF_Players played once when a resource is fully collected. " +
-                 "Called with PlayFeedbacks(hitPoint, 1.0).")]
-        [SerializeField] private MMF_Player[] collectFeedbacks;
 
         // =====================
         // Debug
@@ -181,22 +165,14 @@ namespace Submachina.Core
                 if (!_miningFeedbacksPlaying)
                 {
                     _miningFeedbacksPlaying = true;
-                    for (int i = 0; i < miningFeedbacks.Length; i++)
-                    {
-                        if (miningFeedbacks[i] != null) miningFeedbacks[i].PlayFeedbacks(beamEnd, 1f);
-                    }
+                    Sub?.Feedbacks?.Play(SubFeedback.MiningActive, beamEnd);
                 }
 
                 // Collect when fully mined
                 if (_miningTimer >= _miningDuration)
                 {
                     StopMiningFeedbacks();
-
-                    // Collection feedbacks — one-shot burst at full intensity
-                    for (int i = 0; i < collectFeedbacks.Length; i++)
-                    {
-                        if (collectFeedbacks[i] != null) collectFeedbacks[i].PlayFeedbacks(beamEnd, 1f);
-                    }
+                    Sub?.Feedbacks?.Play(SubFeedback.MiningCollect, beamEnd);
 
                     _currentTarget.Collect(Sub);
                     _currentTarget = null;
@@ -238,11 +214,7 @@ namespace Submachina.Core
         {
             if (!_miningFeedbacksPlaying) return;
             _miningFeedbacksPlaying = false;
-
-            for (int i = 0; i < miningFeedbacks.Length; i++)
-            {
-                if (miningFeedbacks[i] != null) miningFeedbacks[i].StopFeedbacks();
-            }
+            Sub?.Feedbacks?.Stop(SubFeedback.MiningActive);
         }
     }
 }

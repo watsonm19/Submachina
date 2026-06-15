@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.InputSystem;
-using MoreMountains.Feedbacks;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -42,29 +41,6 @@ namespace Submachina.Core
                  "Assign from your Input Action Asset.")]
         [SerializeField] private InputActionReference useScrapAction;
 
-        // =====================
-        // Feedbacks
-        // =====================
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("Played when one scrap is successfully banked from a mining drop.")]
-        [SerializeField] private MMF_Player[] scrapAddedFeedbacks;
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("Played when a scrap drop is ignored because the bank is already at capacity.")]
-        [SerializeField] private MMF_Player[] scrapFullFeedbacks;
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("Played when scrap is successfully consumed and the hull is repaired.")]
-        [SerializeField] private MMF_Player[] healFeedbacks;
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("Played when the player tries to use scrap but has none banked.")]
-        [SerializeField] private MMF_Player[] noScrapFeedbacks;
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("Played when the player tries to use scrap but hull is already at full integrity.")]
-        [SerializeField] private MMF_Player[] fullHealthFeedbacks;
 
         // =====================
         // Events
@@ -142,14 +118,14 @@ namespace Submachina.Core
             // Bank is full — signal the rejected drop so the scene can react (e.g. a "full" cue)
             if (_scrapCount >= maxScrap)
             {
-                PlayFeedbacks(scrapFullFeedbacks);
+                Sub?.Feedbacks?.Play(SubFeedback.ScrapFull, transform.position);
                 onScrapFull?.Invoke();
                 return;
             }
 
             // Bank the scrap and broadcast the new count for feedbacks and listeners
             _scrapCount++;
-            PlayFeedbacks(scrapAddedFeedbacks);
+            Sub?.Feedbacks?.Play(SubFeedback.ScrapAdded, transform.position);
             onScrapAdded?.Invoke(_scrapCount);
 
             Debug.Log($"[ScrapManager] Scrap collected. Banked: {_scrapCount}/{maxScrap}");
@@ -173,7 +149,7 @@ namespace Submachina.Core
             // No scrap available
             if (_scrapCount <= 0)
             {
-                PlayFeedbacks(noScrapFeedbacks);
+                Sub?.Feedbacks?.Play(SubFeedback.NoScrap, transform.position);
                 onNoScrap?.Invoke();
                 return;
             }
@@ -181,7 +157,7 @@ namespace Submachina.Core
             // Hull already at full integrity — don't waste the scrap
             if (Sub?.Health != null && Sub?.Health.HealthPercent >= 1f)
             {
-                PlayFeedbacks(fullHealthFeedbacks);
+                Sub?.Feedbacks?.Play(SubFeedback.FullHealth, transform.position);
                 onFullHealth?.Invoke();
                 return;
             }
@@ -189,21 +165,12 @@ namespace Submachina.Core
             // Spend the scrap, repair the hull, and broadcast the remaining count
             _scrapCount--;
             Sub?.Health?.Heal(healPerScrap);
-            PlayFeedbacks(healFeedbacks);
+            Sub?.Feedbacks?.Play(SubFeedback.ScrapUsed, transform.position);
             onScrapUsed?.Invoke(_scrapCount);
 
             Debug.Log($"[ScrapManager] Scrap used. Healed {healPerScrap} HP. Remaining: {_scrapCount}");
         }
 
-        /** Plays each MMF_Player in the array from this transform's position. */
-        private void PlayFeedbacks(MMF_Player[] feedbacks)
-        {
-            if (feedbacks == null) return;
-            for (int i = 0; i < feedbacks.Length; i++)
-            {
-                if (feedbacks[i] != null) feedbacks[i].PlayFeedbacks(transform.position, 1f);
-            }
-        }
 
         // -------------------------------------------------------
         // Editor Utilities

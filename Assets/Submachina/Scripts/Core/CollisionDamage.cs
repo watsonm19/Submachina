@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.Events;
-using MoreMountains.Feedbacks;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -24,7 +23,7 @@ namespace Submachina.Core
      * takes damage when hitting a rock faster than 3 m/s.
      */
     [RequireComponent(typeof(Health))]
-    public class CollisionDamage : MonoBehaviour
+    public class CollisionDamage : SubmarineComponent
     {
         // =====================
         // Settings
@@ -59,15 +58,6 @@ namespace Submachina.Core
         public UnityEvent<float> onCollisionDamage;
 
         // =====================
-        // Feedbacks
-        // =====================
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("MMF_Players to play on collision damage. Intensity passed as normalized " +
-                 "value based on impact speed relative to minImpactSpeed.")]
-        [SerializeField] private MMF_Player[] collisionFeedbacks;
-
-        // =====================
         // Debug
         // =====================
 
@@ -89,8 +79,9 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             _health = GetComponent<Health>();
         }
 
@@ -123,15 +114,8 @@ namespace Submachina.Core
             _health.TakeDamage(damagePerImpact);
             _cooldownEnd = Time.time + damageCooldown;
 
-            // Fire event and feedbacks
             onCollisionDamage?.Invoke(impactSpeed);
-            if (collisionFeedbacks != null)
-            {
-                for (int i = 0; i < collisionFeedbacks.Length; i++)
-                {
-                    if (collisionFeedbacks[i] != null) collisionFeedbacks[i].PlayFeedbacks(transform.position, damagePerImpact);
-                }
-            }
+            Sub?.Feedbacks?.Play(SubFeedback.CollisionDamage, transform.position, damagePerImpact);
         }
 
         // -------------------------------------------------------

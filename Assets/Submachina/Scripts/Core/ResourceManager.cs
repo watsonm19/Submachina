@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
 using UnityAtoms.BaseAtoms;
-using MoreMountains.Feedbacks;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -59,18 +58,6 @@ namespace Submachina.Core
         public UnityEvent<int> onLevelUp;
 
         // =====================
-        // Feedbacks
-        // =====================
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("Played each time resources are collected (the pickup pulse).")]
-        [SerializeField] private MMF_Player[] resourcesAddedFeedbacks;
-
-        [FoldoutGroup("Feedbacks")]
-        [Tooltip("Played when a level up is reached.")]
-        [SerializeField] private MMF_Player[] levelUpFeedbacks;
-
-        // =====================
         // Debug / State
         // =====================
 
@@ -114,8 +101,7 @@ namespace Submachina.Core
         {
             _currentResources += amount;
 
-            // Signal the collection so the scene can pulse a pickup cue
-            PlayFeedbacks(resourcesAddedFeedbacks);
+            Sub?.Feedbacks?.Play(SubFeedback.ResourcesAdded, transform.position);
             onResourcesAdded?.Invoke(amount);
 
             while (_currentResources >= CurrentThreshold)
@@ -138,7 +124,7 @@ namespace Submachina.Core
         private void LevelUp()
         {
             _currentLevel++;
-            PlayFeedbacks(levelUpFeedbacks);
+            Sub?.Feedbacks?.Play(SubFeedback.LevelUp, transform.position);
             onLevelUp?.Invoke(_currentLevel);
             WriteAtoms();
 
@@ -151,15 +137,6 @@ namespace Submachina.Core
             if (resourceThreshold != null) resourceThreshold.Value = CurrentThreshold;
         }
 
-        /** Plays each MMF_Player in the array from this transform's position. */
-        private void PlayFeedbacks(MMF_Player[] feedbacks)
-        {
-            if (feedbacks == null) return;
-            for (int i = 0; i < feedbacks.Length; i++)
-            {
-                if (feedbacks[i] != null) feedbacks[i].PlayFeedbacks(transform.position, 1f);
-            }
-        }
 
         // -------------------------------------------------------
         // Editor Utilities
