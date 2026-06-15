@@ -125,6 +125,10 @@ namespace Submachina.Core
         public UnityEvent OnPumpChargeStarted;
 
         [FoldoutGroup("Events")]
+        [Tooltip("Fired whenever a charge cycle ends — perfect, weak, overshot, or cancelled by the intake pump. Wire: stop charge animation/SFX.")]
+        public UnityEvent OnPumpChargeStopped;
+
+        [FoldoutGroup("Events")]
         [Tooltip("Fired on a successful release within the sweet spot. Wire: +25 air SFX, green flash.")]
         public UnityEvent OnPerfectPump;
 
@@ -271,6 +275,7 @@ namespace Submachina.Core
                         // Held past maximum — pump vents uselessly
                         _chargeProgress = 0f;
                         _state = PumpState.Overshot;
+                        OnPumpChargeStopped?.Invoke();
                         OnOvershotPump?.Invoke();
                     }
                     break;
@@ -297,6 +302,7 @@ namespace Submachina.Core
                 {
                     _chargeProgress = 0f;
                     _state = PumpState.Idle;
+                    OnPumpChargeStopped?.Invoke();
                 }
                 return;
             }
@@ -386,8 +392,9 @@ namespace Submachina.Core
             {
                 o2System?.AddAir(perfectPumpAir);
                 _rapidPressCount = 0;   // good timing resets spam penalty window
-                OnPerfectPump?.Invoke();
                 _chargeProgress = 0f;
+                OnPumpChargeStopped?.Invoke();
+                OnPerfectPump?.Invoke();
 
                 if (perfectPumpCooldown > 0f) StartCooldown();
                 else _state = PumpState.Idle;
@@ -395,9 +402,10 @@ namespace Submachina.Core
             }
 
             o2System?.AddAir(weakPumpAir);
+            _chargeProgress = 0f;
+            OnPumpChargeStopped?.Invoke();
             OnWeakPump?.Invoke();
 
-            _chargeProgress = 0f;
             _state = PumpState.Idle;
         }
 
