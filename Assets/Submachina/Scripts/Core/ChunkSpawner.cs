@@ -41,6 +41,10 @@ namespace Submachina.Core
         [SerializeField] private ResourceManager resourceManager;
 
         [FoldoutGroup("References")]
+        [Tooltip("The ScrapManager — injected into each spawned resource node for scrap drop rolls.")]
+        [SerializeField] private ScrapManager scrapManager;
+
+        [FoldoutGroup("References")]
         [Tooltip("Enemy prefab — injected into chunks below the grace zone.")]
         [SerializeField] private GameObject enemyPrefab;
 
@@ -156,7 +160,7 @@ namespace Submachina.Core
             WorldChunk chunk = cellGO.AddComponent<WorldChunk>();
             chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, depth,
                 rockPrefab, resourcePrefab, resourceManager,
-                enemyPrefab, o2BubblePrefab, o2System);
+                scrapManager, enemyPrefab, o2BubblePrefab, o2System);
 
             _chunks[cell] = chunk;
         }

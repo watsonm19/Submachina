@@ -30,6 +30,11 @@ namespace Submachina.Core
         [Tooltip("Resource units awarded on successful collection.")]
         [SerializeField, Min(0f)] private float resourceValue = 10f;
 
+        [FoldoutGroup("Settings")]
+        [Tooltip("Probability of dropping one scrap on collection. " +
+                 "Example: 0.20 = 20% chance, roughly 1 scrap per 5 nodes mined.")]
+        [SerializeField, Range(0f, 1f)] private float scrapDropChance = 0.20f;
+
         // =====================
         // References
         // =====================
@@ -37,6 +42,10 @@ namespace Submachina.Core
         [FoldoutGroup("References")]
         [Tooltip("Injected by WorldChunk at spawn time.")]
         [SerializeField] private ResourceManager resourceManager;
+
+        [FoldoutGroup("References")]
+        [Tooltip("Injected by WorldChunk at spawn time. Receives the scrap drop when the chance roll succeeds.")]
+        [SerializeField] private ScrapManager scrapManager;
 
         // =====================
         // Debug
@@ -84,9 +93,12 @@ namespace Submachina.Core
         }
 
         /**
-         * Awards resources and destroys this node.
+         * Awards resources, rolls for a scrap drop, then destroys this node.
          * Called by MiningLaser when the beam has been held on target
          * for the full mining duration.
+         *
+         * Scrap roll: Random.value produces a uniform 0-1 value each call.
+         * Example: scrapDropChance=0.20 → ~1 scrap dropped per 5 nodes mined on average.
          */
         public void Collect()
         {
@@ -95,6 +107,10 @@ namespace Submachina.Core
             else
                 Debug.LogWarning("[MiningResource] No ResourceManager assigned.");
 
+            // Roll for scrap drop
+            if (scrapManager != null && Random.value < scrapDropChance)
+                scrapManager.AddScrap();
+
             Destroy(gameObject);
         }
 
@@ -102,6 +118,12 @@ namespace Submachina.Core
         public void SetResourceManager(ResourceManager manager)
         {
             resourceManager = manager;
+        }
+
+        /** Injected by WorldChunk immediately after instantiation. */
+        public void SetScrapManager(ScrapManager manager)
+        {
+            scrapManager = manager;
         }
     }
 }
