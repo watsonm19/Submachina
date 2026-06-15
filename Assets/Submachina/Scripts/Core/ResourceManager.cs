@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.Events;
 using UnityAtoms.BaseAtoms;
+using MoreMountains.Feedbacks;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -50,8 +51,24 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Events")]
+        [Tooltip("Fired every time resources are collected. Passes the amount added.")]
+        public UnityEvent<float> onResourcesAdded;
+
+        [FoldoutGroup("Events")]
         [Tooltip("Fired when the resource threshold is reached. Wire to the upgrade draft UI.")]
         public UnityEvent<int> onLevelUp;
+
+        // =====================
+        // Feedbacks
+        // =====================
+
+        [FoldoutGroup("Feedbacks")]
+        [Tooltip("Played each time resources are collected (the pickup pulse).")]
+        [SerializeField] private MMF_Player[] resourcesAddedFeedbacks;
+
+        [FoldoutGroup("Feedbacks")]
+        [Tooltip("Played when a level up is reached.")]
+        [SerializeField] private MMF_Player[] levelUpFeedbacks;
 
         // =====================
         // Debug / State
@@ -97,6 +114,10 @@ namespace Submachina.Core
         {
             _currentResources += amount;
 
+            // Signal the collection so the scene can pulse a pickup cue
+            PlayFeedbacks(resourcesAddedFeedbacks);
+            onResourcesAdded?.Invoke(amount);
+
             while (_currentResources >= CurrentThreshold)
             {
                 _currentResources -= CurrentThreshold;
@@ -117,6 +138,7 @@ namespace Submachina.Core
         private void LevelUp()
         {
             _currentLevel++;
+            PlayFeedbacks(levelUpFeedbacks);
             onLevelUp?.Invoke(_currentLevel);
             WriteAtoms();
 
@@ -127,6 +149,16 @@ namespace Submachina.Core
         {
             if (currentResources != null) currentResources.Value = _currentResources;
             if (resourceThreshold != null) resourceThreshold.Value = CurrentThreshold;
+        }
+
+        /** Plays each MMF_Player in the array from this transform's position. */
+        private void PlayFeedbacks(MMF_Player[] feedbacks)
+        {
+            if (feedbacks == null) return;
+            for (int i = 0; i < feedbacks.Length; i++)
+            {
+                if (feedbacks[i] != null) feedbacks[i].PlayFeedbacks(transform.position, 1f);
+            }
         }
 
         // -------------------------------------------------------

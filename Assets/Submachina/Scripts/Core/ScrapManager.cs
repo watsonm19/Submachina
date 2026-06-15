@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.InputSystem;
 using MoreMountains.Feedbacks;
 using Sirenix.OdinInspector;
@@ -46,6 +47,14 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Feedbacks")]
+        [Tooltip("Played when one scrap is successfully banked from a mining drop.")]
+        [SerializeField] private MMF_Player[] scrapAddedFeedbacks;
+
+        [FoldoutGroup("Feedbacks")]
+        [Tooltip("Played when a scrap drop is ignored because the bank is already at capacity.")]
+        [SerializeField] private MMF_Player[] scrapFullFeedbacks;
+
+        [FoldoutGroup("Feedbacks")]
         [Tooltip("Played when scrap is successfully consumed and the hull is repaired.")]
         [SerializeField] private MMF_Player[] healFeedbacks;
 
@@ -56,6 +65,30 @@ namespace Submachina.Core
         [FoldoutGroup("Feedbacks")]
         [Tooltip("Played when the player tries to use scrap but hull is already at full integrity.")]
         [SerializeField] private MMF_Player[] fullHealthFeedbacks;
+
+        // =====================
+        // Events
+        // =====================
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when one scrap is banked. Passes the new banked count.")]
+        public UnityEvent<int> onScrapAdded;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when a scrap drop is ignored because the bank is already full.")]
+        public UnityEvent onScrapFull;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when scrap is consumed to repair the hull. Passes the remaining banked count.")]
+        public UnityEvent<int> onScrapUsed;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when the player tries to use scrap but has none banked.")]
+        public UnityEvent onNoScrap;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when the player tries to use scrap but the hull is already at full integrity.")]
+        public UnityEvent onFullHealth;
 
         // =====================
         // Debug
@@ -106,9 +139,19 @@ namespace Submachina.Core
          */
         public void AddScrap()
         {
-            if (_scrapCount >= maxScrap) return;
+            // Bank is full — signal the rejected drop so the scene can react (e.g. a "full" cue)
+            if (_scrapCount >= maxScrap)
+            {
+                PlayFeedbacks(scrapFullFeedbacks);
+                onScrapFull?.Invoke();
+                return;
+            }
 
+            // Bank the scrap and broadcast the new count for feedbacks and listeners
             _scrapCount++;
+            PlayFeedbacks(scrapAddedFeedbacks);
+            onScrapAdded?.Invoke(_scrapCount);
+
             Debug.Log($"[ScrapManager] Scrap collected. Banked: {_scrapCount}/{maxScrap}");
         }
 
@@ -131,6 +174,7 @@ namespace Submachina.Core
             if (_scrapCount <= 0)
             {
                 PlayFeedbacks(noScrapFeedbacks);
+                onNoScrap?.Invoke();
                 return;
             }
 
@@ -138,12 +182,15 @@ namespace Submachina.Core
             if (Sub?.Health != null && Sub?.Health.HealthPercent >= 1f)
             {
                 PlayFeedbacks(fullHealthFeedbacks);
+                onFullHealth?.Invoke();
                 return;
             }
 
+            // Spend the scrap, repair the hull, and broadcast the remaining count
             _scrapCount--;
             Sub?.Health?.Heal(healPerScrap);
             PlayFeedbacks(healFeedbacks);
+            onScrapUsed?.Invoke(_scrapCount);
 
             Debug.Log($"[ScrapManager] Scrap used. Healed {healPerScrap} HP. Remaining: {_scrapCount}");
         }
