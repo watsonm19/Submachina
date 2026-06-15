@@ -141,6 +141,14 @@ namespace Submachina.Core
         public UnityEvent OnOvershotPump;
 
         [FoldoutGroup("Events")]
+        [Tooltip("Fired when charge enters the sweet spot window during a charge cycle. Wire: highlight SFX, glow effect.")]
+        public UnityEvent OnSweetSpotEntered;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when charge exits the sweet spot window (passed through without release). Wire: dim SFX, urgency cue.")]
+        public UnityEvent OnSweetSpotExited;
+
+        [FoldoutGroup("Events")]
         [Tooltip("Fired when spam triggers the Air Lock penalty. Wire: grind SFX, red screen flash.")]
         public UnityEvent OnAirLock;
 
@@ -216,6 +224,7 @@ namespace Submachina.Core
         private float     _cooldownTimer;
         private float     _lastPressTime  = -999f;
         private int       _rapidPressCount;
+        private bool      _wasInSweetSpot;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -270,11 +279,19 @@ namespace Submachina.Core
 
                 case PumpState.Charging:
                     _chargeProgress += chargeSpeed * Time.deltaTime;
+
+                    // Sweet spot edge detection — fire events on enter/exit transitions
+                    bool inSweetSpot = _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax;
+                    if (inSweetSpot && !_wasInSweetSpot)  OnSweetSpotEntered?.Invoke();
+                    if (!inSweetSpot && _wasInSweetSpot)  OnSweetSpotExited?.Invoke();
+                    _wasInSweetSpot = inSweetSpot;
+
                     if (_chargeProgress >= 1f)
                     {
                         // Held past maximum — pump vents uselessly
                         _chargeProgress = 0f;
                         _state = PumpState.Overshot;
+                        _wasInSweetSpot = false;
                         OnPumpChargeStopped?.Invoke();
                         OnOvershotPump?.Invoke();
                     }
@@ -300,7 +317,9 @@ namespace Submachina.Core
             {
                 if (_state == PumpState.Charging || _state == PumpState.Overshot)
                 {
+                    if (_wasInSweetSpot) OnSweetSpotExited?.Invoke();
                     _chargeProgress = 0f;
+                    _wasInSweetSpot = false;
                     _state = PumpState.Idle;
                     OnPumpChargeStopped?.Invoke();
                 }
@@ -359,6 +378,7 @@ namespace Submachina.Core
 
             // Begin a fresh compression cycle
             _chargeProgress = 0f;
+            _wasInSweetSpot = false;
             _state = PumpState.Charging;
             OnPumpChargeStarted?.Invoke();
         }
@@ -391,8 +411,9 @@ namespace Submachina.Core
             if (inSweetSpot)
             {
                 o2System?.AddAir(perfectPumpAir);
-                _rapidPressCount = 0;   // good timing resets spam penalty window
+                _rapidPressCount = 0;
                 _chargeProgress = 0f;
+                _wasInSweetSpot = false;
                 OnPumpChargeStopped?.Invoke();
                 OnPerfectPump?.Invoke();
 
@@ -403,6 +424,7 @@ namespace Submachina.Core
 
             o2System?.AddAir(weakPumpAir);
             _chargeProgress = 0f;
+            _wasInSweetSpot = false;
             OnPumpChargeStopped?.Invoke();
             OnWeakPump?.Invoke();
 
@@ -429,6 +451,7 @@ namespace Submachina.Core
             _state = PumpState.AirLocked;
             _airLockTimer = airLockDuration;
             _chargeProgress = 0f;
+            _wasInSweetSpot = false;
             _rapidPressCount = 0;
             OnAirLock?.Invoke();
         }
