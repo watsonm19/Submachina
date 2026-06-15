@@ -166,7 +166,7 @@ namespace Submachina.Core
             WorldChunk chunk = cellGO.AddComponent<WorldChunk>();
             chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, depth,
                 rockPrefab, resourcePrefab,
-                scrapManager, enemyPrefab, o2BubblePrefab);
+                enemyPrefab, o2BubblePrefab);
 
             _chunks[cell] = chunk;
         }

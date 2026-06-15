@@ -16,7 +16,7 @@ namespace Submachina.Core
      * Place on the GameManager. Assign the UseScrap InputAction from the player's
      * Input Action Asset (the user wires this in the editor).
      */
-    public class ScrapManager : MonoBehaviour
+    public class ScrapManager : SubmarineComponent
     {
         // =====================
         // Settings
@@ -31,13 +31,6 @@ namespace Submachina.Core
                  "Example: 1 = player can only hold one scrap at a time.")]
         [SerializeField, Min(1)] private int maxScrap = 1;
 
-        // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("The player submarine's Health component.")]
-        [SerializeField] private Health playerHealth;
 
         // =====================
         // Input
@@ -142,14 +135,14 @@ namespace Submachina.Core
             }
 
             // Hull already at full integrity — don't waste the scrap
-            if (playerHealth != null && playerHealth.HealthPercent >= 1f)
+            if (Sub?.Health != null && Sub?.Health.HealthPercent >= 1f)
             {
                 PlayFeedbacks(fullHealthFeedbacks);
                 return;
             }
 
             _scrapCount--;
-            playerHealth?.Heal(healPerScrap);
+            Sub?.Health?.Heal(healPerScrap);
             PlayFeedbacks(healFeedbacks);
 
             Debug.Log($"[ScrapManager] Scrap used. Healed {healPerScrap} HP. Remaining: {_scrapCount}");

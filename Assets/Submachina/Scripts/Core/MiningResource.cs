@@ -36,14 +36,6 @@ namespace Submachina.Core
         [SerializeField, Range(0f, 1f)] private float scrapDropChance = 0.20f;
 
         // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("Injected by WorldChunk at spawn time. Receives the scrap drop when the chance roll succeeds.")]
-        [SerializeField] private ScrapManager scrapManager;
-
-        // =====================
         // Debug
         // =====================
 
@@ -104,16 +96,10 @@ namespace Submachina.Core
                 Debug.LogWarning("[MiningResource] No Submarine ResourceManager available.");
 
             // Roll for scrap drop
-            if (scrapManager != null && Random.value < scrapDropChance)
-                scrapManager.AddScrap();
+            if (sub?.Scrap != null && Random.value < scrapDropChance)
+                sub.Scrap.AddScrap();
 
             Destroy(gameObject);
-        }
-
-        /** Injected by WorldChunk immediately after instantiation. */
-        public void SetScrapManager(ScrapManager manager)
-        {
-            scrapManager = manager;
         }
     }
 }

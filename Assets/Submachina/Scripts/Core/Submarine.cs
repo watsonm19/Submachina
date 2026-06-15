@@ -53,6 +53,9 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public ResourceManager Resources { get; private set; }
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        public ScrapManager Scrap { get; private set; }
+
         // =====================
         // Lifecycle
         // =====================
@@ -83,6 +86,7 @@ namespace Submachina.Core
                 case SubmarinePhysicsController phys:   Physics = phys; break;
                 case TurretAim turret:                  Turret = turret; break;
                 case ResourceManager res:               Resources = res; break;
+                case ScrapManager scrap:                Scrap = scrap;  break;
             }
         }
 
@@ -99,6 +103,7 @@ namespace Submachina.Core
                 case SubmarinePhysicsController phys when Physics == phys: Physics = null; break;
                 case TurretAim turret when Turret == turret:              Turret = null;  break;
                 case ResourceManager res when Resources == res:           Resources = null; break;
+                case ScrapManager scrap when Scrap == scrap:             Scrap = null;    break;
             }
         }
 

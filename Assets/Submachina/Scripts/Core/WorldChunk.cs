@@ -29,7 +29,6 @@ namespace Submachina.Core
         private float _halfWidth;
         private GameObject _rockPrefab;
         private GameObject _resourcePrefab;
-        private ScrapManager _scrapManager;
         private GameObject _enemyPrefab;
         private GameObject _o2BubblePrefab;
 
@@ -44,14 +43,13 @@ namespace Submachina.Core
          */
         public void Initialize(float topY, float height, float halfWidth, float depth,
             GameObject rockPrefab, GameObject resourcePrefab,
-            ScrapManager scrapManager, GameObject enemyPrefab, GameObject o2BubblePrefab)
+            GameObject enemyPrefab, GameObject o2BubblePrefab)
         {
             _topY = topY;
             _height = height;
             _halfWidth = halfWidth;
             _rockPrefab = rockPrefab;
             _resourcePrefab = resourcePrefab;
-            _scrapManager = scrapManager;
             _enemyPrefab = enemyPrefab;
             _o2BubblePrefab = o2BubblePrefab;
 
@@ -144,13 +142,7 @@ namespace Submachina.Core
                 float x = Random.Range(-_halfWidth * 0.8f, _halfWidth * 0.8f);
                 float y = Random.Range(_topY - _height + 1f, _topY - 1f);
 
-                GameObject go = Instantiate(_resourcePrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
-
-                MiningResource resource = go.GetComponent<MiningResource>();
-                if (resource != null)
-                {
-                    resource.SetScrapManager(_scrapManager);
-                }
+                Instantiate(_resourcePrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
             }
         }
 
