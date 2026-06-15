@@ -15,20 +15,19 @@ namespace Submachina.Core
      * darkening, depth bonus checks, UI display) should read the Atom rather
      * than referencing this script directly.
      *
+     * As a SubmarineComponent, this lives under the submarine hierarchy and
+     * resolves the tracked transform from its sibling physics controller
+     * (Sub.Physics) — no direct transform wiring required.
+     *
      * Setup:
-     *   - Attach to any persistent scene object (e.g., a GameManager GameObject).
-     *   - Assign the submarine transform as Target.
+     *   - Attach to a GameObject under the submarine root.
      *   - Assign or create a FloatVariable asset named CurrentDepth.
      */
-    public class DepthTracker : MonoBehaviour
+    public class DepthTracker : SubmarineComponent
     {
         // =====================
         // References
         // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("The submarine transform to track. Assign the submarine root.")]
-        [SerializeField] private Transform target;
 
         [FoldoutGroup("References")]
         [Tooltip("Atom written every frame with the current depth in metres. " +
@@ -49,7 +48,14 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private float DepthMetres => target != null ? Mathf.Max(0f, surfaceY - target.position.y) : 0f;
+        private float DepthMetres => TrackedTransform != null ? Mathf.Max(0f, surfaceY - TrackedTransform.position.y) : 0f;
+
+        // -------------------------------------------------------
+        // References
+        // -------------------------------------------------------
+
+        /** Transform whose Y position defines depth — sourced from the sub's physics controller. */
+        private Transform TrackedTransform => Sub != null && Sub.Physics != null ? Sub.Physics.transform : null;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -74,9 +80,9 @@ namespace Submachina.Core
          */
         private void WriteDepth()
         {
-            if (target == null || currentDepth == null) return;
+            if (TrackedTransform == null || currentDepth == null) return;
 
-            currentDepth.Value = Mathf.Max(0f, surfaceY - target.position.y);
+            currentDepth.Value = Mathf.Max(0f, surfaceY - TrackedTransform.position.y);
         }
     }
 }

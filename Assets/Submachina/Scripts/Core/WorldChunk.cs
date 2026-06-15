@@ -29,10 +29,8 @@ namespace Submachina.Core
         private float _halfWidth;
         private GameObject _rockPrefab;
         private GameObject _resourcePrefab;
-        private ResourceManager _resourceManager;
         private GameObject _enemyPrefab;
         private GameObject _o2BubblePrefab;
-        private O2System _o2System;
 
         // -------------------------------------------------------
         // Initialization
@@ -40,29 +38,20 @@ namespace Submachina.Core
 
         /**
          * Called by ChunkSpawner immediately after instantiation.
-         *
-         * Parameters:
-         *   topY        — world Y of the top edge of this chunk
-         *   height      — vertical span of this chunk in world units
-         *   halfWidth   — half the navigable width (rocks stay within ±halfWidth)
-         *   depth       — chunk depth in metres, used to scale difficulty
-         *   rockPrefab  — prefab instantiated for each obstacle
-         *   enemyPrefab — enemy prefab; null = no enemies in this chunk
-         *   o2System    — injected into spawned enemies for their death drops
+         * Spawned prefabs (resources, enemies, pickups) resolve their own
+         * submarine dependencies via Submarine.All or collision context.
          */
         public void Initialize(float topY, float height, float halfWidth, float depth,
-            GameObject rockPrefab, GameObject resourcePrefab, ResourceManager resourceManager,
-            GameObject enemyPrefab, GameObject o2BubblePrefab, O2System o2System)
+            GameObject rockPrefab, GameObject resourcePrefab,
+            GameObject enemyPrefab, GameObject o2BubblePrefab)
         {
             _topY = topY;
             _height = height;
             _halfWidth = halfWidth;
             _rockPrefab = rockPrefab;
             _resourcePrefab = resourcePrefab;
-            _resourceManager = resourceManager;
             _enemyPrefab = enemyPrefab;
             _o2BubblePrefab = o2BubblePrefab;
-            _o2System = o2System;
 
             GenerateObstacles(depth);
             GenerateResources(depth);
@@ -153,10 +142,7 @@ namespace Submachina.Core
                 float x = Random.Range(-_halfWidth * 0.8f, _halfWidth * 0.8f);
                 float y = Random.Range(_topY - _height + 1f, _topY - 1f);
 
-                GameObject go = Instantiate(_resourcePrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
-
-                MiningResource resource = go.GetComponent<MiningResource>();
-                if (resource != null) resource.SetResourceManager(_resourceManager);
+                Instantiate(_resourcePrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
             }
         }
 
@@ -178,12 +164,9 @@ namespace Submachina.Core
                 float x = Random.Range(-_halfWidth * 0.7f, _halfWidth * 0.7f);
                 float y = Random.Range(_topY - _height + 1f, _topY - 1f);
 
-                GameObject go = Instantiate(_o2BubblePrefab,
+                Instantiate(_o2BubblePrefab,
                     new Vector3(transform.position.x + x, y, 0f),
                     Quaternion.identity, transform);
-
-                O2Pickup pickup = go.GetComponent<O2Pickup>();
-                if (pickup != null) pickup.SetO2System(_o2System);
             }
         }
 
@@ -209,10 +192,7 @@ namespace Submachina.Core
                 float x = Random.Range(-_halfWidth * 0.65f, _halfWidth * 0.65f);
                 float y = Random.Range(_topY - _height + 2f, _topY - 2f);
 
-                GameObject go = Instantiate(_enemyPrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
-
-                EnemyController enemy = go.GetComponent<EnemyController>();
-                if (enemy != null) enemy.SetO2System(_o2System);
+                Instantiate(_enemyPrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
             }
         }
 

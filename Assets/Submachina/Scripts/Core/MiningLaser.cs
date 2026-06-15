@@ -23,19 +23,11 @@ namespace Submachina.Core
      *   4. Create a "Mine" action (Button, hold behavior) in your Input Asset — assign it here.
      *   5. Set Mining Layer to the "Resource" layer.
      */
-    public class MiningLaser : MonoBehaviour
+    public class MiningLaser : SubmarineComponent
     {
         // =====================
         // References
         // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("TurretAim on the submarine's Turret child. Laser fires from the turret in its aim direction.")]
-        [SerializeField] private TurretAim turretAim;
-
-        [FoldoutGroup("References")]
-        [Tooltip("The submarine's O2System. IsMining is toggled while the laser fires to increase air drain.")]
-        [SerializeField] private O2System o2System;
 
         [FoldoutGroup("References")]
         [Tooltip("MiningBeamVFX on the beam child object. Drives the Sci-Fi Arsenal beam visuals.")]
@@ -106,8 +98,9 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             _miningDuration = miningDuration;
         }
 
@@ -124,11 +117,11 @@ namespace Submachina.Core
 
         private void Update()
         {
-            if (mineAction == null || turretAim == null || beamVFX == null) return;
+            if (mineAction == null || Sub?.Turret == null || beamVFX == null) return;
 
             bool firing = mineAction.action.IsPressed()
-                && (o2System == null || o2System.CurrentAirPressure > 0f);
-            if (o2System != null) o2System.IsMining = firing;
+                && (Sub?.O2 == null || Sub.O2.CurrentAirPressure > 0f);
+            if (Sub?.O2 != null) Sub.O2.IsMining = firing;
 
             if (firing)
                 FireLaser();
@@ -150,8 +143,8 @@ namespace Submachina.Core
         {
             beamVFX.Show();
 
-            Vector2 origin = turretAim.transform.position;
-            Vector2 direction = turretAim.AimDirection;
+            Vector2 origin = Sub.Turret.transform.position;
+            Vector2 direction = Sub.Turret.AimDirection;
 
             // Cast along the aim direction; only hits Resource-layer colliders
             RaycastHit2D hit = Physics2D.Raycast(origin, direction, maxRange, miningLayer);
@@ -205,7 +198,7 @@ namespace Submachina.Core
                         if (collectFeedbacks[i] != null) collectFeedbacks[i].PlayFeedbacks(beamEnd, 1f);
                     }
 
-                    _currentTarget.Collect();
+                    _currentTarget.Collect(Sub);
                     _currentTarget = null;
                     _miningTimer = 0f;
                 }

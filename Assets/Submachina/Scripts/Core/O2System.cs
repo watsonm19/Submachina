@@ -25,7 +25,7 @@ namespace Submachina.Core
      *   - Assign the player's Health component for health bleed.
      *   - Optionally assign the CurrentDepth atom from DepthTracker for depth scaling.
      */
-    public class O2System : MonoBehaviour
+    public class O2System : SubmarineComponent
     {
         // =====================
         // Air Capacity
@@ -102,6 +102,14 @@ namespace Submachina.Core
                  "Read by O2Bar and any other system that cares about O2.")]
         [SerializeField] private FloatVariable currentO2;
 
+        [FoldoutGroup("Atoms")]
+        [Tooltip("Written when max capacity changes. Read by O2Bar for the capacity ghost bar.")]
+        [SerializeField] private FloatVariable maxAirCapacity;
+
+        [FoldoutGroup("Atoms")]
+        [Tooltip("Written once at startup with the original ceiling. Read by O2Bar for normalisation.")]
+        [SerializeField] private FloatVariable originalMaxAir;
+
         // =====================
         // Events
         // =====================
@@ -176,10 +184,12 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             _currentMaxAir      = maxAirPressure;
             _currentAirPressure = maxAirPressure;
+            if (originalMaxAir != null) originalMaxAir.Value = maxAirPressure;
             WriteAtom();
         }
 
@@ -320,6 +330,7 @@ namespace Submachina.Core
         private void WriteAtom()
         {
             if (currentO2 != null) currentO2.Value = _currentAirPressure;
+            if (maxAirCapacity != null) maxAirCapacity.Value = _currentMaxAir;
         }
 
         // -------------------------------------------------------

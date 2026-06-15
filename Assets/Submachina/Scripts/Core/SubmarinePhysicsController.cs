@@ -30,7 +30,7 @@ namespace Submachina.Core
      *      (e.g., "Move" from your Input Action Asset — WASD/left-stick).
      */
     [RequireComponent(typeof(Rigidbody2D))]
-    public class SubmarinePhysicsController : MonoBehaviour
+    public class SubmarinePhysicsController : SubmarineComponent
     {
         // =====================
         // Thrust Settings
@@ -149,14 +149,6 @@ namespace Submachina.Core
         [SerializeField] private FloatVariable currentDescentSpeed;
 
         // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("The submarine's O2System. IsThrusting is set while movement input is active to increase air drain.")]
-        [SerializeField] private O2System o2System;
-
-        // =====================
         // Input
         // =====================
 
@@ -214,8 +206,9 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             _rb = GetComponent<Rigidbody2D>();
 
             // Apply feel settings to the Rigidbody at startup so the Inspector
@@ -248,7 +241,7 @@ namespace Submachina.Core
                 ? thrustAction.action.ReadValue<Vector2>()
                 : Vector2.zero;
 
-            if (o2System != null) o2System.IsThrusting = _thrustInput.sqrMagnitude > 0.01f;
+            if (Sub?.O2 != null) Sub.O2.IsThrusting = _thrustInput.sqrMagnitude > 0.01f;
         }
 
         private void LateUpdate()

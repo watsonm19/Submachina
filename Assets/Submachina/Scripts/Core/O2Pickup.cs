@@ -37,14 +37,6 @@ namespace Submachina.Core
                  "sweet spot mechanic, which calls Collect() directly.")]
         [SerializeField] private bool collectOnContact;
         // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("The submarine's O2System. Injected at spawn time by WorldChunk.")]
-        [SerializeField] private O2System o2System;
-
-        // =====================
         // Events
         // =====================
 
@@ -70,16 +62,16 @@ namespace Submachina.Core
 
         /**
          * Fires when any collider enters this trigger.
-         * Only responds to the Player tag to avoid being collected by enemies
-         * or environment geometry.
+         * Resolves which submarine collected the pickup from the collision context.
          */
         private void OnTriggerEnter2D(Collider2D other)
         {
-            // Contact collection is off in the pump-gated flow — O2PickupPump calls Collect()
             if (!collectOnContact) return;
-            if (!other.CompareTag("Player")) return;
 
-            Collect();
+            Submarine sub = other.GetComponentInParent<Submarine>();
+            if (sub == null) return;
+
+            Collect(sub);
         }
 
         /**
@@ -91,26 +83,18 @@ namespace Submachina.Core
          * reward by timing quality. Example: replenishAmount=10, multiplier=0.35
          * → a weak pump stop restores 3.5 air instead of 10.
          */
-        public void Collect(float airMultiplier = 1f)
+        public void Collect(Submarine sub, float airMultiplier = 1f)
         {
-            if (o2System != null)
+            if (sub?.O2 != null)
             {
-                o2System.RestoreCapacity(capacityRestoreAmount);
-                o2System.AddAir(replenishAmount * airMultiplier);
+                sub.O2.RestoreCapacity(capacityRestoreAmount);
+                sub.O2.AddAir(replenishAmount * airMultiplier);
             }
             else
-                Debug.LogWarning("[O2Pickup] No O2System assigned — pickup consumed but air not restored.");
+                Debug.LogWarning("[O2Pickup] No Submarine O2System available — pickup consumed but air not restored.");
 
-            // Notify listeners (VFX/SFX such as a ripple) before the object goes away.
             onCollected?.Invoke();
-
             Destroy(gameObject);
-        }
-
-        /** Assigns the O2System at spawn time. Called by WorldChunk when spawning pickups. */
-        public void SetO2System(O2System system)
-        {
-            o2System = system;
         }
     }
 }

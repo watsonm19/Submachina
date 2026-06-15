@@ -31,14 +31,6 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float resourceValue = 10f;
 
         // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("Injected by WorldChunk at spawn time.")]
-        [SerializeField] private ResourceManager resourceManager;
-
-        // =====================
         // Debug
         // =====================
 
@@ -84,24 +76,18 @@ namespace Submachina.Core
         }
 
         /**
-         * Awards resources and destroys this node.
+         * Awards resources to the collecting submarine and destroys this node.
          * Called by MiningLaser when the beam has been held on target
          * for the full mining duration.
          */
-        public void Collect()
+        public void Collect(Submarine sub)
         {
-            if (resourceManager != null)
-                resourceManager.AddResources(resourceValue);
+            if (sub?.Resources != null)
+                sub.Resources.AddResources(resourceValue);
             else
-                Debug.LogWarning("[MiningResource] No ResourceManager assigned.");
+                Debug.LogWarning("[MiningResource] No Submarine ResourceManager available.");
 
             Destroy(gameObject);
-        }
-
-        /** Injected by WorldChunk immediately after instantiation. */
-        public void SetResourceManager(ResourceManager manager)
-        {
-            resourceManager = manager;
         }
     }
 }

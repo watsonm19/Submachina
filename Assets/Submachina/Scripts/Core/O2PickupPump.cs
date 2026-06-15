@@ -37,7 +37,7 @@ namespace Submachina.Core
      *   4. Subscribe to events for audio/visual juice.
      *   5. Point a BellowsBar's pump reference at this component to display the loop.
      */
-    public class O2PickupPump : MonoBehaviour, ISweetSpotPump
+    public class O2PickupPump : SubmarineComponent, ISweetSpotPump
     {
         // =====================
         // Activation
@@ -296,8 +296,9 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             if (showRadiusRing || showIdleHint) BuildRingRenderer();
         }
 
@@ -428,7 +429,7 @@ namespace Submachina.Core
 
             // Grade the reward by timing; Collect() routes the air into the tank
             bool inSweetSpot = _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax;
-            pickup.Collect(inSweetSpot ? sweetSpotRewardMultiplier : weakRewardMultiplier);
+            pickup.Collect(Sub, inSweetSpot ? sweetSpotRewardMultiplier : weakRewardMultiplier);
 
             _chargeProgress = 0f;
             _state = PumpState.Idle;
