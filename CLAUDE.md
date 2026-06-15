@@ -50,5 +50,7 @@
   - Menu equivalents for the developer: `Tools/Custom/Capture Game Camera` and `Tools/Custom/Capture Scene View`.
 
 ### --- Key Design Directives ---
-Follow best Unity coding and game design practices through composition, reusability, and abstraction of key concepts to reduce redundancy when appropriate. Help fill in the gaps or suggest alternatives where the ideas and planning can
+- Follow best Unity coding and game design practices through composition, reusability, and abstraction of key concepts to reduce redundancy when appropriate. Help fill in the gaps or suggest alternatives where the ideas and planning can
 be improved.
+- In most cases, create Unity Events to invoke for a component's major event methods so that its activities are more exposed in the Editor and available to wire up to other game objects or particle effects in the scene.
+- In cases where a component is likely to warrant additional game juice, feel, particle effects, etc, link its major events to one or more MMF_Player components to call PlayFeedbacks with a location and intensity, if relevant.
