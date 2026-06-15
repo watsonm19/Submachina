@@ -16,17 +16,13 @@ namespace Submachina.Core
      * Cells only spawn below the water surface (cellY < 0). The surface boundary
      * collider at Y=0 handles blocking the player from going above water.
      *
-     * Place this on the GameManager object. Assign the Main Camera.
+     * Place this on the GameManager object. The main camera is found automatically.
      */
     public class ChunkSpawner : MonoBehaviour
     {
         // =====================
         // References
         // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("The scene's main camera. Used to determine which cells to generate.")]
-        [SerializeField] private Camera gameCamera;
 
         [FoldoutGroup("References")]
         [Tooltip("Prefab for rock obstacles.")]
@@ -37,24 +33,22 @@ namespace Submachina.Core
         [SerializeField] private GameObject resourcePrefab;
 
         [FoldoutGroup("References")]
-        [Tooltip("The scene's ResourceManager — injected into each spawned resource.")]
-        [SerializeField] private ResourceManager resourceManager;
-
-        [FoldoutGroup("References")]
-        [Tooltip("The ScrapManager — injected into each spawned resource node for scrap drop rolls.")]
-        [SerializeField] private ScrapManager scrapManager;
-
-        [FoldoutGroup("References")]
-        [Tooltip("Enemy prefab — injected into chunks below the grace zone.")]
+        [Tooltip("Enemy prefab.")]
         [SerializeField] private GameObject enemyPrefab;
-
-        [FoldoutGroup("References")]
-        [Tooltip("The submarine's O2System — injected into enemies and O2 pickups at spawn.")]
-        [SerializeField] private O2System o2System;
 
         [FoldoutGroup("References")]
         [Tooltip("O2 bubble prefab scattered passively throughout each chunk.")]
         [SerializeField] private GameObject o2BubblePrefab;
+
+        // Surfaces the implicit camera dependency: not a serialized field, but
+        // resolved automatically from Camera.main at Awake so it's clear a camera
+        // is part of this component's references under the hood.
+        [FoldoutGroup("References")]
+        [Tooltip("Resolved automatically from Camera.main at runtime — not assignable.")]
+        [ReadOnly, ShowInInspector, LabelText("Camera (auto)")]
+        private string CameraReference => Application.isPlaying
+            ? (_camera != null ? _camera.name : "<none found>")
+            : "Main Camera (resolved at runtime)";
 
         // =====================
         // World Settings
@@ -82,7 +76,7 @@ namespace Submachina.Core
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private string CameraCell => _chunks.Count > 0
-            ? WorldToCell(gameCamera.transform.position).ToString()
+            ? WorldToCell(_camera.transform.position).ToString()
             : "-";
 
         // =====================
@@ -93,9 +87,21 @@ namespace Submachina.Core
         private readonly Dictionary<Vector2Int, WorldChunk> _chunks
             = new Dictionary<Vector2Int, WorldChunk>();
 
+        // Cached main camera — used every frame to decide which cells to generate
+        private Camera _camera;
+
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
+
+        /**
+         * Caches the scene's main camera once so Update doesn't pay the cost
+         * of Camera.main's tagged lookup every frame.
+         */
+        private void Awake()
+        {
+            _camera = Camera.main;
+        }
 
         private void Update()
         {
@@ -117,7 +123,7 @@ namespace Submachina.Core
          */
         private void SpawnCellsAroundCamera()
         {
-            Vector2Int center = WorldToCell(gameCamera.transform.position);
+            Vector2Int center = WorldToCell(_camera.transform.position);
 
             for (int dy = -spawnRadius; dy <= spawnRadius; dy++)
             {
@@ -159,8 +165,8 @@ namespace Submachina.Core
 
             WorldChunk chunk = cellGO.AddComponent<WorldChunk>();
             chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, depth,
-                rockPrefab, resourcePrefab, resourceManager,
-                scrapManager, enemyPrefab, o2BubblePrefab, o2System);
+                rockPrefab, resourcePrefab,
+                scrapManager, enemyPrefab, o2BubblePrefab);
 
             _chunks[cell] = chunk;
         }
@@ -191,7 +197,7 @@ namespace Submachina.Core
         private void DebugLogChunks()
         {
             if (!Application.isPlaying) { Debug.Log("[ChunkSpawner] Play mode only."); return; }
-            Debug.Log($"[ChunkSpawner] {_chunks.Count} cells generated. Camera at cell {WorldToCell(gameCamera.transform.position)}.");
+            Debug.Log($"[ChunkSpawner] {_chunks.Count} cells generated. Camera at cell {WorldToCell(_camera.transform.position)}.");
         }
 #endif
     }

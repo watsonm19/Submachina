@@ -18,7 +18,7 @@ namespace Submachina.Core
      *
      * Place on the GameManager object.
      */
-    public class ResourceManager : MonoBehaviour
+    public class ResourceManager : SubmarineComponent
     {
         // =====================
         // Progression Settings
@@ -73,8 +73,9 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             WriteAtoms();
         }
 

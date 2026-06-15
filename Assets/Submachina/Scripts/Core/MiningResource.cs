@@ -40,10 +40,6 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("References")]
-        [Tooltip("Injected by WorldChunk at spawn time.")]
-        [SerializeField] private ResourceManager resourceManager;
-
-        [FoldoutGroup("References")]
         [Tooltip("Injected by WorldChunk at spawn time. Receives the scrap drop when the chance roll succeeds.")]
         [SerializeField] private ScrapManager scrapManager;
 
@@ -93,31 +89,25 @@ namespace Submachina.Core
         }
 
         /**
-         * Awards resources, rolls for a scrap drop, then destroys this node.
+         * Awards resources to the collecting submarine, rolls for a scrap drop, then destroys this node.
          * Called by MiningLaser when the beam has been held on target
          * for the full mining duration.
          *
          * Scrap roll: Random.value produces a uniform 0-1 value each call.
          * Example: scrapDropChance=0.20 → ~1 scrap dropped per 5 nodes mined on average.
          */
-        public void Collect()
+        public void Collect(Submarine sub)
         {
-            if (resourceManager != null)
-                resourceManager.AddResources(resourceValue);
+            if (sub?.Resources != null)
+                sub.Resources.AddResources(resourceValue);
             else
-                Debug.LogWarning("[MiningResource] No ResourceManager assigned.");
+                Debug.LogWarning("[MiningResource] No Submarine ResourceManager available.");
 
             // Roll for scrap drop
             if (scrapManager != null && Random.value < scrapDropChance)
                 scrapManager.AddScrap();
 
             Destroy(gameObject);
-        }
-
-        /** Injected by WorldChunk immediately after instantiation. */
-        public void SetResourceManager(ResourceManager manager)
-        {
-            resourceManager = manager;
         }
 
         /** Injected by WorldChunk immediately after instantiation. */

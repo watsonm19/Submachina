@@ -1,3 +1,23 @@
+# Core Systems Architecture
+
+## Submarine Facade Pattern
+
+All submarine subsystems extend **SubmarineComponent** (base class) which auto-discovers its parent **Submarine** via `GetComponentInParent<Submarine>()` and registers itself on Awake. Subsystems access siblings through `Sub.O2`, `Sub.Physics`, `Sub.Turret`, `Sub.Resources`, etc.
+
+**Key types:**
+- **Submarine** (`Submarine.cs`) — MonoBehaviour facade on the submarine root. Holds typed references to subsystems populated by auto-registration. Maintains `static List<Submarine> All` for external systems. Has `Build(SubmarineConfig)` for config-driven assembly.
+- **SubmarineComponent** (`SubmarineComponent.cs`) — Abstract base class. Derived classes override `Awake()` with `base.Awake()` first, then their init. Auto-registers/unregisters for runtime swapping.
+- **SubmarineConfig** (`SubmarineConfig.cs`) — ScriptableObject defining a submarine's composition via prefab slots (core, weapons, abilities, utilities).
+
+**External entities** resolve submarines from context:
+- Enemies find the nearest sub via `Submarine.FindNearest(position)` or `Submarine.All`
+- O2Pickups resolve the collecting sub from collision: `other.GetComponentInParent<Submarine>()`
+- MiningResources receive the collecting sub from MiningLaser's `Collect(Sub)` call
+
+**Supports multiple submarines** (future local multiplayer) — no singletons.
+
+---
+
 # Core — Air / O2 Pump System
 
 ## Components

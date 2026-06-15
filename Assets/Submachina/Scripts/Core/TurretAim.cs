@@ -23,7 +23,7 @@ namespace Submachina.Core
      *   3. Assign the action reference to Aim Action below.
      *   Mouse fallback requires no extra setup — it reads Mouse.current automatically.
      */
-    public class TurretAim : MonoBehaviour
+    public class TurretAim : SubmarineComponent
     {
         // =====================
         // Input
@@ -66,8 +66,9 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             _camera = Camera.main;
         }
 

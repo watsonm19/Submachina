@@ -113,9 +113,6 @@ namespace Submachina.Core
         [Tooltip("O2Pickup prefab spawned on death.")]
         [SerializeField] private GameObject o2BubblePrefab;
 
-        [FoldoutGroup("Death Drops")]
-        [Tooltip("The submarine's O2System — injected by WorldChunk when spawned via chunks.")]
-        [SerializeField] private O2System o2System;
 
         [FoldoutGroup("Death Drops")]
         [Tooltip("Number of O2 bubbles dropped on death.")]
@@ -165,21 +162,21 @@ namespace Submachina.Core
             if (_spriteRenderer != null) _baseColor = _spriteRenderer.color;
         }
 
+        private Submarine _targetSub;
+
         private void Start()
         {
-            // Cache player references
-            GameObject playerGO = GameObject.FindWithTag("Player");
-            if (playerGO != null)
+            // Find the nearest submarine as our chase target
+            _targetSub = Submarine.FindNearest(transform.position);
+            if (_targetSub != null)
             {
-                _player = playerGO.transform;
-                _playerHealth = playerGO.GetComponent<Health>();
+                _player = _targetSub.transform;
+                _playerHealth = _targetSub.Health;
             }
 
-            // Auto-wire death event
             Health health = GetComponent<Health>();
             if (health != null) health.onDeath.AddListener(OnDeath);
 
-            // Ensure intent indicator is hidden at spawn regardless of prefab state
             SetIntentIndicator(false);
         }
 
@@ -379,23 +376,10 @@ namespace Submachina.Core
                 if (o2BubblePrefab == null) break;
 
                 Vector2 offset = Random.insideUnitCircle * 0.8f;
-                GameObject bubble = Instantiate(o2BubblePrefab,
+                Instantiate(o2BubblePrefab,
                     transform.position + (Vector3)offset,
                     Quaternion.identity);
-
-                O2Pickup pickup = bubble.GetComponent<O2Pickup>();
-                if (pickup != null) pickup.SetO2System(o2System);
             }
-        }
-
-        // -------------------------------------------------------
-        // Public API
-        // -------------------------------------------------------
-
-        /** Injected by WorldChunk when spawned procedurally via chunks. */
-        public void SetO2System(O2System system)
-        {
-            o2System = system;
         }
 
         // -------------------------------------------------------

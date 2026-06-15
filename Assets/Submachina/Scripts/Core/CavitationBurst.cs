@@ -31,24 +31,8 @@ namespace Submachina.Core
      *   3. Create a "CavitationBurst" Button action in your Input Asset and assign it.
      */
     [RequireComponent(typeof(Rigidbody2D))]
-    public class CavitationBurst : MonoBehaviour
+    public class CavitationBurst : SubmarineComponent
     {
-        // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("SubmarinePhysicsController on this submarine — needed to bypass speed clamp during the burst.")]
-        [SerializeField] private SubmarinePhysicsController physicsController;
-
-        [FoldoutGroup("References")]
-        [Tooltip("TurretAim child object — used as fallback direction when the sub is stationary.")]
-        [SerializeField] private TurretAim turretAim;
-
-        [FoldoutGroup("References")]
-        [Tooltip("The submarine's O2System — a flat air cost is consumed on each burst.")]
-        [SerializeField] private O2System o2System;
-
         // =====================
         // Input
         // =====================
@@ -132,8 +116,9 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             _rb = GetComponent<Rigidbody2D>();
             _spriteRenderer = GetComponent<SpriteRenderer>();
         }
@@ -170,12 +155,12 @@ namespace Submachina.Core
         private void TryBurst()
         {
             if (_isBursting || Time.time < _cooldownEnd) return;
-            if (o2System != null && o2System.CurrentAirPressure <= 0f) return;
+            if (Sub?.O2 != null && Sub.O2.CurrentAirPressure <= 0f) return;
 
             Vector2 dir = GetBurstDirection();
             if (dir.sqrMagnitude < 0.001f) return;
 
-            o2System?.ConsumeAir(airCost);
+            Sub?.O2?.ConsumeAir(airCost);
             StartCoroutine(BurstRoutine(dir.normalized));
         }
 
@@ -187,14 +172,14 @@ namespace Submachina.Core
          */
         private Vector2 GetBurstDirection()
         {
-            if (physicsController != null && physicsController.ThrustInput.sqrMagnitude > 0.01f)
-                return physicsController.ThrustInput;
+            if (Sub?.Physics != null && Sub.Physics.ThrustInput.sqrMagnitude > 0.01f)
+                return Sub.Physics.ThrustInput;
 
             if (_rb.linearVelocity.sqrMagnitude > 0.25f)
                 return _rb.linearVelocity.normalized;
 
-            if (turretAim != null)
-                return turretAim.AimDirection;
+            if (Sub?.Turret != null)
+                return Sub.Turret.AimDirection;
 
             return Vector2.zero;
         }
@@ -217,7 +202,7 @@ namespace Submachina.Core
         private IEnumerator BurstRoutine(Vector2 direction)
         {
             _isBursting = true;
-            if (physicsController != null) physicsController.IsDashing = true;
+            if (Sub?.Physics != null) Sub.Physics.IsDashing = true;
             onBurstStart?.Invoke();
 
             // Phase 1 — burst
@@ -233,7 +218,7 @@ namespace Submachina.Core
 
             // Phase 3 — recovery
             _rb.linearDamping = _originalDrag;
-            if (physicsController != null) physicsController.IsDashing = false;
+            if (Sub?.Physics != null) Sub.Physics.IsDashing = false;
             onBurstEnd?.Invoke();
 
             _isBursting = false;

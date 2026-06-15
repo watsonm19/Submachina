@@ -25,16 +25,8 @@ namespace Submachina.Core
      *   4. Optionally assign Arc Material — a URP Unlit or Particle shader works well.
      *      If left empty, Unity uses the LineRenderer default (may appear pink in URP).
      */
-    public class PlayerAttack : MonoBehaviour
+    public class PlayerAttack : SubmarineComponent
     {
-        // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("TurretAim component on the submarine's Turret child object.")]
-        [SerializeField] private TurretAim turretAim;
-
         // =====================
         // Attack Settings
         // =====================
@@ -127,14 +119,9 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
-        {
-            BuildArcRenderer();
-        }
-
         private void Start()
         {
-            // Positions depend on serialized fields, so set after Awake
+            BuildArcRenderer();
             UpdateArcGeometry();
         }
 
@@ -170,13 +157,13 @@ namespace Submachina.Core
         private void TryAttack()
         {
             if (Time.time < _attackCooldownEnd) return;
-            if (turretAim == null) return;
+            if (Sub?.Turret == null) return;
 
             _attackCooldownEnd = Time.time + attackCooldown;
             onAttack?.Invoke();
 
-            Vector2 origin = turretAim.transform.position;
-            Vector2 aimDir = turretAim.AimDirection;
+            Vector2 origin = Sub.Turret.transform.position;
+            Vector2 aimDir = Sub.Turret.AimDirection;
             float cosHalfAngle = Mathf.Cos(coneHalfAngle * Mathf.Deg2Rad);
 
             // Gather all enemies in range, then filter to cone
@@ -213,10 +200,10 @@ namespace Submachina.Core
          */
         private void BuildArcRenderer()
         {
-            if (turretAim == null) return;
+            if (Sub?.Turret == null) return;
 
             GameObject arcGO = new GameObject("AttackArc");
-            arcGO.transform.SetParent(turretAim.transform, false);
+            arcGO.transform.SetParent(Sub.Turret.transform, false);
             arcGO.transform.localPosition = Vector3.zero;
 
             _arcLine = arcGO.AddComponent<LineRenderer>();

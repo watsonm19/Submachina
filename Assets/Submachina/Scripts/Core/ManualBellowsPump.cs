@@ -29,16 +29,8 @@ namespace Submachina.Core
      *   3. Optionally assign a PumpAction InputActionReference.
      *   4. Subscribe to events (OnPerfectPump, OnAirLock, etc.) for audio/visual juice.
      */
-    public class ManualBellowsPump : MonoBehaviour, ISweetSpotPump
+    public class ManualBellowsPump : SubmarineComponent, ISweetSpotPump
     {
-        // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("The submarine's O2System — receives air when a pump action succeeds.")]
-        [SerializeField] private O2System o2System;
-
         // =====================
         // Charge Cycle
         // =====================
@@ -410,7 +402,7 @@ namespace Submachina.Core
 
             if (inSweetSpot)
             {
-                o2System?.AddAir(perfectPumpAir);
+                Sub?.O2?.AddAir(perfectPumpAir);
                 _rapidPressCount = 0;
                 _chargeProgress = 0f;
                 _wasInSweetSpot = false;
@@ -422,7 +414,7 @@ namespace Submachina.Core
                 return;
             }
 
-            o2System?.AddAir(weakPumpAir);
+            Sub?.O2?.AddAir(weakPumpAir);
             _chargeProgress = 0f;
             _wasInSweetSpot = false;
             OnPumpChargeStopped?.Invoke();
@@ -558,7 +550,7 @@ namespace Submachina.Core
         private void DebugPerfectPump()
         {
             if (!Application.isPlaying) { Debug.Log("[BellowsPump] Play mode only."); return; }
-            o2System?.AddAir(perfectPumpAir);
+            Sub?.O2?.AddAir(perfectPumpAir);
             OnPerfectPump?.Invoke();
         }
 #endif
