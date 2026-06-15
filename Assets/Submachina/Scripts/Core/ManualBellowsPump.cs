@@ -438,17 +438,19 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Draws a debug overlay showing air pressure (from O2System) and the charge
-         * meter with sweet spot highlighted. Disable via showDebugGUI once real HUD is built.
+         * Draws a debug overlay for the pump's charge cycle: the charge meter with
+         * the sweet spot highlighted, plus the current pump state. Air pressure and
+         * decay rate live in O2System's own overlay now — this panel sits just below it.
+         * Disable via showDebugGUI once real HUD is built.
          */
         private void OnGUI()
         {
             if (!Application.isPlaying || !showDebugGUI) return;
 
             const float X   = 10f;
-            const float Y   = 10f;
+            const float Y   = 152f;   // sits directly below the O2System debug panel
             const float W   = 290f;
-            const float H   = 175f;
+            const float H   = 112f;
             const float PAD = 8f;
             const float BAR = 22f;
 
@@ -465,28 +467,6 @@ namespace Submachina.Core
 
             float bx = X + PAD;
             float bw = W - PAD * 2f;
-
-            // ── Air Pressure bar (from O2System) ─────────────────
-            float airPressure = o2System != null ? o2System.CurrentAirPressure : 0f;
-            float originalMax = o2System != null ? o2System.OriginalMaxAir     : 1f;
-            float airPct      = airPressure / originalMax;
-            float decayRate   = o2System != null ? o2System.ActiveDecayRate    : 0f;
-
-            GUI.Label(new Rect(bx, y, bw, 16f),
-                $"Air:  {airPressure:F1} / {originalMax:F0}   (decay {decayRate:F1}/s)");
-            y += 17f;
-
-            // Track
-            GUI.color = new Color(0.15f, 0.15f, 0.15f);
-            GUI.DrawTexture(new Rect(bx, y, bw, BAR), Texture2D.whiteTexture);
-
-            // Fill — green → yellow → red
-            GUI.color = airPct > 0.5f
-                ? Color.Lerp(Color.yellow, Color.green, (airPct - 0.5f) * 2f)
-                : Color.Lerp(Color.red, Color.yellow, airPct * 2f);
-            GUI.DrawTexture(new Rect(bx, y, bw * airPct, BAR), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            y += BAR + PAD;
 
             // ── Charge bar ───────────────────────────────────────
             GUI.Label(new Rect(bx, y, bw, 16f),

@@ -132,6 +132,11 @@ namespace Submachina.Core
             ? Mathf.Min(1f + currentDepth.Value * drainPerMetre, maxDepthMultiplier)
             : 1f;
 
+        [FoldoutGroup("Debug")]
+        [Tooltip("Show the on-screen O2 debug overlay in Play mode (air tank + decay-rate breakdown). " +
+                 "Disable once real HUD art is in.")]
+        [SerializeField] private bool showDebugGUI = true;
+
         // =====================
         // Exertion Flags
         // =====================
@@ -315,6 +320,84 @@ namespace Submachina.Core
         private void WriteAtom()
         {
             if (currentO2 != null) currentO2.Value = _currentAirPressure;
+        }
+
+        // -------------------------------------------------------
+        // Debug GUI
+        // -------------------------------------------------------
+
+        /**
+         * Draws the on-screen air-tank debug overlay: current pressure / live max
+         * capacity, plus a full breakdown of the decay rate as it is actually
+         * applied — effective = (base × exertion + mining extra) × depth.
+         *
+         * Reads this component's own authoritative state, so the headline number
+         * always matches what drains the tank, and the live THRUST / MINING flags
+         * make a "stuck" rate self-diagnosing (e.g. an unwired exertion source).
+         */
+        private void OnGUI()
+        {
+            if (!Application.isPlaying || !showDebugGUI) return;
+
+            const float x   = 10f;
+            const float y0  = 10f;
+            const float w   = 290f;
+            const float h   = 136f;
+            const float pad = 8f;
+            const float bar = 22f;
+
+            // Panel background
+            GUI.color = new Color(0f, 0f, 0f, 0.72f);
+            GUI.DrawTexture(new Rect(x, y0, w, h), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+
+            float y  = y0 + pad;
+            float bx = x + pad;
+            float bw = w - pad * 2f;
+
+            // Title
+            GUI.Label(new Rect(bx, y, bw, 18f), "<b>[ O2 System ]</b>");
+            y += 22f;
+
+            // ── Air pressure bar (filled against the live max capacity) ──
+            float pct = _currentMaxAir > 0f ? _currentAirPressure / _currentMaxAir : 0f;
+            GUI.Label(new Rect(bx, y, bw, 16f),
+                $"Air:  {_currentAirPressure:F1} / {_currentMaxAir:F0}   (cap ceiling {maxAirPressure:F0})");
+            y += 17f;
+
+            // Track
+            GUI.color = new Color(0.15f, 0.15f, 0.15f);
+            GUI.DrawTexture(new Rect(bx, y, bw, bar), Texture2D.whiteTexture);
+
+            // Fill — green → yellow → red
+            GUI.color = pct > 0.5f
+                ? Color.Lerp(Color.yellow, Color.green, (pct - 0.5f) * 2f)
+                : Color.Lerp(Color.red, Color.yellow, pct * 2f);
+            GUI.DrawTexture(new Rect(bx, y, bw * pct, bar), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            y += bar + pad;
+
+            // ── Decay headline: the rate actually being applied this frame ──
+            GUI.Label(new Rect(bx, y, bw, 16f),
+                $"<b>Decay {EffectiveDecayRate:F1}/s</b>");
+            y += 17f;
+
+            // ── Breakdown: base × exertion (+ mining extra) × depth ──
+            bool  exerting  = IsThrusting || IsMining;
+            float exertMult = exerting ? exertionDecayMultiplier : 1f;
+            string mineExtra = (IsMining && miningExtraDecayRate > 0f)
+                ? $" +{miningExtraDecayRate:F1} mine" : "";
+
+            GUI.Label(new Rect(bx, y, bw, 16f),
+                $"base {baseDecayRate:F1} · exert ×{exertMult:F1}{mineExtra} · depth ×{DepthMultiplier:F2}");
+            y += 17f;
+
+            // ── Live exertion flags — a rate stuck at base means neither is firing ──
+            GUI.color = IsThrusting ? Color.cyan : new Color(0.4f, 0.4f, 0.4f);
+            GUI.Label(new Rect(bx, y, bw * 0.5f, 16f), IsThrusting ? "▶ THRUST" : "· thrust");
+            GUI.color = IsMining ? Color.magenta : new Color(0.4f, 0.4f, 0.4f);
+            GUI.Label(new Rect(bx + bw * 0.5f, y, bw * 0.5f, 16f), IsMining ? "▶ MINING" : "· mining");
+            GUI.color = Color.white;
         }
 
         // -------------------------------------------------------
