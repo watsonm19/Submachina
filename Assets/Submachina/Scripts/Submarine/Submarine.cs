@@ -65,6 +65,9 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public SubmarineAnchorRouter Anchors { get; private set; }
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        public PickupRangeDetector PickupRange { get; private set; }
+
         // =====================
         // Lifecycle
         // =====================
@@ -98,7 +101,8 @@ namespace Submachina.Core
                 case ScrapManager scrap:                Scrap = scrap;  break;
                 case SubmarineFeedbackRouter fb:        Feedbacks = fb;  break;
                 case SubmarinePumpRouter pumps:         Pumps = pumps;  break;
-                case SubmarineAnchorRouter anchors:     Anchors = anchors; break;
+                case SubmarineAnchorRouter anchors:     Anchors = anchors;         break;
+                case PickupRangeDetector pickupRange:   PickupRange = pickupRange; break;
             }
         }
 
@@ -111,14 +115,15 @@ namespace Submachina.Core
         {
             switch (component)
             {
-                case O2System o2 when O2 == o2:                         O2 = null;       break;
-                case SubmarinePhysicsController phys when Physics == phys: Physics = null; break;
-                case TurretAim turret when Turret == turret:              Turret = null;  break;
-                case ResourceManager res when Resources == res:           Resources = null; break;
-                case ScrapManager scrap when Scrap == scrap:             Scrap = null;    break;
-                case SubmarineFeedbackRouter fb when Feedbacks == fb:   Feedbacks = null; break;
-                case SubmarinePumpRouter pumps when Pumps == pumps:    Pumps = null;    break;
-                case SubmarineAnchorRouter anchors when Anchors == anchors: Anchors = null; break;
+                case O2System o2 when O2 == o2:                                           O2 = null;          break;
+                case SubmarinePhysicsController phys when Physics == phys:                Physics = null;     break;
+                case TurretAim turret when Turret == turret:                              Turret = null;      break;
+                case ResourceManager res when Resources == res:                           Resources = null;   break;
+                case ScrapManager scrap when Scrap == scrap:                             Scrap = null;       break;
+                case SubmarineFeedbackRouter fb when Feedbacks == fb:                    Feedbacks = null;   break;
+                case SubmarinePumpRouter pumps when Pumps == pumps:                      Pumps = null;       break;
+                case SubmarineAnchorRouter anchors when Anchors == anchors:              Anchors = null;     break;
+                case PickupRangeDetector pr when PickupRange == pr:                      PickupRange = null; break;
             }
         }
 

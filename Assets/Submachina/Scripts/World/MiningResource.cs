@@ -35,6 +35,12 @@ namespace Submachina.Core
                  "Example: 0.20 = 20% chance, roughly 1 scrap per 5 nodes mined.")]
         [SerializeField, Range(0f, 1f)] private float scrapDropChance = 0.20f;
 
+        [FoldoutGroup("Settings")]
+        [Tooltip("Prefab to spawn in the world on a successful scrap drop roll. " +
+                 "Assign the ScrapPickup prefab here — it will be collected by the " +
+                 "submarine's PickupRangeDetector when the player comes within range.")]
+        [SerializeField] private GameObject scrapPickupPrefab;
+
         // =====================
         // Debug
         // =====================
@@ -95,9 +101,10 @@ namespace Submachina.Core
             else
                 Debug.LogWarning("[MiningResource] No Submarine ResourceManager available.");
 
-            // Roll for scrap drop
-            if (sub?.Scrap != null && Random.value < scrapDropChance)
-                sub.Scrap.AddScrap();
+            // Roll for a scrap pickup drop — spawns a physical world object that the
+            // player must come within pickup range to collect (bank-full check happens there)
+            if (scrapPickupPrefab != null && Random.value < scrapDropChance)
+                Instantiate(scrapPickupPrefab, transform.position, Quaternion.identity);
 
             Destroy(gameObject);
         }

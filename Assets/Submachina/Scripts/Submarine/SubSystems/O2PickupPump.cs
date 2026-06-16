@@ -11,32 +11,23 @@ namespace Submachina.Core
      * with this active, O2 bubbles can ONLY be collected through a well-timed pump.
      *
      * The core loop:
-     *   1. The loop starts automatically when a pickup enters range (autoActivateInRange),
-     *      or by pressing the pump button. The charge bar loops 0→1, wrapping
-     *      back to zero each time it fills (unlike ManualBellowsPump's single charge).
+     *   1. The loop starts automatically when an O2 pickup enters range
+     *      (autoActivateInRange), or by pressing the pump button. The charge bar
+     *      loops 0→1, wrapping back to zero each time it fills.
      *   2. Press the button again to stop the pump — the outcome is graded:
-     *        - Pickup within pickupRadius + sweet spot → full collect; air flows
-     *          into the ManualBellowsPump tank at sweetSpotRewardMultiplier.
-     *        - Pickup within pickupRadius + outside the sweet spot → weak collect
-     *          at weakRewardMultiplier (the bubble is still consumed).
-     *        - No pickup in range → the pump seizes with an Air Lock penalty,
-     *          same as ManualBellowsPump's anti-spam lock.
+     *        - Pickup in range + sweet spot → full collect at sweetSpotRewardMultiplier.
+     *        - Pickup in range + outside it → weak collect at weakRewardMultiplier.
+     *        - No pickup in range           → Air Lock penalty.
      *
-     * Feedback:
-     *   - OnPickupAvailable / OnPickupUnavailable fire as a pickup enters/leaves
-     *     range while idle — wire a "pump now!" prompt to these.
-     *   - A procedural LineRenderer ring shows pickupRadius while looping, turning
-     *     green and pulsing in the sweet spot. A faint breathing hint ring can also
-     *     show while idle with a pickup in range (showIdleHint).
+     * Ring visual:
+     *   The ring is owned by PickupRangeDetector (Sub.PickupRange). This pump
+     *   drives the ring's colour and pulse via SetRingOverride/ClearRingOverride
+     *   while it is looping or locked. The detector handles the idle hint ring itself.
      *
      * Wiring:
-     *   1. Add to the submarine root (radius is measured from this transform,
-     *      unless RadiusCenter overrides it).
-     *   2. Optionally assign a PumpAction InputActionReference (Spacebar fallback).
-     *   3. Assign a Ring Material (URP Unlit/Particle) so the ring isn't pink in URP.
-     *   4. Subscribe to events for audio/visual juice.
-     *   5. A BellowsBar on the sub displays the loop automatically while this pump
-     *      is the active pump (via SubmarinePumpRouter) — no reference to wire.
+     *   1. Add PickupRangeDetector to the sub root (owns the radius and ring).
+     *   2. Add this component to the sub — it auto-registers via SubmarineComponent.
+     *   3. Optionally assign a PumpAction InputActionReference (Spacebar fallback).
      */
     [UsesFeedbacks(nameof(SubFeedbacks.PumpPerfect), nameof(SubFeedbacks.PumpWeak), nameof(SubFeedbacks.AirLock))]
     public class O2PickupPump : SubmarineComponent, ISweetSpotPump
@@ -47,12 +38,11 @@ namespace Submachina.Core
 
         [FoldoutGroup("Activation")]
         [Tooltip("Automatically start the loop when an O2 pickup enters range, and stop it " +
-                 "(no reward, no penalty) when the last pickup leaves. The player still has " +
-                 "to press the pump input to time the collect. Disable for fully manual start/stop.")]
+                 "(no reward, no penalty) when the last pickup leaves.")]
         [SerializeField] private bool autoActivateInRange = true;
 
         [FoldoutGroup("Activation")]
-        [Tooltip("Block manual loop starts while no pickup is in range — prevents pointless " +
+        [Tooltip("Block manual loop starts while no O2 pickup is in range — prevents pointless " +
                  "loops that can only end in an Air Lock. Disable to allow free-running loops.")]
         [SerializeField] private bool requirePickupToStart = true;
 
@@ -66,13 +56,11 @@ namespace Submachina.Core
         [SerializeField, Min(0.1f)] private float chargeSpeed = 1.6f;
 
         [FoldoutGroup("Pump Cycle")]
-        [Tooltip("Lower bound of the sweet spot window (0–1 of charge progress). " +
-                 "Stop the pump at or above this to collect a pickup.")]
+        [Tooltip("Lower bound of the sweet spot window (0–1 of charge progress).")]
         [SerializeField, Range(0f, 1f)] private float sweetSpotMin = 0.65f;
 
         [FoldoutGroup("Pump Cycle")]
-        [Tooltip("Upper bound of the sweet spot window (0–1 of charge progress). " +
-                 "Stop the pump above this and the attempt fails.")]
+        [Tooltip("Upper bound of the sweet spot window (0–1 of charge progress).")]
         [SerializeField, Range(0f, 1f)] private float sweetSpotMax = 0.85f;
 
         // =====================
@@ -90,68 +78,33 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float weakRewardMultiplier = 0.35f;
 
         // =====================
-        // Pickup Range
+        // Ring Override Colors
+        // (Ring and radius owned by PickupRangeDetector — this pump only drives the colors)
         // =====================
 
-        [FoldoutGroup("Pickup Range")]
-        [Tooltip("Radius (world units) around the player within which an O2Pickup " +
-                 "can be grabbed by a sweet spot stop.")]
-        [SerializeField, Min(0.1f)] private float pickupRadius = 2.5f;
+        [FoldoutGroup("Ring Colors")]
+        [Tooltip("When true, this pump overrides the ring colour while looping or air-locked. " +
+                 "Disable if you want the ring's idle hint behavior only (no active colors).")]
+        [SerializeField] private bool driveRingColors = true;
 
-        [FoldoutGroup("Pickup Range")]
-        [Tooltip("Optional override for the centre of the pickup radius. " +
-                 "Leave empty to use this component's transform.")]
-        [SerializeField] private Transform radiusCenter;
-
-        // =====================
-        // Radius Ring Visual
-        // =====================
-
-        [FoldoutGroup("Radius Ring")]
-        [Tooltip("Show a LineRenderer circle at pickupRadius while the pump is looping. " +
-                 "Pulses when the charge is in the sweet spot.")]
-        [SerializeField] private bool showRadiusRing = true;
-
-        [FoldoutGroup("Radius Ring")]
-        [Tooltip("Also show a faint, slowly breathing ring while idle when a pickup is in " +
-                 "range — a visual nudge to start pumping.")]
-        [SerializeField] private bool showIdleHint = true;
-
-        [FoldoutGroup("Radius Ring")]
-        [Tooltip("Material for the ring LineRenderer. Assign a URP Unlit/Particle material. " +
-                 "Leave empty to use Unity default (may appear pink in URP).")]
-        [SerializeField] private Material ringMaterial;
-
-        [FoldoutGroup("Radius Ring")]
-        [Tooltip("Line width of the ring in world units.")]
-        [SerializeField, Min(0.01f)] private float ringWidth = 0.05f;
-
-        [FoldoutGroup("Radius Ring")]
-        [Tooltip("Sorting order for the ring. Set high enough to draw above world sprites.")]
-        [SerializeField] private int ringSortingOrder = 5;
-
-        [FoldoutGroup("Radius Ring")]
+        [FoldoutGroup("Ring Colors")]
         [Tooltip("Ring color while looping outside the sweet spot.")]
         [SerializeField] private Color loopingRingColor = new Color(0.4f, 0.8f, 1f, 0.35f);
 
-        [FoldoutGroup("Radius Ring")]
+        [FoldoutGroup("Ring Colors")]
         [Tooltip("Ring color while the charge is in the sweet spot — stop now!")]
         [SerializeField] private Color sweetSpotRingColor = new Color(0.2f, 1f, 0.25f, 0.8f);
 
-        [FoldoutGroup("Radius Ring")]
-        [Tooltip("Faint hint color while idle with a pickup in range.")]
-        [SerializeField] private Color hintRingColor = new Color(0.4f, 0.8f, 1f, 0.15f);
-
-        [FoldoutGroup("Radius Ring")]
+        [FoldoutGroup("Ring Colors")]
         [Tooltip("Ring color while the Air Lock penalty is active.")]
         [SerializeField] private Color airLockRingColor = new Color(1f, 0.15f, 0.15f, 0.3f);
 
-        [FoldoutGroup("Radius Ring")]
+        [FoldoutGroup("Ring Colors")]
         [Tooltip("Sweet spot pulse size as a fraction of the radius. " +
                  "Example: 0.06 → ring breathes between 94% and 106% of pickupRadius.")]
         [SerializeField, Range(0f, 0.3f)] private float pulseAmplitude = 0.06f;
 
-        [FoldoutGroup("Radius Ring")]
+        [FoldoutGroup("Ring Colors")]
         [Tooltip("Sweet spot pulse frequency in cycles per second.")]
         [SerializeField, Min(0.1f)] private float pulseSpeed = 6f;
 
@@ -160,8 +113,7 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Air Lock")]
-        [Tooltip("How long the pump is locked after stopping it outside the sweet spot " +
-                 "(or in the sweet spot with no pickup in range).")]
+        [Tooltip("How long the pump is locked after stopping outside the sweet spot.")]
         [SerializeField, Min(0.1f)] private float airLockDuration = 2.5f;
 
         // =====================
@@ -177,56 +129,48 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when the player starts the pump looping. Wire: bellows creak SFX.")]
+        [Tooltip("Fired when the player starts the pump looping.")]
         public UnityEvent OnLoopStarted;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired each time the charge bar wraps from full back to zero. Wire: soft tick SFX.")]
+        [Tooltip("Fired each time the charge bar wraps from full back to zero.")]
         public UnityEvent OnLoopWrapped;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when a sweet spot stop collects an O2Pickup at full reward. " +
-                 "Wire: +air SFX, green flash.")]
+        [Tooltip("Fired when a sweet spot stop collects an O2Pickup at full reward.")]
         public UnityEvent OnSweetSpotPickup;
 
         [FoldoutGroup("Events")]
         [Tooltip("Fired when a stop outside the sweet spot still collects a pickup, " +
-                 "at the weak reward multiplier. Wire: weak thud SFX, dim flash.")]
+                 "at the weak reward multiplier.")]
         public UnityEvent OnWeakPickup;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired whenever any pickup is collected — sweet spot OR weak. " +
-                 "Pairs with OnSweetSpotPickup / OnWeakPickup for finer-grained hooks. " +
-                 "Wire: shared collect effects that apply regardless of timing quality.")]
+        [Tooltip("Fired whenever any pickup is collected — sweet spot OR weak.")]
         public UnityEvent OnPickupCollected;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when the pump is stopped with no pickup in range and seizes up. " +
-                 "Wire: grind SFX, red screen flash.")]
+        [Tooltip("Fired when the pump is stopped with no pickup in range and seizes up.")]
         public UnityEvent OnAirLock;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired whenever the loop stops for ANY reason — collect, weak collect, or " +
-                 "air lock. Pairs with OnLoopStarted. Wire: extra SFX/VFX.")]
+        [Tooltip("Fired whenever the loop stops for ANY reason — collect, weak collect, or air lock.")]
         public UnityEvent OnLoopStopped;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when an O2Pickup enters pickupRadius, regardless of pump state. " +
-                 "(The BellowsBar follows the active pump automatically — no wiring needed.)")]
+        [Tooltip("Fired when an O2Pickup enters pickup radius, regardless of pump state.")]
         public UnityEvent OnPickupEnteredRange;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when no pickup remains in range — it drifted away or was collected.")]
+        [Tooltip("Fired when no O2 pickup remains in range.")]
         public UnityEvent OnPickupLeftRange;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when a pickup becomes available — one is in range while the pump is " +
-                 "idle. Wire: show a 'pump now!' prompt or highlight.")]
+        [Tooltip("Fired when a pickup becomes available while the pump is idle.")]
         public UnityEvent OnPickupAvailable;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when the pickup prompt should turn off — the pickup left range, was " +
-                 "collected, or the pump started looping / locked. Wire: hide the prompt.")]
+        [Tooltip("Fired when the pickup prompt should turn off.")]
         public UnityEvent OnPickupUnavailable;
 
         // =====================
@@ -257,14 +201,13 @@ namespace Submachina.Core
         /** True while the pump loop is running. */
         public bool IsLooping => _state == PumpState.Looping;
 
-        /** True while a pickup is in range and the pump is idle — the prompt state. */
+        /** True while an O2 pickup is in range and the pump is idle — the prompt state. */
         public bool IsPickupAvailable => _pickupAvailable;
 
-        /** True while a pickup sits within pickupRadius, regardless of pump state. */
+        /** True while an O2 pickup sits within pickup radius, regardless of pump state. */
         public bool IsPickupInRange => _pickupInRange;
 
-        /** Wants control whenever it's actively looping or a bubble is in range — the
-         *  intake pump only owns the input contextually, near collectibles. */
+        /** Wants control whenever it's actively looping or an O2 bubble is in range. */
         public bool WantsControl => IsLooping || IsPickupInRange;
 
         /** Outranks the always-on manual pump so it takes over near bubbles. */
@@ -281,11 +224,7 @@ namespace Submachina.Core
         private float AirLockRemaining => Mathf.Max(0f, _airLockTimer);
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private bool PickupInRange => Application.isPlaying && FindNearestPickup() != null;
-
-        [FoldoutGroup("Debug")]
-        [Tooltip("Draw the pickup radius gizmo at all times, not just when selected.")]
-        [SerializeField] private bool alwaysShowRadiusGizmo = true;
+        private bool O2PickupInRange => Application.isPlaying && Sub?.PickupRange?.FindNearestO2() != null;
 
         // =====================
         // Internal State
@@ -299,19 +238,9 @@ namespace Submachina.Core
         private bool _pickupAvailable;
         private bool _pickupInRange;
 
-        // Radius ring visual
-        private LineRenderer _ringLine;
-        private const int RingSegments = 48;
-
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
-
-        protected override void Awake()
-        {
-            base.Awake();
-            if (showRadiusRing || showIdleHint) BuildRingRenderer();
-        }
 
         private void OnEnable()
         {
@@ -323,6 +252,9 @@ namespace Submachina.Core
         {
             if (pumpAction != null) pumpAction.action.Disable();
             Sub?.Pumps?.Unregister(this);
+
+            // Release ring override when disabled so the detector resets cleanly
+            Sub?.PickupRange?.ClearRingOverride();
         }
 
         private void Update()
@@ -330,7 +262,7 @@ namespace Submachina.Core
             UpdateStateMachine();
             ProcessInput();
             UpdatePickupTracking();
-            UpdateRadiusRing();
+            UpdateRingOverride();
         }
 
         // -------------------------------------------------------
@@ -340,8 +272,7 @@ namespace Submachina.Core
         /**
          * Drives the pump each frame.
          *
-         * Looping:   advances chargeProgress and wraps it back to zero when it
-         *            hits 1.0 — the loop repeats until the player stops it.
+         * Looping:   advances chargeProgress, wraps at 1.0, fires OnLoopWrapped.
          * AirLocked: counts down the penalty timer, then returns to Idle.
          */
         private void UpdateStateMachine()
@@ -351,7 +282,7 @@ namespace Submachina.Core
                 case PumpState.Looping:
                     _chargeProgress += chargeSpeed * Time.deltaTime;
 
-                    // Wrap around: e.g. 1.07 → 0.07, and signal listeners on each lap
+                    // Wrap around: e.g. 1.07 → 0.07, signal listeners on each lap
                     if (_chargeProgress >= 1f)
                     {
                         _chargeProgress -= 1f;
@@ -381,12 +312,11 @@ namespace Submachina.Core
 
             switch (_state)
             {
-                // Idle: starting is gated on a pickup being in range (if required)
                 case PumpState.Idle when !requirePickupToStart || _pickupInRange:
                     StartLoop();
                     break;
 
-                case PumpState.Looping: TryCollect();  break;
+                case PumpState.Looping: TryCollect(); break;
                 // AirLocked: presses are ignored until the penalty expires
             }
         }
@@ -421,7 +351,7 @@ namespace Submachina.Core
 
         /**
          * Called when the pump button is pressed while looping. Outcome is graded
-         * by timing, like ManualBellowsPump's perfect/weak release:
+         * by timing:
          *
          *   Pickup in range + sweet spot  → full collect (sweetSpotRewardMultiplier)
          *   Pickup in range + outside it  → weak collect (weakRewardMultiplier)
@@ -432,7 +362,7 @@ namespace Submachina.Core
         private void TryCollect()
         {
             // No bubble in range — the stop wasted the pump, lock it
-            O2Pickup pickup = FindNearestPickup();
+            O2Pickup pickup = Sub?.PickupRange?.FindNearestO2();
             if (pickup == null)
             {
                 TriggerAirLock();
@@ -473,59 +403,21 @@ namespace Submachina.Core
         }
 
         // -------------------------------------------------------
-        // Pickup Detection
-        // -------------------------------------------------------
-
-        /** Centre of the pickup radius — the override transform if set, else this object. */
-        private Vector2 RadiusOrigin =>
-            radiusCenter != null ? (Vector2)radiusCenter.position : (Vector2)transform.position;
-
-        /**
-         * Returns the closest O2Pickup within pickupRadius, or null if none.
-         * Uses a physics overlap so only pickups with active colliders count.
-         */
-        private O2Pickup FindNearestPickup()
-        {
-            Vector2 origin = RadiusOrigin;
-            Collider2D[] hits = Physics2D.OverlapCircleAll(origin, pickupRadius);
-
-            // Scan hits for the nearest O2Pickup by squared distance
-            O2Pickup nearest = null;
-            float nearestSqr = float.MaxValue;
-            foreach (Collider2D hit in hits)
-            {
-                O2Pickup pickup = hit.GetComponent<O2Pickup>();
-                if (pickup == null) continue;
-
-                float sqr = ((Vector2)pickup.transform.position - origin).sqrMagnitude;
-                if (sqr < nearestSqr)
-                {
-                    nearestSqr = sqr;
-                    nearest = pickup;
-                }
-            }
-            return nearest;
-        }
-
-        // -------------------------------------------------------
         // Pickup Tracking (Range + Prompt)
         // -------------------------------------------------------
 
         /**
          * Tracks two independent conditions each frame and fires events on transitions:
          *
-         *   In range  — a pickup sits within pickupRadius, regardless of pump state.
-         *               Drives OnPickupEnteredRange/OnPickupLeftRange (bar visibility).
+         *   In range  — an O2 pickup sits within the detector's radius.
          *               A collected pickup is destroyed, so collection reads as
          *               "left range" on the following frame.
          *
-         *   Available — in range AND the pump is idle. Drives the "pump now!" prompt
-         *               via OnPickupAvailable/OnPickupUnavailable; turns off once the
-         *               player starts looping or the pump locks.
+         *   Available — in range AND the pump is idle. Drives the "pump now!" prompt.
          */
         private void UpdatePickupTracking()
         {
-            bool inRange = FindNearestPickup() != null;
+            bool inRange = Sub?.PickupRange?.FindNearestO2() != null;
 
             // Range transitions — pump-state independent
             if (inRange != _pickupInRange)
@@ -535,9 +427,7 @@ namespace Submachina.Core
                 else         OnPickupLeftRange?.Invoke();
             }
 
-            // Auto-activation: the loop runs itself whenever a pickup is nearby.
-            // Starts on range-enter (or after an Air Lock expires with one still close),
-            // stops quietly when the last pickup drifts away.
+            // Auto-activation: loop runs while a pickup is nearby
             if (autoActivateInRange)
             {
                 if      (_state == PumpState.Idle    &&  inRange) StartLoop();
@@ -555,121 +445,42 @@ namespace Submachina.Core
         }
 
         // -------------------------------------------------------
-        // Radius Ring Visual
+        // Ring Color Override
         // -------------------------------------------------------
 
         /**
-         * Creates the ring LineRenderer as a child of the radius centre so it
-         * follows the player automatically. useWorldSpace=false keeps all
-         * positions local; geometry is rebuilt each frame to animate the pulse.
-         */
-        private void BuildRingRenderer()
-        {
-            Transform parent = radiusCenter != null ? radiusCenter : transform;
-            var ringGO = new GameObject("PickupRadiusRing");
-            ringGO.transform.SetParent(parent, false);
-
-            _ringLine = ringGO.AddComponent<LineRenderer>();
-            _ringLine.useWorldSpace = false;
-            _ringLine.loop          = true;
-            _ringLine.positionCount = RingSegments;
-            _ringLine.startWidth    = ringWidth;
-            _ringLine.endWidth      = ringWidth;
-            _ringLine.sortingOrder  = ringSortingOrder;
-            _ringLine.enabled       = false;
-
-            if (ringMaterial != null) _ringLine.material = ringMaterial;
-        }
-
-        /**
-         * Drives ring visibility, color, and pulse from the pump state:
+         * Drives the shared PickupRangeDetector ring color based on pump state.
+         * The detector owns the ring geometry; this pump only signals which color
+         * to show while it is active (looping, air-locked). On return to Idle the
+         * override is cleared and the detector reverts to its own hint behaviour.
          *
-         *   Looping, sweet spot  → green, pulsing ±pulseAmplitude (stop now!)
+         * Ring states this pump drives:
+         *   Looping, sweet spot  → green, pulsing (stop now!)
          *   Looping, otherwise   → steady cyan
          *   Air Locked           → dim red
-         *   Idle + pickup nearby → faint slow "breathing" hint (if showIdleHint)
-         *   Otherwise            → hidden
+         *   Idle                 → override cleared (detector handles idle hint)
          */
-        private void UpdateRadiusRing()
+        private void UpdateRingOverride()
         {
-            if (_ringLine == null) return;
-
-            Color color   = Color.clear;
-            float radius  = pickupRadius;
-            bool  visible = true;
+            if (!driveRingColors || Sub?.PickupRange == null) return;
 
             switch (_state)
             {
-                case PumpState.Looping when !showRadiusRing:
-                    visible = false;
-                    break;
-
                 case PumpState.Looping:
                     bool sweet = IsInSweetSpot;
-                    color = sweet ? sweetSpotRingColor : loopingRingColor;
-                    // Sweet spot pulse: radius breathes ±amplitude, e.g. 2.5 → 2.35–2.65
-                    if (sweet) radius *= 1f + Mathf.Sin(Time.time * pulseSpeed * 2f * Mathf.PI) * pulseAmplitude;
+                    Color col = sweet ? sweetSpotRingColor : loopingRingColor;
+                    float pulse = sweet ? pulseAmplitude : 0f;
+                    Sub.PickupRange.SetRingOverride(col, pulse, pulseSpeed);
                     break;
 
-                case PumpState.AirLocked when showRadiusRing:
-                    color = airLockRingColor;
+                case PumpState.AirLocked:
+                    Sub.PickupRange.SetRingOverride(airLockRingColor);
                     break;
 
-                case PumpState.Idle when showIdleHint && _pickupAvailable:
-                    // Slow gentle breathing draws the eye without shouting
-                    color = hintRingColor;
-                    radius *= 1f + Mathf.Sin(Time.time * 0.8f * 2f * Mathf.PI) * pulseAmplitude * 0.5f;
-                    break;
-
-                default:
-                    visible = false;
+                case PumpState.Idle:
+                    Sub.PickupRange.ClearRingOverride();
                     break;
             }
-
-            _ringLine.enabled = visible;
-            if (!visible) return;
-
-            _ringLine.startColor = color;
-            _ringLine.endColor   = color;
-            RebuildRingGeometry(radius);
-        }
-
-        /** Lays out RingSegments points evenly around a circle of the given radius. */
-        private void RebuildRingGeometry(float radius)
-        {
-            for (int i = 0; i < RingSegments; i++)
-            {
-                float angle = i / (float)RingSegments * 2f * Mathf.PI;
-                _ringLine.SetPosition(i, new Vector3(
-                    Mathf.Cos(angle) * radius,
-                    Mathf.Sin(angle) * radius,
-                    0f));
-            }
-        }
-
-        // -------------------------------------------------------
-        // Gizmos
-        // -------------------------------------------------------
-
-        private void OnDrawGizmos()
-        {
-            if (alwaysShowRadiusGizmo) DrawRadiusGizmo();
-        }
-
-        private void OnDrawGizmosSelected()
-        {
-            if (!alwaysShowRadiusGizmo) DrawRadiusGizmo();
-        }
-
-        /**
-         * Visualises the pickup radius in the Scene view.
-         * Green when a pickup is currently in range (Play mode), cyan otherwise.
-         */
-        private void DrawRadiusGizmo()
-        {
-            bool inRange = Application.isPlaying && FindNearestPickup() != null;
-            Gizmos.color = inRange ? new Color(0.2f, 1f, 0.25f, 0.9f) : new Color(0.3f, 0.8f, 1f, 0.6f);
-            Gizmos.DrawWireSphere(RadiusOrigin, pickupRadius);
         }
 
         // -------------------------------------------------------
