@@ -25,7 +25,7 @@ namespace Submachina.Core
      *   4. Optionally assign Arc Material — a URP Unlit or Particle shader works well.
      *      If left empty, Unity uses the LineRenderer default (may appear pink in URP).
      */
-    [UsesFeedbacks(SubFeedback.AttackSwing)]
+    [UsesFeedbacks(nameof(SubFeedbacks.AttackSwing))]
     public class PlayerAttack : SubmarineComponent
     {
         // =====================
@@ -163,7 +163,7 @@ namespace Submachina.Core
             _attackCooldownEnd = Time.time + attackCooldown;
 
             // Route the swing cue through the central feedback switchboard
-            Sub?.Feedbacks?.Play(SubFeedback.AttackSwing, transform.position);
+            Sub?.Feedbacks?.Play(SubFeedbacks.AttackSwing, transform.position);
             onAttack?.Invoke();
 
             Vector2 origin = Sub.Turret.transform.position;

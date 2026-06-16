@@ -22,7 +22,7 @@ namespace Submachina.Core
      *   4. Create a "Mine" action (Button, hold behavior) in your Input Asset — assign it here.
      *   5. Set Mining Layer to the "Resource" layer.
      */
-    [UsesFeedbacks(SubFeedback.MiningActive, SubFeedback.MiningCollect)]
+    [UsesFeedbacks(nameof(SubFeedbacks.MiningActive), nameof(SubFeedbacks.MiningCollect))]
     public class MiningLaser : SubmarineComponent
     {
         // =====================
@@ -166,14 +166,14 @@ namespace Submachina.Core
                 if (!_miningFeedbacksPlaying)
                 {
                     _miningFeedbacksPlaying = true;
-                    Sub?.Feedbacks?.Play(SubFeedback.MiningActive, beamEnd);
+                    Sub?.Feedbacks?.Play(SubFeedbacks.MiningActive, beamEnd);
                 }
 
                 // Collect when fully mined
                 if (_miningTimer >= _miningDuration)
                 {
                     StopMiningFeedbacks();
-                    Sub?.Feedbacks?.Play(SubFeedback.MiningCollect, beamEnd);
+                    Sub?.Feedbacks?.Play(SubFeedbacks.MiningCollect, beamEnd);
 
                     _currentTarget.Collect(Sub);
                     _currentTarget = null;
@@ -215,7 +215,7 @@ namespace Submachina.Core
         {
             if (!_miningFeedbacksPlaying) return;
             _miningFeedbacksPlaying = false;
-            Sub?.Feedbacks?.Stop(SubFeedback.MiningActive);
+            Sub?.Feedbacks?.Stop(SubFeedbacks.MiningActive);
         }
     }
 }

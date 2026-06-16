@@ -16,8 +16,8 @@ namespace Submachina.Core
      * Place on the GameManager. Assign the UseScrap InputAction from the player's
      * Input Action Asset (the user wires this in the editor).
      */
-    [UsesFeedbacks(SubFeedback.ScrapAdded, SubFeedback.ScrapFull,
-                   SubFeedback.ScrapUsed, SubFeedback.NoScrap, SubFeedback.FullHealth)]
+    [UsesFeedbacks(nameof(SubFeedbacks.ScrapAdded), nameof(SubFeedbacks.ScrapFull),
+                   nameof(SubFeedbacks.ScrapUsed), nameof(SubFeedbacks.NoScrap), nameof(SubFeedbacks.FullHealth))]
     public class ScrapManager : SubmarineComponent
     {
         // =====================
@@ -120,14 +120,14 @@ namespace Submachina.Core
             // Bank is full — signal the rejected drop so the scene can react (e.g. a "full" cue)
             if (_scrapCount >= maxScrap)
             {
-                Sub?.Feedbacks?.Play(SubFeedback.ScrapFull, transform.position);
+                Sub?.Feedbacks?.Play(SubFeedbacks.ScrapFull, transform.position);
                 onScrapFull?.Invoke();
                 return;
             }
 
             // Bank the scrap and broadcast the new count for feedbacks and listeners
             _scrapCount++;
-            Sub?.Feedbacks?.Play(SubFeedback.ScrapAdded, transform.position);
+            Sub?.Feedbacks?.Play(SubFeedbacks.ScrapAdded, transform.position);
             onScrapAdded?.Invoke(_scrapCount);
 
             Debug.Log($"[ScrapManager] Scrap collected. Banked: {_scrapCount}/{maxScrap}");
@@ -151,7 +151,7 @@ namespace Submachina.Core
             // No scrap available
             if (_scrapCount <= 0)
             {
-                Sub?.Feedbacks?.Play(SubFeedback.NoScrap, transform.position);
+                Sub?.Feedbacks?.Play(SubFeedbacks.NoScrap, transform.position);
                 onNoScrap?.Invoke();
                 return;
             }
@@ -159,7 +159,7 @@ namespace Submachina.Core
             // Hull already at full integrity — don't waste the scrap
             if (Sub?.Health != null && Sub?.Health.HealthPercent >= 1f)
             {
-                Sub?.Feedbacks?.Play(SubFeedback.FullHealth, transform.position);
+                Sub?.Feedbacks?.Play(SubFeedbacks.FullHealth, transform.position);
                 onFullHealth?.Invoke();
                 return;
             }
@@ -167,7 +167,7 @@ namespace Submachina.Core
             // Spend the scrap, repair the hull, and broadcast the remaining count
             _scrapCount--;
             Sub?.Health?.Heal(healPerScrap);
-            Sub?.Feedbacks?.Play(SubFeedback.ScrapUsed, transform.position);
+            Sub?.Feedbacks?.Play(SubFeedbacks.ScrapUsed, transform.position);
             onScrapUsed?.Invoke(_scrapCount);
 
             Debug.Log($"[ScrapManager] Scrap used. Healed {healPerScrap} HP. Remaining: {_scrapCount}");

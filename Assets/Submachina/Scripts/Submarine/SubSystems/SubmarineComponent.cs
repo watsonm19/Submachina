@@ -45,7 +45,7 @@ namespace Submachina.Core
         private static GUIStyle _chipStyle;
 
         // Per-instance cache so we only reflect once
-        private SubFeedback[] _cachedFeedbacks;
+        private string[] _cachedFeedbackNames;
         private bool _feedbacksCached;
 
         /**
@@ -88,20 +88,20 @@ namespace Submachina.Core
             {
                 var attr = (UsesFeedbacksAttribute)System.Attribute.GetCustomAttribute(
                     GetType(), typeof(UsesFeedbacksAttribute));
-                _cachedFeedbacks = attr?.Feedbacks;
+                _cachedFeedbackNames = attr?.FeedbackNames;
                 _feedbacksCached = true;
             }
 
-            if (_cachedFeedbacks != null && _cachedFeedbacks.Length > 0)
-                DrawFeedbackChips(_cachedFeedbacks);
+            if (_cachedFeedbackNames != null && _cachedFeedbackNames.Length > 0)
+                DrawFeedbackChips(_cachedFeedbackNames);
         }
 
         /**
-         * Renders a row of small colored chips showing each SubFeedback key
+         * Renders a row of small colored chips showing each feedback name
          * this component declares. Chips wrap onto a second line if the row
          * exceeds the available width.
          */
-        private void DrawFeedbackChips(SubFeedback[] feedbacks)
+        private void DrawFeedbackChips(string[] feedbackNames)
         {
             // Dim bar behind the chips
             float chipHeight = 18f;
@@ -112,9 +112,9 @@ namespace Submachina.Core
             float availWidth = EditorGUIUtility.currentViewWidth - 24f;
             float x = 8f + labelWidth + 4f;
             int rows = 1;
-            for (int i = 0; i < feedbacks.Length; i++)
+            for (int i = 0; i < feedbackNames.Length; i++)
             {
-                float w = _chipStyle.CalcSize(new GUIContent(feedbacks[i].ToString())).x + 10f;
+                float w = _chipStyle.CalcSize(new GUIContent(feedbackNames[i])).x + 10f;
                 if (x + w > availWidth && i > 0) { rows++; x = 8f; }
                 x += w + 4f;
             }
@@ -142,9 +142,9 @@ namespace Submachina.Core
             x = bgRect.x + 8f + labelWidth + 4f;
             float y = bgRect.y + rowPad;
 
-            for (int i = 0; i < feedbacks.Length; i++)
+            for (int i = 0; i < feedbackNames.Length; i++)
             {
-                string label = feedbacks[i].ToString();
+                string label = feedbackNames[i];
                 float w = _chipStyle.CalcSize(new GUIContent(label)).x + 10f;
 
                 if (x + w > bgRect.xMax - 4f && i > 0)

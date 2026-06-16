@@ -1,7 +1,8 @@
 # Submarine Systems
 
-This folder holds the **submarine facade**, its **config-driven assembly**, and the **semantic feedback system**. The actual subsystems and HUD live in subfolders:
+This folder holds the **submarine facade**, its **config-driven assembly**, and the **semantic feedback system**. The actual subsystems, feedback definitions, and HUD live in subfolders:
 
+- **`SubFeedbacks/context.md`** — the `FeedbackId` type, `SubFeedbacks` partial-class key registry, `UsesFeedbacksAttribute`, and the Odin editor drawer.
 - **`SubSystems/context.md`** — every `SubmarineComponent` subsystem (O2, physics, turret, weapons, abilities, pumps, scrap/resources) plus the pump and feedback routers.
 - **`SubUI/context.md`** — the HUD bars/displays.
 
@@ -22,11 +23,7 @@ Every subsystem extends **SubmarineComponent**, which auto-discovers its parent 
 
 ## Semantic feedback system
 
-Gameplay systems trigger juice (Feel/MMF) by **enum key**, never by direct `MMF_Player` reference. This keeps effects swappable in the inspector and stable against serialized-order changes.
-
-- **SubFeedback** (`SubFeedback.cs`) — enum of feedback keys, spaced into ranges by category (Mining 100s, Combat 200s, Scrap 300s, Resources 400s, Pumps 500s) so values can be inserted without renumbering.
-- **UsesFeedbacksAttribute** (`UsesFeedbacksAttribute.cs`) — `[UsesFeedbacks(SubFeedback.X, ...)]` class attribute declaring which keys a component fires. Read by the `SubmarineComponent` inspector banner (via reflection) to render the keys as colored chips. Pure metadata.
-- **SubmarineFeedbackRouter** (`Sub.Feedbacks`, in `SubSystems/`) — maps each key to one or more `MMF_Player`s and exposes `Play(key, position, intensity)` / `Stop(key)`. See the SubSystems context for details.
+Gameplay systems trigger juice (Feel/MMF) by **FeedbackId key**, never by direct `MMF_Player` reference. This keeps effects swappable in the inspector and stable against serialized-order changes. See `SubFeedbacks/context.md` for the type definitions and `SubSystems/context.md` for the router.
 
 ## Other components here
 

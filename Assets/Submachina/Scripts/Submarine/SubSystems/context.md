@@ -8,7 +8,7 @@ These are the modular subsystems that make up a submarine. Each extends **Submar
 
 ## Routers (arbitration & decoupling)
 
-- **SubmarineFeedbackRouter** (`Sub.Feedbacks`) — semantic feedback switchboard. Serialized `mappings` pair each `SubFeedback` key with one or more `MMF_Player`s; `Play(key, position, intensity)` does an O(1) lookup and plays all mapped players, `Stop(key)` halts looping ones. Every gameplay system routes juice through this instead of holding `MMF_Player` references. Editor button `AddMissingMappings()` auto-populates and re-sorts to enum order.
+- **SubmarineFeedbackRouter** (`Sub.Feedbacks`) — semantic feedback switchboard. Serialized `mappings` pair each `FeedbackId` key with one or more `MMF_Player`s; `Play(key, position, intensity)` does an O(1) lookup and plays all mapped players, `Stop(key)` halts looping ones. Every gameplay system routes juice through this instead of holding `MMF_Player` references. Editor button `AddMissingMappings()` auto-populates via reflection over `SubFeedbacks` fields. A custom Odin `FeedbackIdDrawer` shows a categorized dropdown for each key.
 - **SubmarinePumpRouter** (`Sub.Pumps`) — arbitration for the shared pump input. Pumps self-`Register`/`Unregister` (in their OnEnable/OnDisable). `Active` returns the registered `ISweetSpotPump` with the highest `ControlPriority` whose `WantsControl` is true (first-registered breaks ties); `IsActive(pump)` is the per-pump check. No hand-wired references between pumps or bars.
 
 ## Core movement & aim

@@ -31,7 +31,7 @@ namespace Submachina.Core
      *   3. Create a "CavitationBurst" Button action in your Input Asset and assign it.
      */
     [RequireComponent(typeof(Rigidbody2D))]
-    [UsesFeedbacks(SubFeedback.DashStart, SubFeedback.DashEnd)]
+    [UsesFeedbacks(nameof(SubFeedbacks.DashStart), nameof(SubFeedbacks.DashEnd))]
     public class CavitationBurst : SubmarineComponent
     {
         // =====================
@@ -206,7 +206,7 @@ namespace Submachina.Core
             if (Sub?.Physics != null) Sub.Physics.IsDashing = true;
 
             // Route the burst-launch cue through the central feedback switchboard
-            Sub?.Feedbacks?.Play(SubFeedback.DashStart, transform.position);
+            Sub?.Feedbacks?.Play(SubFeedbacks.DashStart, transform.position);
             onBurstStart?.Invoke();
 
             // Phase 1 — burst
@@ -225,7 +225,7 @@ namespace Submachina.Core
             if (Sub?.Physics != null) Sub.Physics.IsDashing = false;
 
             // Route the burst-recovery cue through the central feedback switchboard
-            Sub?.Feedbacks?.Play(SubFeedback.DashEnd, transform.position);
+            Sub?.Feedbacks?.Play(SubFeedbacks.DashEnd, transform.position);
             onBurstEnd?.Invoke();
 
             _isBursting = false;

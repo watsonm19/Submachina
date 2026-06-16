@@ -38,7 +38,7 @@ namespace Submachina.Core
      *   5. A BellowsBar on the sub displays the loop automatically while this pump
      *      is the active pump (via SubmarinePumpRouter) — no reference to wire.
      */
-    [UsesFeedbacks(SubFeedback.PumpPerfect, SubFeedback.PumpWeak, SubFeedback.AirLock)]
+    [UsesFeedbacks(nameof(SubFeedbacks.PumpPerfect), nameof(SubFeedbacks.PumpWeak), nameof(SubFeedbacks.AirLock))]
     public class O2PickupPump : SubmarineComponent, ISweetSpotPump
     {
         // =====================
@@ -450,12 +450,12 @@ namespace Submachina.Core
             // Route the timing-graded collect cue through the central switchboard
             if (inSweetSpot)
             {
-                Sub?.Feedbacks?.Play(SubFeedback.PumpPerfect, transform.position);
+                Sub?.Feedbacks?.Play(SubFeedbacks.PumpPerfect, transform.position);
                 OnSweetSpotPickup?.Invoke();
             }
             else
             {
-                Sub?.Feedbacks?.Play(SubFeedback.PumpWeak, transform.position);
+                Sub?.Feedbacks?.Play(SubFeedbacks.PumpWeak, transform.position);
                 OnWeakPickup?.Invoke();
             }
             OnPickupCollected?.Invoke();
@@ -468,7 +468,7 @@ namespace Submachina.Core
             _state = PumpState.AirLocked;
             _airLockTimer = airLockDuration;
             _chargeProgress = 0f;
-            Sub?.Feedbacks?.Play(SubFeedback.AirLock, transform.position);
+            Sub?.Feedbacks?.Play(SubFeedbacks.AirLock, transform.position);
             OnAirLock?.Invoke();
         }
 

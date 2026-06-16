@@ -18,7 +18,7 @@ namespace Submachina.Core
      *
      * Place on the GameManager object.
      */
-    [UsesFeedbacks(SubFeedback.ResourcesAdded, SubFeedback.LevelUp)]
+    [UsesFeedbacks(nameof(SubFeedbacks.ResourcesAdded), nameof(SubFeedbacks.LevelUp))]
     public class ResourceManager : SubmarineComponent
     {
         // =====================
@@ -102,7 +102,7 @@ namespace Submachina.Core
         {
             _currentResources += amount;
 
-            Sub?.Feedbacks?.Play(SubFeedback.ResourcesAdded, transform.position);
+            Sub?.Feedbacks?.Play(SubFeedbacks.ResourcesAdded, transform.position);
             onResourcesAdded?.Invoke(amount);
 
             while (_currentResources >= CurrentThreshold)
@@ -125,7 +125,7 @@ namespace Submachina.Core
         private void LevelUp()
         {
             _currentLevel++;
-            Sub?.Feedbacks?.Play(SubFeedback.LevelUp, transform.position);
+            Sub?.Feedbacks?.Play(SubFeedbacks.LevelUp, transform.position);
             onLevelUp?.Invoke(_currentLevel);
             WriteAtoms();
 
