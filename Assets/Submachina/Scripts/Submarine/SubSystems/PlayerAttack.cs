@@ -188,11 +188,26 @@ namespace Submachina.Core
                 Vector2 toEnemy = ((Vector2)col.transform.position - origin).normalized;
                 if (Vector2.Dot(aimDir, toEnemy) < cosHalfAngle) continue;
 
-                Health health = col.GetComponent<Health>();
-                if (health != null)
+                // Route through HitReceiver when present — respects invulnerability
+                // and hit cooldown gating (e.g. RammingEnemy's stun-only damage window).
+                // Fall back to direct Health damage for enemies without a HitReceiver.
+                HitReceiver hitReceiver = col.GetComponent<HitReceiver>();
+                if (hitReceiver != null)
                 {
-                    health.TakeDamage(attackDamage);
-                    hitCount++;
+                    HitData hitData = new HitData
+                    {
+                        damage        = attackDamage,
+                        hitPoint      = col.transform.position,
+                        hitDirection  = toEnemy,
+                        knockbackForce = 0f,
+                        source        = gameObject
+                    };
+                    if (hitReceiver.ReceiveHit(hitData)) hitCount++;
+                }
+                else
+                {
+                    Health health = col.GetComponent<Health>();
+                    if (health != null) { health.TakeDamage(attackDamage); hitCount++; }
                 }
             }
 
