@@ -23,6 +23,7 @@ namespace Submachina.Core
      * takes damage when hitting a rock faster than 3 m/s.
      */
     [RequireComponent(typeof(Health))]
+    [UsesFeedbacks(SubFeedback.CollisionDamage)]
     public class CollisionDamage : SubmarineComponent
     {
         // =====================

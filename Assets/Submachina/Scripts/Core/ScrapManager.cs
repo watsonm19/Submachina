@@ -16,6 +16,8 @@ namespace Submachina.Core
      * Place on the GameManager. Assign the UseScrap InputAction from the player's
      * Input Action Asset (the user wires this in the editor).
      */
+    [UsesFeedbacks(SubFeedback.ScrapAdded, SubFeedback.ScrapFull,
+                   SubFeedback.ScrapUsed, SubFeedback.NoScrap, SubFeedback.FullHealth)]
     public class ScrapManager : SubmarineComponent
     {
         // =====================

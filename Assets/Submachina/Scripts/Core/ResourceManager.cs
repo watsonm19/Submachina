@@ -18,6 +18,7 @@ namespace Submachina.Core
      *
      * Place on the GameManager object.
      */
+    [UsesFeedbacks(SubFeedback.ResourcesAdded, SubFeedback.LevelUp)]
     public class ResourceManager : SubmarineComponent
     {
         // =====================

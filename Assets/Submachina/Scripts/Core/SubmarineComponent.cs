@@ -37,65 +37,153 @@ namespace Submachina.Core
 
 #if UNITY_EDITOR
         // -------------------------------------------------------
-        // Editor — identifying banner
+        // Editor — identifying banner + feedback chips
         // -------------------------------------------------------
 
-        // Cached styles, built lazily on first paint so we don't allocate every OnInspectorGUI call
         private static GUIStyle _bannerTitleStyle;
         private static GUIStyle _bannerTypeStyle;
+        private static GUIStyle _chipStyle;
+
+        // Per-instance cache so we only reflect once
+        private SubFeedback[] _cachedFeedbacks;
+        private bool _feedbacksCached;
 
         /**
          * Draws an ocean-blue identifying banner at the very top of the inspector
          * for every component that inherits SubmarineComponent.
          *
-         * Because Odin renders inherited members, this single base-class method
-         * decorates the whole family automatically — no per-component wiring. The
-         * far-negative PropertyOrder guarantees the banner sits above each derived
-         * component's own fields. Editor-only, so it is stripped from builds.
+         * If the concrete class carries a [UsesFeedbacks] attribute, the declared
+         * feedback keys are rendered as colored chips below the banner so designers
+         * can see at a glance which feedbacks this component triggers.
          */
         [PropertyOrder(-10000), OnInspectorGUI]
         private void DrawSubmarineComponentBanner()
         {
-            // Build the styles once: a bold white title and a dim right-aligned type label
-            if (_bannerTitleStyle == null)
-            {
-                _bannerTitleStyle = new GUIStyle(EditorStyles.boldLabel)
-                {
-                    alignment = TextAnchor.MiddleLeft,
-                    normal = { textColor = Color.white }
-                };
-                _bannerTypeStyle = new GUIStyle(EditorStyles.miniLabel)
-                {
-                    alignment = TextAnchor.MiddleRight,
-                    normal = { textColor = new Color(0.62f, 0.82f, 0.95f) }
-                };
-            }
+            EnsureStyles();
 
-            // Reserve the bar and paint the ocean-blue background
+            // ── Main banner ──
             Rect rect = EditorGUILayout.GetControlRect(false, 24f);
             SirenixEditorGUI.DrawSolidRect(rect, new Color(0.09f, 0.27f, 0.40f));
 
-            // Bright accent stripe down the left edge for a little polish
             Rect accent = rect;
             accent.width = 4f;
             SirenixEditorGUI.DrawSolidRect(accent, new Color(0.30f, 0.75f, 0.95f));
 
-            // Icon square, vertically centered in the bar
             Rect iconRect = rect;
             iconRect.x += 12f;
             iconRect.y += (rect.height - 16f) * 0.5f;
             iconRect.width = iconRect.height = 16f;
             EditorIcons.Globe.Draw(iconRect);
 
-            // Title text, starting just past the icon
             Rect titleRect = rect;
             titleRect.xMin = iconRect.xMax + 6f;
             GUI.Label(titleRect, "SUBMARINE COMPONENT", _bannerTitleStyle);
 
-            // Concrete component type name on the right, e.g. "DepthTracker"
             Rect typeRect = rect;
             typeRect.xMax -= 8f;
             GUI.Label(typeRect, GetType().Name, _bannerTypeStyle);
+
+            // ── Feedback chips ──
+            if (!_feedbacksCached)
+            {
+                var attr = (UsesFeedbacksAttribute)System.Attribute.GetCustomAttribute(
+                    GetType(), typeof(UsesFeedbacksAttribute));
+                _cachedFeedbacks = attr?.Feedbacks;
+                _feedbacksCached = true;
+            }
+
+            if (_cachedFeedbacks != null && _cachedFeedbacks.Length > 0)
+                DrawFeedbackChips(_cachedFeedbacks);
+        }
+
+        /**
+         * Renders a row of small colored chips showing each SubFeedback key
+         * this component declares. Chips wrap onto a second line if the row
+         * exceeds the available width.
+         */
+        private void DrawFeedbackChips(SubFeedback[] feedbacks)
+        {
+            // Dim bar behind the chips
+            float chipHeight = 18f;
+            float rowPad = 3f;
+
+            // Measure chip widths to determine how many rows we need
+            float labelWidth = 90f;
+            float availWidth = EditorGUIUtility.currentViewWidth - 24f;
+            float x = 8f + labelWidth + 4f;
+            int rows = 1;
+            for (int i = 0; i < feedbacks.Length; i++)
+            {
+                float w = _chipStyle.CalcSize(new GUIContent(feedbacks[i].ToString())).x + 10f;
+                if (x + w > availWidth && i > 0) { rows++; x = 8f; }
+                x += w + 4f;
+            }
+
+            float totalHeight = rows * (chipHeight + 2f) + rowPad * 2f;
+            Rect bgRect = EditorGUILayout.GetControlRect(false, totalHeight);
+            SirenixEditorGUI.DrawSolidRect(bgRect, new Color(0.12f, 0.12f, 0.14f));
+
+            // Left accent — amber to visually separate from the blue banner
+            Rect accentRect = bgRect;
+            accentRect.width = 4f;
+            SirenixEditorGUI.DrawSolidRect(accentRect, new Color(0.95f, 0.70f, 0.20f));
+
+            // Row label
+            GUI.color = new Color(0.95f, 0.70f, 0.20f);
+            GUI.Label(new Rect(bgRect.x + 8f, bgRect.y + rowPad, labelWidth, chipHeight),
+                "Feedback Keys", _bannerTitleStyle);
+            GUI.color = Color.white;
+
+            // Draw each chip after the label
+            Color chipBg = new Color(0.22f, 0.22f, 0.26f);
+            Color chipText = new Color(0.95f, 0.80f, 0.35f);
+            var prevColor = GUI.color;
+
+            x = bgRect.x + 8f + labelWidth + 4f;
+            float y = bgRect.y + rowPad;
+
+            for (int i = 0; i < feedbacks.Length; i++)
+            {
+                string label = feedbacks[i].ToString();
+                float w = _chipStyle.CalcSize(new GUIContent(label)).x + 10f;
+
+                if (x + w > bgRect.xMax - 4f && i > 0)
+                {
+                    x = bgRect.x + 8f;
+                    y += chipHeight + 2f;
+                }
+
+                Rect chipRect = new Rect(x, y, w, chipHeight);
+                SirenixEditorGUI.DrawSolidRect(chipRect, chipBg);
+
+                GUI.color = chipText;
+                GUI.Label(chipRect, label, _chipStyle);
+                GUI.color = prevColor;
+
+                x += w + 4f;
+            }
+        }
+
+        private static void EnsureStyles()
+        {
+            if (_bannerTitleStyle != null) return;
+
+            _bannerTitleStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = Color.white }
+            };
+            _bannerTypeStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                alignment = TextAnchor.MiddleRight,
+                normal = { textColor = new Color(0.62f, 0.82f, 0.95f) }
+            };
+            _chipStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontSize = 10,
+                normal = { textColor = new Color(0.95f, 0.80f, 0.35f) }
+            };
         }
 #endif
     }

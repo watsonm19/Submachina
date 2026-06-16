@@ -22,6 +22,7 @@ namespace Submachina.Core
      *   4. Create a "Mine" action (Button, hold behavior) in your Input Asset — assign it here.
      *   5. Set Mining Layer to the "Resource" layer.
      */
+    [UsesFeedbacks(SubFeedback.MiningActive, SubFeedback.MiningCollect)]
     public class MiningLaser : SubmarineComponent
     {
         // =====================
