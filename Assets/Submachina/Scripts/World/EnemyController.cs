@@ -1,34 +1,29 @@
 using UnityEngine;
-using DG.Tweening;
+using UnityEngine.Events;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
 {
     /**
-     * Sea creature enemy with patrol, chase, and an intentional attack pattern.
+     * Aggressive sea creature — patrols, chases, and lunges at the submarine.
      *
-     * State machine flow:
-     *   Patrol → Chase (player enters detection range)
-     *   Chase  → WindUp (player enters attack range + cooldown expired)
-     *   WindUp → Attacking (telegraph complete; enemy lunges)
+     * State machine:
+     *   Patrol → Chase (player enters detectionRadius)
+     *   Chase  → WindUp (player enters attackRange + cooldown expired)
+     *   WindUp → Attacking (telegraph complete; lunge fires in locked direction)
      *   Attacking → AttackCooldown (lunge window over)
      *   AttackCooldown → Chase (cooldown expired)
-     *   Chase → Patrol (player escapes deaggro radius)
+     *   Chase → Patrol (player exceeds deaggroRadius)
      *
-     * The attack is telegraphed by an orange sprite tint during WindUp,
-     * then a red tint + lunge during Attacking. An OverlapBox checks for
-     * the player in the strike zone — players who read the telegraph can dodge.
+     * The attack is telegraphed by an orange sprite tint + intent indicator during
+     * WindUp, then a red tint + lunge during Attacking. Players who read the
+     * telegraph can dodge. The lunge direction is locked at WindUp entry so
+     * moving during the telegraph actually helps.
      *
-     * On death, O2 bubbles are scattered for the player to collect.
-     *
-     * Setup:
-     *   - Add to an enemy prefab with Rigidbody2D + Collider2D + Health.
-     *   - Assign the O2Pickup prefab. O2System is injected by WorldChunk at spawn.
-     *   - Set the prefab to the "Enemy" layer so PlayerAttack can target it.
-     *   - Tag the player "Player" so contact detection works.
+     * Shared plumbing (health wiring, O2 drops, sprite flip, sub targeting)
+     * is handled by EnemyBase.
      */
-    [RequireComponent(typeof(Rigidbody2D))]
-    public class EnemyController : MonoBehaviour
+    public class EnemyController : EnemyBase
     {
         // =====================
         // Movement
@@ -89,44 +84,13 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float lungeSpeed = 8f;
 
         // =====================
-        // Intent
-        // =====================
-
-        [FoldoutGroup("Intent")]
-        [Tooltip("Child GameObject shown above the enemy during the WindUp telegraph. " +
-                 "Assign a child with a '!' sprite or any visual you'd like.")]
-        [SerializeField] private GameObject intentIndicator;
-
-        [FoldoutGroup("Intent")]
-        [Tooltip("Scale punch size when the intent indicator first appears.")]
-        [SerializeField, Min(0f)] private float intentPunchScale = 0.4f;
-
-        [FoldoutGroup("Intent")]
-        [Tooltip("Duration of the intent indicator's scale punch animation.")]
-        [SerializeField, Min(0.05f)] private float intentPunchDuration = 0.15f;
-
-        // =====================
-        // Death Drops
-        // =====================
-
-        [FoldoutGroup("Death Drops")]
-        [Tooltip("O2Pickup prefab spawned on death.")]
-        [SerializeField] private GameObject o2BubblePrefab;
-
-
-        [FoldoutGroup("Death Drops")]
-        [Tooltip("Number of O2 bubbles dropped on death.")]
-        [SerializeField, Min(0)] private int bubbleDropCount = 1;
-
-        // =====================
         // Debug
         // =====================
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private string CurrentState => _state.ToString();
-
-        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private float StateTimer => _stateTimer;
+
+        protected override string CurrentState => _state.ToString();
 
         // =====================
         // State
@@ -135,12 +99,6 @@ namespace Submachina.Core
         private enum AiState { Patrol, Chase, WindUp, Attacking, AttackCooldown, Dead }
 
         private AiState _state = AiState.Patrol;
-        private Rigidbody2D _rb;
-        private SpriteRenderer _spriteRenderer;
-        private Color _baseColor;
-        private Transform _player;
-        private Health _playerHealth;
-        private Vector3 _spawnPosition;
         private float _patrolDirection = 1f;
         private float _stateTimer;
         private Vector2 _attackDirection;
@@ -151,56 +109,33 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Start()
         {
-            _rb = GetComponent<Rigidbody2D>();
-            _rb.gravityScale = 0f;
-            _rb.constraints = RigidbodyConstraints2D.FreezeRotation;
-            _spawnPosition = transform.position;
-
-            _spriteRenderer = GetComponent<SpriteRenderer>();
-            if (_spriteRenderer != null) _baseColor = _spriteRenderer.color;
-        }
-
-        private Submarine _targetSub;
-
-        private void Start()
-        {
-            // Find the nearest submarine as our chase target
-            _targetSub = Submarine.FindNearest(transform.position);
-            if (_targetSub != null)
-            {
-                _player = _targetSub.transform;
-                _playerHealth = _targetSub.Health;
-            }
-
-            Health health = GetComponent<Health>();
-            if (health != null) health.onDeath.AddListener(OnDeath);
-
+            base.Start();
             SetIntentIndicator(false);
         }
 
-        private void FixedUpdate()
-        {
-            UpdateState();
-            HandleState();
-        }
-
         // -------------------------------------------------------
-        // State Machine
+        // AI (called each FixedUpdate by EnemyBase)
         // -------------------------------------------------------
 
         /**
-         * Evaluates transitions between states each physics tick.
-         * Transitions are one-way except Chase ↔ Patrol and the
-         * AttackCooldown → Chase return.
+         * Runs state transitions then executes per-state movement/behavior.
+         * Dead state is handled by EnemyBase — IsDead guard prevents this running after death.
          */
-        private void UpdateState()
+        protected override void UpdateAI()
         {
-            // Dead state is terminal — no transitions possible
-            if (_state == AiState.Dead) return;
-            if (_player == null) return;
-            float dist = Vector2.Distance(transform.position, _player.position);
+            UpdateTransitions();
+            HandleState();
+        }
+
+        /**
+         * Evaluates when to move between states.
+         * Transition graph: Patrol ↔ Chase → WindUp → Attacking → Cooldown → Chase.
+         */
+        private void UpdateTransitions()
+        {
+            float dist = DistanceToPlayer();
 
             switch (_state)
             {
@@ -234,18 +169,12 @@ namespace Submachina.Core
         {
             switch (_state)
             {
-                case AiState.Dead: return;
-                case AiState.Patrol: Patrol(); break;
-                case AiState.Chase: Chase(); break;
-                case AiState.Attacking: Lunge(); break;
+                case AiState.Patrol:          Patrol();               break;
+                case AiState.Chase:           Chase();                break;
+                case AiState.Attacking:       Lunge();                break;
                 case AiState.WindUp:
-                case AiState.AttackCooldown:
-                    _rb.linearVelocity = Vector2.zero; break;
+                case AiState.AttackCooldown:  Rb.linearVelocity = Vector2.zero; break;
             }
-
-            // Flip sprite to face movement direction
-            if (_spriteRenderer != null && Mathf.Abs(_rb.linearVelocity.x) > 0.1f)
-                _spriteRenderer.flipX = _rb.linearVelocity.x < 0f;
         }
 
         // -------------------------------------------------------
@@ -255,32 +184,30 @@ namespace Submachina.Core
         private void EnterPatrol()
         {
             _state = AiState.Patrol;
-            SetSpriteColor(_baseColor);
+            SetSpriteColor(BaseColor);
             SetIntentIndicator(false);
         }
 
         private void EnterChase()
         {
             _state = AiState.Chase;
-            SetSpriteColor(_baseColor);
+            SetSpriteColor(BaseColor);
             SetIntentIndicator(false);
         }
 
         /**
-         * Captures the attack direction at wind-up entry (toward the player).
-         * Storing it now means the lunge fires in a fixed direction even if the
-         * player moves during the telegraph — rewards reading the warning.
+         * Locks the lunge direction toward the player at telegraph entry.
+         * The player can dodge by moving during the wind-up since the strike
+         * fires in this fixed direction regardless of where they go.
          */
         private void EnterWindUp()
         {
             _state = AiState.WindUp;
             _stateTimer = 0f;
             _hasHitThisAttack = false;
-            _attackDirection = (_player != null)
-                ? ((Vector2)_player.position - (Vector2)transform.position).normalized
-                : Vector2.right;
+            _attackDirection = DirectionToPlayer();
 
-            // Orange tint + intent indicator = "about to attack" telegraph
+            // Orange tint + intent indicator telegraph
             SetSpriteColor(new Color(1f, 0.5f, 0.1f));
             SetIntentIndicator(true);
         }
@@ -289,8 +216,6 @@ namespace Submachina.Core
         {
             _state = AiState.Attacking;
             _stateTimer = 0f;
-
-            // Red tint = active strike
             SetSpriteColor(new Color(1f, 0.15f, 0.15f));
         }
 
@@ -299,8 +224,8 @@ namespace Submachina.Core
             _state = AiState.AttackCooldown;
             _stateTimer = 0f;
             _attackCooldownRemaining = attackCooldown;
-            _rb.linearVelocity = Vector2.zero;
-            SetSpriteColor(_baseColor);
+            Rb.linearVelocity = Vector2.zero;
+            SetSpriteColor(BaseColor);
             SetIntentIndicator(false);
         }
 
@@ -308,40 +233,35 @@ namespace Submachina.Core
         // Movement
         // -------------------------------------------------------
 
-        /**
-         * Horizontal patrol within ±patrolRange of spawn. Reverses at boundaries.
-         */
+        /** Horizontal patrol within ±patrolRange of spawn. Reverses at boundaries. */
         private void Patrol()
         {
-            float offsetX = transform.position.x - _spawnPosition.x;
-            if (offsetX >= patrolRange) _patrolDirection = -1f;
+            float offsetX = transform.position.x - SpawnPosition.x;
+            if (offsetX >= patrolRange)  _patrolDirection = -1f;
             else if (offsetX <= -patrolRange) _patrolDirection = 1f;
 
-            _rb.linearVelocity = new Vector2(_patrolDirection * patrolSpeed, 0f);
+            Rb.linearVelocity = new Vector2(_patrolDirection * patrolSpeed, 0f);
         }
 
         /** Moves directly toward the player at chaseSpeed. */
         private void Chase()
         {
-            if (_player == null) return;
-            Vector2 dir = ((Vector2)_player.position - _rb.position).normalized;
-            _rb.linearVelocity = dir * chaseSpeed;
+            Rb.linearVelocity = DirectionToPlayer() * chaseSpeed;
         }
 
-        /** Applies a velocity burst in the stored attack direction during the lunge. */
+        /** Applies a velocity burst in the stored attack direction. */
         private void Lunge()
         {
-            _rb.linearVelocity = _attackDirection * lungeSpeed;
+            Rb.linearVelocity = _attackDirection * lungeSpeed;
         }
 
         // -------------------------------------------------------
-        // Attack Hit Detection
+        // Hit Detection
         // -------------------------------------------------------
 
         /**
-         * Deals damage on physical contact with the player during the lunge.
-         * Only fires once per attack cycle (guarded by _hasHitThisAttack) so
-         * sustained contact during the slide doesn't stack damage.
+         * Deals damage on contact during the lunge. Fires only once per attack
+         * cycle (_hasHitThisAttack) so sustained contact doesn't stack damage.
          */
         private void OnCollisionEnter2D(Collision2D collision)
         {
@@ -349,7 +269,7 @@ namespace Submachina.Core
             if (_hasHitThisAttack) return;
             if (!collision.collider.CompareTag("Player")) return;
 
-            _playerHealth?.TakeDamage(attackDamage);
+            PlayerHealth?.TakeDamage(attackDamage);
             _hasHitThisAttack = true;
         }
 
@@ -357,66 +277,24 @@ namespace Submachina.Core
         // Death
         // -------------------------------------------------------
 
-        /**
-         * Called by Health.onDeath. Immediately freezes all AI so that attacks
-         * mid-wind-up or mid-lunge cannot complete, then scatters O2 bubbles.
-         */
-        private void OnDeath()
+        protected override void OnDeath()
         {
-            // Freeze AI immediately — prevents completing an in-progress attack
             _state = AiState.Dead;
-            _rb.linearVelocity = Vector2.zero;
-            Collider2D col = GetComponent<Collider2D>();
-            if (col != null) col.enabled = false;
-            SetIntentIndicator(false);
-
-            // Scatter O2 bubble drops
-            for (int i = 0; i < bubbleDropCount; i++)
-            {
-                if (o2BubblePrefab == null) break;
-
-                Vector2 offset = Random.insideUnitCircle * 0.8f;
-                Instantiate(o2BubblePrefab,
-                    transform.position + (Vector3)offset,
-                    Quaternion.identity);
-            }
+            base.OnDeath();
         }
 
         // -------------------------------------------------------
-        // Helpers
-        // -------------------------------------------------------
-
-        private void SetSpriteColor(Color color)
-        {
-            if (_spriteRenderer != null) _spriteRenderer.color = color;
-        }
-
-        /**
-         * Shows or hides the intent indicator child object.
-         * On show, fires a scale punch so the "!" pops in rather than appearing flat.
-         */
-        private void SetIntentIndicator(bool show)
-        {
-            if (intentIndicator == null) return;
-            if (intentIndicator.activeSelf == show) return;
-
-            intentIndicator.SetActive(show);
-            if (show)
-                intentIndicator.transform.DOPunchScale(Vector3.one * intentPunchScale, intentPunchDuration, 1, 0f);
-        }
-
-        // -------------------------------------------------------
-        // Editor Gizmos
+        // Gizmos
         // -------------------------------------------------------
 
 #if UNITY_EDITOR
         private void OnDrawGizmosSelected()
         {
-            // Detection radius — yellow
+            // Detection — yellow
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(transform.position, detectionRadius);
 
-            // Deaggro radius — red
+            // Deaggro — red
             Gizmos.color = new Color(1f, 0.3f, 0.3f);
             Gizmos.DrawWireSphere(transform.position, deaggroRadius);
 
@@ -424,11 +302,10 @@ namespace Submachina.Core
             Gizmos.color = new Color(1f, 0.5f, 0.1f);
             Gizmos.DrawWireSphere(transform.position, attackRange);
 
-            // Patrol range — cyan
+            // Patrol range — cyan line
             Gizmos.color = Color.cyan;
-            Vector3 origin = Application.isPlaying ? _spawnPosition : transform.position;
+            Vector3 origin = Application.isPlaying ? SpawnPosition : transform.position;
             Gizmos.DrawLine(origin + Vector3.left * patrolRange, origin + Vector3.right * patrolRange);
-
         }
 #endif
     }
