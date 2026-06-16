@@ -3,6 +3,26 @@ using UnityEngine;
 namespace Submachina.Core
 {
     /**
+     * Configuration for a single enemy type within a chunk.
+     * Passed from ChunkSpawner so spawn chances and depth gates are
+     * tunable in the inspector without touching WorldChunk logic.
+     */
+    [System.Serializable]
+    public struct EnemySpawnConfig
+    {
+        /** Prefab to instantiate. Leave null to disable this enemy type. */
+        public GameObject prefab;
+
+        /** Probability (0–1) that one of this enemy spawns per chunk.
+         *  Example: 0.4 → roughly 2 in 5 chunks contain one. */
+        [Range(0f, 1f)] public float spawnChance;
+
+        /** Minimum depth (metres) before this enemy can appear.
+         *  Example: 200 → never spawns shallower than 200m. */
+        [Min(0f)] public float minDepth;
+    }
+
+    /**
      * A single procedurally-generated section of the underwater world.
      *
      * Spawned and initialized by ChunkSpawner. Each chunk occupies a fixed
@@ -31,6 +51,8 @@ namespace Submachina.Core
         private GameObject _resourcePrefab;
         private GameObject _enemyPrefab;
         private GameObject _o2BubblePrefab;
+        private EnemySpawnConfig _passiveCreature;
+        private EnemySpawnConfig _rammingEnemy;
 
         // -------------------------------------------------------
         // Initialization
@@ -43,7 +65,8 @@ namespace Submachina.Core
          */
         public void Initialize(float topY, float height, float halfWidth, float depth,
             GameObject rockPrefab, GameObject resourcePrefab,
-            GameObject enemyPrefab, GameObject o2BubblePrefab)
+            GameObject enemyPrefab, GameObject o2BubblePrefab,
+            EnemySpawnConfig passiveCreature, EnemySpawnConfig rammingEnemy)
         {
             _topY = topY;
             _height = height;
@@ -52,6 +75,8 @@ namespace Submachina.Core
             _resourcePrefab = resourcePrefab;
             _enemyPrefab = enemyPrefab;
             _o2BubblePrefab = o2BubblePrefab;
+            _passiveCreature = passiveCreature;
+            _rammingEnemy = rammingEnemy;
 
             GenerateObstacles(depth);
             GenerateResources(depth);
@@ -178,21 +203,44 @@ namespace Submachina.Core
          * Count formula: lerp 0 → 3 over the first 400 metres.
          * Example: depth=200 → ~1-2 enemies, depth=400+ → up to 3 enemies.
          */
+        /**
+         * Scatters enemies throughout the chunk, scaled by depth.
+         *
+         * Three enemy types, each with independent spawn rules:
+         *   Regular enemy  — grace zone 20m, scales 1→4 over first 400m.
+         *   Passive creature — one per chunk at spawnChance probability, no depth gate.
+         *   Ramming enemy  — one per chunk at spawnChance probability, minDepth gate.
+         */
         private void GenerateEnemies(float depth)
         {
-            if (_enemyPrefab == null || depth < 20f) return;
-
-            // Start at 1 enemy per chunk at the grace zone boundary, scale to 4 at 400m.
-            // Previously lerped from 0 which caused ~0 enemies to spawn until 50m+ depth.
-            int count = Mathf.RoundToInt(Mathf.Lerp(1f, 4f, Mathf.Clamp01((depth - 20f) / 380f)));
-
-            for (int i = 0; i < count; i++)
+            // Regular enemy — scales with depth, grace zone below 20m
+            if (_enemyPrefab != null && depth >= 20f)
             {
-                // Keep enemies away from walls so they have patrol room
+                int count = Mathf.RoundToInt(Mathf.Lerp(1f, 4f, Mathf.Clamp01((depth - 20f) / 380f)));
+                for (int i = 0; i < count; i++)
+                {
+                    float x = Random.Range(-_halfWidth * 0.65f, _halfWidth * 0.65f);
+                    float y = Random.Range(_topY - _height + 2f, _topY - 2f);
+                    Instantiate(_enemyPrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
+                }
+            }
+
+            // Passive creature — rare, spawns anywhere (no depth gate beyond minDepth)
+            if (_passiveCreature.prefab != null && depth >= _passiveCreature.minDepth
+                && Random.value < _passiveCreature.spawnChance)
+            {
+                float x = Random.Range(-_halfWidth * 0.8f, _halfWidth * 0.8f);
+                float y = Random.Range(_topY - _height + 1f, _topY - 1f);
+                Instantiate(_passiveCreature.prefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
+            }
+
+            // Ramming enemy — rare, deep water only
+            if (_rammingEnemy.prefab != null && depth >= _rammingEnemy.minDepth
+                && Random.value < _rammingEnemy.spawnChance)
+            {
                 float x = Random.Range(-_halfWidth * 0.65f, _halfWidth * 0.65f);
                 float y = Random.Range(_topY - _height + 2f, _topY - 2f);
-
-                Instantiate(_enemyPrefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
+                Instantiate(_rammingEnemy.prefab, new Vector3(transform.position.x + x, y, 0f), Quaternion.identity, transform);
             }
         }
 

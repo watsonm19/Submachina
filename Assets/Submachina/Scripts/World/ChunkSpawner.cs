@@ -33,12 +33,30 @@ namespace Submachina.Core
         [SerializeField] private GameObject resourcePrefab;
 
         [FoldoutGroup("References")]
-        [Tooltip("Enemy prefab.")]
+        [Tooltip("Regular aggressive enemy prefab.")]
         [SerializeField] private GameObject enemyPrefab;
 
         [FoldoutGroup("References")]
         [Tooltip("O2 bubble prefab scattered passively throughout each chunk.")]
         [SerializeField] private GameObject o2BubblePrefab;
+
+        [FoldoutGroup("References")]
+        [Tooltip("Passive creature — flees the player, drops more O2. " +
+                 "Configure spawn chance and min depth in the config below.")]
+        [SerializeField] private EnemySpawnConfig passiveCreature = new EnemySpawnConfig
+        {
+            spawnChance = 0.4f,
+            minDepth    = 0f
+        };
+
+        [FoldoutGroup("References")]
+        [Tooltip("Ramming enemy — telegraphed charge, stunned after. Only appears past minDepth. " +
+                 "Configure spawn chance and min depth in the config below.")]
+        [SerializeField] private EnemySpawnConfig rammingEnemy = new EnemySpawnConfig
+        {
+            spawnChance = 0.3f,
+            minDepth    = 200f
+        };
 
         // Surfaces the implicit camera dependency: not a serialized field, but
         // resolved automatically from Camera.main at Awake so it's clear a camera
@@ -166,7 +184,8 @@ namespace Submachina.Core
             WorldChunk chunk = cellGO.AddComponent<WorldChunk>();
             chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, depth,
                 rockPrefab, resourcePrefab,
-                enemyPrefab, o2BubblePrefab);
+                enemyPrefab, o2BubblePrefab,
+                passiveCreature, rammingEnemy);
 
             _chunks[cell] = chunk;
         }
