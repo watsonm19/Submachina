@@ -10,6 +10,12 @@ These are the modular subsystems that make up a submarine. Each extends **Submar
 
 - **SubmarineFeedbackRouter** (`Sub.Feedbacks`) — semantic feedback switchboard. Serialized `mappings` pair each `FeedbackId` key with one or more `MMF_Player`s; `Play(key, position, intensity)` does an O(1) lookup and plays all mapped players, `Stop(key)` halts looping ones. Every gameplay system routes juice through this instead of holding `MMF_Player` references. Editor button `AddMissingMappings()` auto-populates via reflection over `SubFeedbacks` fields. A custom Odin `FeedbackIdDrawer` shows a categorized dropdown for each key.
 - **SubmarinePumpRouter** (`Sub.Pumps`) — arbitration for the shared pump input. Pumps self-`Register`/`Unregister` (in their OnEnable/OnDisable). `Active` returns the registered `ISweetSpotPump` with the highest `ControlPriority` whose `WantsControl` is true (first-registered breaks ties); `IsActive(pump)` is the per-pump check. No hand-wired references between pumps or bars.
+- **SubmarineAnchorRouter** (`Sub.Anchors`) — semantic mount-point registry (the visual-location mirror of the feedback router). Maps each `AnchorId` key to the `Transform` of a `SubmarineAnchor` marker. `Get(key)` returns the transform (falling back to the sub root on a miss); `TryGet(key, out t)` skips the fallback. Markers self-`Register`/`Unregister`, and `Awake` back-fills any anchors already nested under the sub. See `../SubAnchors/context.md` for the key types.
+
+## Anchors & feedback binding (decoupled VFX placement)
+
+- **SubmarineAnchor** — a marker placed on a child transform (muzzle, nose, tail) holding an `AnchorId` key; self-registers with `Sub.Anchors` (OnEnable/OnDisable) and draws a Scene gizmo. `Key` and `Point` expose the key and its transform.
+- **FeedbackAnchorBinder** — plain MonoBehaviour on a self-contained feedback prefab. On `Start` it resolves its `AnchorId` via `GetComponentInParent<Submarine>().Anchors` and re-points the player's `MMF_ParticlesInstantiation`: `Attach` parents + nests the particles so they follow the sub; `PositionOnly` spawns a one-shot at the anchor. Swapping the prefab or its key moves the effect without touching gameplay code (Mode A). Modules can instead pass `Sub.Anchors.Get(key).position` to `Sub.Feedbacks.Play` for dynamic points (Mode B).
 
 ## Core movement & aim
 
@@ -31,7 +37,7 @@ All pumps implement **ISweetSpotPump** and bind the **same** pump InputAction; t
 ## Weapons & abilities
 
 - **MiningLaser** — continuous beam fired along `Sub.Turret.AimDirection` (`mineAction` hold). Gated by `Sub.O2.CurrentAirPressure > 0` and sets `Sub.O2.IsMining`. Raycasts on `miningLayer`; calls `MiningResource.SetMiningProgress(...)` each frame and `Collect(Sub)` at completion. Drives `MiningBeamVFX` and plays looping `MiningActive` / one-shot `MiningCollect`.
-- **PlayerAttack** — directional melee cone. Gathers enemies in `attackRange` on `enemyLayer` via `OverlapCircleAll`, filters by dot product against `Sub.Turret.AimDirection` (`coneHalfAngle`), and calls each `Health.TakeDamage`. Events `onAttack`/`onDamageDealt`; plays `AttackSwing`; procedural LineRenderer arc visual.
+- **PlayerAttack** — directional melee cone. Gathers enemies in `attackRange` on `enemyLayer` via `OverlapCircleAll`, filters by dot product against `Sub.Turret.AimDirection` (`coneHalfAngle`), and calls each `Health.TakeDamage`. Events `onAttack`/`onDamageDealt`; plays `AttackSwing` at its `attackAnchor` (resolved via `Sub.Anchors`, default `Muzzle`); procedural LineRenderer arc visual.
 - **CavitationBurst** — directional dash. Consumes `Sub.O2.ConsumeAir(airCost)` (gated on air), applies an impulse with reduced drag for `burstDuration`, and sets `IsDashing` so physics lets it exceed `maxSpeed`. Direction priority: thrust input → velocity → `Sub.Turret.AimDirection`. Events `onBurstStart`/`onBurstEnd`; plays `DashStart`/`DashEnd`.
 
 ## Economy

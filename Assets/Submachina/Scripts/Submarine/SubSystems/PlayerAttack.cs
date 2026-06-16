@@ -26,65 +26,70 @@ namespace Submachina.Core
      *      If left empty, Unity uses the LineRenderer default (may appear pink in URP).
      */
     [UsesFeedbacks(nameof(SubFeedbacks.AttackSwing))]
+    [UsesAnchors(nameof(SubAnchors.Muzzle))]
     public class PlayerAttack : SubmarineComponent
     {
         // =====================
         // Attack Settings
         // =====================
 
-        [FoldoutGroup("Attack")]
-        [Tooltip("Distance the cone extends from the turret.")]
-        [SerializeField, Min(0f)] private float attackRange = 3f;
+        [FoldoutGroup("Attack")] [Tooltip("Distance the cone extends from the turret.")] [SerializeField, Min(0f)]
+        private float attackRange = 3f;
 
         [FoldoutGroup("Attack")]
         [Tooltip("Half-angle of the attack cone in degrees. " +
                  "Example: 45 = 90° total arc — hits enemies in a wide forward sweep.")]
-        [SerializeField, Range(10f, 90f)] private float coneHalfAngle = 45f;
+        [SerializeField, Range(10f, 90f)]
+        private float coneHalfAngle = 45f;
+
+        [FoldoutGroup("Attack")] [Tooltip("Damage dealt to each enemy hit per swing.")] [SerializeField, Min(0)]
+        private int attackDamage = 2;
+
+        [FoldoutGroup("Attack")] [Tooltip("Minimum seconds between swings.")] [SerializeField, Min(0f)]
+        private float attackCooldown = 0.4f;
 
         [FoldoutGroup("Attack")]
-        [Tooltip("Damage dealt to each enemy hit per swing.")]
-        [SerializeField, Min(0)] private int attackDamage = 2;
-
-        [FoldoutGroup("Attack")]
-        [Tooltip("Minimum seconds between swings.")]
-        [SerializeField, Min(0f)] private float attackCooldown = 0.4f;
+        [Tooltip("Anchor the swing feedback spawns from. Drives passed-position feedbacks; " +
+                 "feedbacks that self-bind via FeedbackAnchorBinder ignore this.")]
+        [SerializeField]
+        private AnchorId attackAnchor = SubAnchors.Muzzle;
 
         // =====================
         // Input
         // =====================
 
-        [FoldoutGroup("Input")]
-        [Tooltip("Button InputAction that triggers the attack.")]
-        [SerializeField] private InputActionReference attackAction;
+        [FoldoutGroup("Input")] [Tooltip("Button InputAction that triggers the attack.")] [SerializeField]
+        private InputActionReference attackAction;
 
         // =====================
         // Targeting
         // =====================
 
-        [FoldoutGroup("Targeting")]
-        [Tooltip("LayerMask for enemies. Must include the 'Enemy' layer.")]
-        [SerializeField] private LayerMask enemyLayer;
+        [FoldoutGroup("Targeting")] [Tooltip("LayerMask for enemies. Must include the 'Enemy' layer.")] [SerializeField]
+        private LayerMask enemyLayer;
 
         // =====================
         // Arc Visual
         // =====================
 
-        [FoldoutGroup("Arc")]
-        [Tooltip("Color of the idle aim arc. Low alpha keeps it subtle.")]
-        [SerializeField] private Color arcIdleColor = new Color(0.4f, 1f, 1f, 0.15f);
+        [FoldoutGroup("Arc")] [Tooltip("Color of the idle aim arc. Low alpha keeps it subtle.")] [SerializeField]
+        private Color arcIdleColor = new Color(0.4f, 1f, 1f, 0.15f);
 
         [FoldoutGroup("Arc")]
         [Tooltip("Color of the arc when an attack fires. Higher alpha for the flash.")]
-        [SerializeField] private Color arcFlashColor = new Color(0.6f, 1f, 1f, 0.75f);
+        [SerializeField]
+        private Color arcFlashColor = new Color(0.6f, 1f, 1f, 0.75f);
 
         [FoldoutGroup("Arc")]
         [Tooltip("Duration of the flash when an attack fires, in seconds.")]
-        [SerializeField, Min(0.01f)] private float flashDuration = 0.12f;
+        [SerializeField, Min(0.01f)]
+        private float flashDuration = 0.12f;
 
         [FoldoutGroup("Arc")]
         [Tooltip("Material for the arc LineRenderer. Assign a URP Unlit/Particle material. " +
                  "Leave empty to use Unity default (may appear pink in URP).")]
-        [SerializeField] private Material arcMaterial;
+        [SerializeField]
+        private Material arcMaterial;
 
         // =====================
         // Events
@@ -92,11 +97,11 @@ namespace Submachina.Core
 
         [FoldoutGroup("Events")]
         [Tooltip("Fired each time an attack swing is triggered (cooldown passed).")]
-        [SerializeField] private UnityEvent onAttack;
+        [SerializeField]
+        private UnityEvent onAttack;
 
-        [FoldoutGroup("Events")]
-        [Tooltip("Fired when the swing hits at least one enemy.")]
-        [SerializeField] private UnityEvent onDamageDealt;
+        [FoldoutGroup("Events")] [Tooltip("Fired when the swing hits at least one enemy.")] [SerializeField]
+        private UnityEvent onDamageDealt;
 
         // =====================
         // Debug
@@ -162,8 +167,12 @@ namespace Submachina.Core
 
             _attackCooldownEnd = Time.time + attackCooldown;
 
-            // Route the swing cue through the central feedback switchboard
-            Sub?.Feedbacks?.Play(SubFeedbacks.AttackSwing, transform.position);
+            // Route the swing cue through the central feedback switchboard.
+            // Resolve the spawn point from the anchor registry so the VFX origin
+            // follows the configured mount point (e.g. muzzle). Feedbacks that
+            // self-bind via FeedbackAnchorBinder ignore this passed position.
+            Vector3 fxPos = Sub?.Anchors != null ? Sub.Anchors.Get(attackAnchor).position : transform.position;
+            Sub?.Feedbacks?.Play(SubFeedbacks.AttackSwing, fxPos);
             onAttack?.Invoke();
 
             Vector2 origin = Sub.Turret.transform.position;
@@ -275,7 +284,12 @@ namespace Submachina.Core
         [Button("Test Swing"), GUIColor(1f, 0.4f, 0.2f)]
         private void DebugAttack()
         {
-            if (!Application.isPlaying) { Debug.Log("[PlayerAttack] Play mode only."); return; }
+            if (!Application.isPlaying)
+            {
+                Debug.Log("[PlayerAttack] Play mode only.");
+                return;
+            }
+
             TryAttack();
         }
 
