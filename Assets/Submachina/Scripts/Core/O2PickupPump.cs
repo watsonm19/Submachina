@@ -35,7 +35,8 @@ namespace Submachina.Core
      *   2. Optionally assign a PumpAction InputActionReference (Spacebar fallback).
      *   3. Assign a Ring Material (URP Unlit/Particle) so the ring isn't pink in URP.
      *   4. Subscribe to events for audio/visual juice.
-     *   5. Point a BellowsBar's pump reference at this component to display the loop.
+     *   5. A BellowsBar on the sub displays the loop automatically while this pump
+     *      is the active pump (via SubmarinePumpRouter) — no reference to wire.
      */
     [UsesFeedbacks(SubFeedback.PumpPerfect, SubFeedback.PumpWeak, SubFeedback.AirLock)]
     public class O2PickupPump : SubmarineComponent, ISweetSpotPump
@@ -206,17 +207,16 @@ namespace Submachina.Core
 
         [FoldoutGroup("Events")]
         [Tooltip("Fired whenever the loop stops for ANY reason — collect, weak collect, or " +
-                 "air lock. Pairs with OnLoopStarted. Wire: BellowsBar.Hide().")]
+                 "air lock. Pairs with OnLoopStarted. Wire: extra SFX/VFX.")]
         public UnityEvent OnLoopStopped;
 
         [FoldoutGroup("Events")]
         [Tooltip("Fired when an O2Pickup enters pickupRadius, regardless of pump state. " +
-                 "Wire: BellowsBar.Show().")]
+                 "(The BellowsBar follows the active pump automatically — no wiring needed.)")]
         public UnityEvent OnPickupEnteredRange;
 
         [FoldoutGroup("Events")]
-        [Tooltip("Fired when no pickup remains in range — it drifted away or was collected. " +
-                 "Wire: BellowsBar.Hide().")]
+        [Tooltip("Fired when no pickup remains in range — it drifted away or was collected.")]
         public UnityEvent OnPickupLeftRange;
 
         [FoldoutGroup("Events")]
@@ -239,6 +239,9 @@ namespace Submachina.Core
         /** True while the Air Lock penalty is active. */
         public bool IsAirLocked => _state == PumpState.AirLocked;
 
+        /** The intake pump has no cooldown mechanic. */
+        public bool IsOnCooldown => false;
+
         /** True while looping and the charge currently sits within the sweet spot. */
         public bool IsInSweetSpot =>
             _state == PumpState.Looping &&
@@ -259,6 +262,13 @@ namespace Submachina.Core
 
         /** True while a pickup sits within pickupRadius, regardless of pump state. */
         public bool IsPickupInRange => _pickupInRange;
+
+        /** Wants control whenever it's actively looping or a bubble is in range — the
+         *  intake pump only owns the input contextually, near collectibles. */
+        public bool WantsControl => IsLooping || IsPickupInRange;
+
+        /** Outranks the always-on manual pump so it takes over near bubbles. */
+        public int ControlPriority => 10;
 
         // =====================
         // Debug (Inspector)
@@ -306,11 +316,13 @@ namespace Submachina.Core
         private void OnEnable()
         {
             if (pumpAction != null) pumpAction.action.Enable();
+            Sub?.Pumps?.Register(this);
         }
 
         private void OnDisable()
         {
             if (pumpAction != null) pumpAction.action.Disable();
+            Sub?.Pumps?.Unregister(this);
         }
 
         private void Update()

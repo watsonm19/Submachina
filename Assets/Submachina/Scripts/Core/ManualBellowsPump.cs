@@ -101,12 +101,6 @@ namespace Submachina.Core
         [SerializeField] private bool enableManualPumping = true;
 
         [FoldoutGroup("Input")]
-        [Tooltip("Optional O2PickupPump on the same sub. When assigned, manual pumping is " +
-                 "suppressed while an O2 pickup is within the intake pump's range or its loop " +
-                 "is running — the intake pump owns the pump input near bubbles.")]
-        [SerializeField] private O2PickupPump intakePump;
-
-        [FoldoutGroup("Input")]
         [Tooltip("Button InputAction for the pump. If unassigned, Spacebar is used as a fallback.")]
         [SerializeField] private InputActionReference pumpAction;
 
@@ -182,9 +176,21 @@ namespace Submachina.Core
             _chargeProgress >= sweetSpotMin &&
             _chargeProgress <= sweetSpotMax;
 
-        /** True while the intake pump owns the pump input — manual pumping is unavailable. */
-        public bool IsBlockedByIntakePump =>
-            intakePump != null && (intakePump.IsLooping || intakePump.IsPickupInRange);
+        /** Wants control whenever manual pumping is enabled — the always-on baseline pump. */
+        public bool WantsControl => enableManualPumping;
+
+        /** Lowest priority: any contextual pump (e.g. the intake pump) outranks the manual baseline. */
+        public int ControlPriority => 0;
+
+        /**
+         * True while this pump is the one the router has handed control to.
+         * With no router present (standalone sub) it defaults to true, so the
+         * manual pump still works on its own exactly as before.
+         */
+        public bool IsActivePump => Sub?.Pumps == null || Sub.Pumps.IsActive(this);
+
+        /** True while another pump (the intake pump) currently owns the input — manual pumping is suppressed. */
+        public bool IsBlockedByIntakePump => !IsActivePump;
 
         // =====================
         // Debug (Inspector)
@@ -227,11 +233,13 @@ namespace Submachina.Core
         private void OnEnable()
         {
             if (pumpAction != null) pumpAction.action.Enable();
+            Sub?.Pumps?.Register(this);
         }
 
         private void OnDisable()
         {
             if (pumpAction != null) pumpAction.action.Disable();
+            Sub?.Pumps?.Unregister(this);
         }
 
         private void Update()

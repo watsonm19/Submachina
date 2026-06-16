@@ -6,10 +6,15 @@ namespace Submachina.Core
     /**
      * World-space charge indicator that floats above the submarine.
      *
-     * Shows a single bar: the pump charge progress while the button is held.
+     * Shows a single bar for whichever pump is currently active on the sub —
+     * resolved each frame from Sub.Pumps.Active, so it follows the manual bellows
+     * pump or the O2 intake pump automatically as control hands off between them.
+     * No pump reference is wired by hand.
+     *
      * Two tick marks indicate the sweet spot window — the bar turns green when
      * charge is inside it, signalling the player to release for a Perfect Pump.
-     * Bar hides (transparent) when idle so it doesn't clutter the screen.
+     * The bar shows whenever a pump holds control and is ready (the active pump is
+     * not on cooldown), and hides when no pump has control or it's cooling down.
      *
      * Air pressure is shown separately by the screen-space O2Bar in the HUD corner.
      *
@@ -17,28 +22,12 @@ namespace Submachina.Core
      *
      * Setup:
      *   1. Add this component to a child GameObject of the submarine
-     *      (or directly on the submarine root).
-     *   2. Assign the ManualBellowsPump reference.
+     *      (or directly on the submarine root) — it self-resolves its Submarine.
+     *   2. Ensure a SubmarinePumpRouter and at least one pump live on the sub.
      *   3. Tweak WorldOffset to position above the sub sprite.
      */
-    public class BellowsBar : MonoBehaviour
+    public class BellowsBar : SubmarineComponent
     {
-        // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("Any pump implementing ISweetSpotPump (ManualBellowsPump or O2PickupPump).")]
-        [ValidateInput(nameof(IsValidPump), "Component must implement ISweetSpotPump.")]
-        [SerializeField] private MonoBehaviour pump;
-
-        /** Resolved interface view of the assigned pump component. */
-        private ISweetSpotPump _pump;
-
-        /** Odin inspector validation — only accept components that implement ISweetSpotPump. */
-        private bool IsValidPump(MonoBehaviour candidate) =>
-            candidate == null || candidate is ISweetSpotPump;
-
         // =====================
         // Layout
         // =====================
@@ -83,15 +72,6 @@ namespace Submachina.Core
         [SerializeField] private Color sweetSpotMarkerColor = new Color(0.2f, 1f, 0.25f, 0.9f);
 
         // =====================
-        // Visibility
-        // =====================
-
-        [FoldoutGroup("Visibility")]
-        [Tooltip("Start with the bar hidden. Wire O2PickupPump.OnPickupEnteredRange → Show() " +
-                 "and OnPickupLeftRange / OnLoopStopped → Hide() to show it contextually.")]
-        [SerializeField] private bool startHidden;
-
-        // =====================
         // State
         // =====================
 
@@ -100,48 +80,62 @@ namespace Submachina.Core
         private Sprite _whiteSprite;
         private bool _visible = true;
 
+        /** The pump currently being displayed — tracked so we reposition markers on hand-off. */
+        private ISweetSpotPump _activePump;
+
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
-            _pump = pump as ISweetSpotPump;
+            base.Awake();
             _whiteSprite = CreateWhiteSprite();
             BuildBar();
+            SetVisible(false);   // stay hidden until a pump actually engages
         }
 
         /**
-         * Positions the sweet spot markers after Awake so the pump SerializeField is valid.
-         * Example: sweetSpotMin=0.65, barWidth=1.4 → leftX = -0.7 + 0.65×1.4 = 0.21
+         * Each frame: resolve the active pump from the router, follow control
+         * hand-offs (repositioning the sweet spot markers for the new pump), and
+         * show the bar only while that pump is engaged (charging/looping or locked).
          */
-        private void Start()
-        {
-            if (startHidden) SetVisible(false);
-
-            if (_pump == null) return;
-            _sweetLeft.transform.localPosition  = new Vector3(BarFillX(_pump.SweetSpotMin), worldOffset.y, -0.01f);
-            _sweetRight.transform.localPosition = new Vector3(BarFillX(_pump.SweetSpotMax), worldOffset.y, -0.01f);
-        }
-
         private void Update()
         {
-            if (!_visible || _pump == null) return;
-            UpdateChargeBar();
+            ISweetSpotPump active = Sub != null && Sub.Pumps != null ? Sub.Pumps.Active : null;
+
+            // Control handed off to a different pump — re-anchor the sweet spot markers
+            if (!ReferenceEquals(active, _activePump))
+            {
+                _activePump = active;
+                if (_activePump != null) PositionSweetSpotMarkers(_activePump);
+            }
+
+            // Visible whenever a pump holds control and is ready — i.e. the manual
+            // pump is enabled and not preempted by the intake pump (both folded into
+            // "is the active pump"), and not sitting in a cooldown. Hidden otherwise.
+            bool visible = _activePump != null && !_activePump.IsOnCooldown;
+            if (visible != _visible) SetVisible(visible);
+
+            if (_visible && _activePump != null) UpdateChargeBar();
+        }
+
+        /**
+         * Anchors the two sweet spot ticks to the active pump's window.
+         * Example: sweetSpotMin=0.65, barWidth=1.4 → leftX = -0.7 + 0.65×1.4 = 0.21
+         */
+        private void PositionSweetSpotMarkers(ISweetSpotPump pump)
+        {
+            _sweetLeft.transform.localPosition  = new Vector3(BarFillX(pump.SweetSpotMin), worldOffset.y, -0.01f);
+            _sweetRight.transform.localPosition = new Vector3(BarFillX(pump.SweetSpotMax), worldOffset.y, -0.01f);
         }
 
         // -------------------------------------------------------
-        // Visibility API
+        // Visibility
         // -------------------------------------------------------
 
-        /** Shows the bar. Wire to O2PickupPump.OnPickupEnteredRange. */
-        public void Show() => SetVisible(true);
-
-        /** Hides the bar. Wire to O2PickupPump.OnPickupLeftRange and OnLoopStopped. */
-        public void Hide() => SetVisible(false);
-
         /** Toggles all bar renderers at once — background, fill, and sweet spot markers. */
-        public void SetVisible(bool visible)
+        private void SetVisible(bool visible)
         {
             _visible = visible;
             if (_chargeBg == null) return;   // called before Awake built the bar
@@ -158,7 +152,7 @@ namespace Submachina.Core
 
         /**
          * Procedurally creates the charge bar and sweet spot markers as child GameObjects.
-         * Sweet spot marker X positions are finalised in Start() once pump is confirmed valid.
+         * Sweet spot marker X positions are finalised per-frame as the active pump changes.
          */
         private void BuildBar()
         {
@@ -196,7 +190,7 @@ namespace Submachina.Core
          */
         private void UpdateChargeBar()
         {
-            float charge    = _pump.ChargeProgress;
+            float charge    = _activePump.ChargeProgress;
             float fillWidth = barWidth * charge;
 
             // Anchor fill to the left edge of the background
@@ -206,7 +200,7 @@ namespace Submachina.Core
                 -0.01f);
             _chargeFill.transform.localScale = new Vector3(fillWidth, barHeight, 1f);
 
-            if (_pump.IsAirLocked)
+            if (_activePump.IsAirLocked)
             {
                 _chargeBg.color   = airLockColor;
                 _chargeFill.color = airLockColor;
@@ -215,7 +209,7 @@ namespace Submachina.Core
             {
                 _chargeBg.color = backgroundBarColor;
                 _chargeFill.color = charge <= 0f    ? Color.clear
-                    : _pump.IsInSweetSpot            ? chargeSweetSpotColor
+                    : _activePump.IsInSweetSpot      ? chargeSweetSpotColor
                                                      : chargeNormalColor;
             }
         }

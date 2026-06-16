@@ -59,6 +59,9 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public SubmarineFeedbackRouter Feedbacks { get; private set; }
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        public SubmarinePumpRouter Pumps { get; private set; }
+
         // =====================
         // Lifecycle
         // =====================
@@ -91,6 +94,7 @@ namespace Submachina.Core
                 case ResourceManager res:               Resources = res; break;
                 case ScrapManager scrap:                Scrap = scrap;  break;
                 case SubmarineFeedbackRouter fb:        Feedbacks = fb;  break;
+                case SubmarinePumpRouter pumps:         Pumps = pumps;  break;
             }
         }
 
@@ -109,6 +113,7 @@ namespace Submachina.Core
                 case ResourceManager res when Resources == res:           Resources = null; break;
                 case ScrapManager scrap when Scrap == scrap:             Scrap = null;    break;
                 case SubmarineFeedbackRouter fb when Feedbacks == fb:   Feedbacks = null; break;
+                case SubmarinePumpRouter pumps when Pumps == pumps:    Pumps = null;    break;
             }
         }
 
