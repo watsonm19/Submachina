@@ -236,6 +236,14 @@ namespace Submachina.Core
             Sub?.Pumps?.Register(this);
         }
 
+        private void Start()
+        {
+            // Registration fallback: OnEnable may have fired before SubmarinePumpRouter
+            // registered with Submarine (Awake order isn't guaranteed across components).
+            // SubmarinePumpRouter.Register() is duplicate-safe so this is always safe to call.
+            Sub?.Pumps?.Register(this);
+        }
+
         private void OnDisable()
         {
             if (pumpAction != null) pumpAction.action.Disable();
