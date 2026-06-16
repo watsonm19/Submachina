@@ -1,48 +1,27 @@
-# Core Systems Architecture
+# Core Systems
 
-## Submarine Facade Pattern
+`Scripts/Core` is the namespace for **generic, cross-cutting systems** — pacing, camera, world current, damage reaction, and shared data assets. Project-specific gameplay lives elsewhere; see the sibling context docs:
 
-All submarine subsystems extend **SubmarineComponent** (base class) which auto-discovers its parent **Submarine** via `GetComponentInParent<Submarine>()` and registers itself on Awake. Subsystems access siblings through `Sub.O2`, `Sub.Physics`, `Sub.Turret`, `Sub.Resources`, etc.
+- **`Scripts/Submarine/context.md`** — the submarine facade, config-driven assembly, and the semantic feedback system.
+- **`Scripts/Submarine/SubSystems/context.md`** — all `SubmarineComponent` subsystems (O2, physics, weapons, pumps, scrap/resources) and their routers.
+- **`Scripts/Submarine/SubUI/context.md`** — the HUD bars/displays and the "Atoms for UI reads" pattern.
+- **`Scripts/World/context.md`** — procedural world generation and world entities (rocks, resources, O2 bubbles, enemies).
 
-**Key types:**
-- **Submarine** (`Submarine.cs`) — MonoBehaviour facade on the submarine root. Holds typed references to subsystems populated by auto-registration. Maintains `static List<Submarine> All` for external systems. Has `Build(SubmarineConfig)` for config-driven assembly.
-- **SubmarineComponent** (`SubmarineComponent.cs`) — Abstract base class. Derived classes override `Awake()` with `base.Awake()` first, then their init. Auto-registers/unregisters for runtime swapping.
-- **SubmarineConfig** (`SubmarineConfig.cs`) — ScriptableObject defining a submarine's composition via prefab slots (core, weapons, abilities, utilities).
+## Cross-system data flow via Unity Atoms
 
-**External entities** resolve submarines from context:
-- Enemies find the nearest sub via `Submarine.FindNearest(position)` or `Submarine.All`
-- O2Pickups resolve the collecting sub from collision: `other.GetComponentInParent<Submarine>()`
-- MiningResources receive the collecting sub from MiningLaser's `Collect(Sub)` call
+Core systems publish shared state through Unity Atoms `FloatVariable`s rather than direct references, so consumers (UI, difficulty, gameplay) read the atom instead of the producer:
 
-**Supports multiple submarines** (future local multiplayer) — no singletons.
-
----
-
-# Core — Air / O2 Pump System
+- **`currentDepth`** — written by `DepthTracker`, read by `ActManager` (depth bonus), `LevelConfig` zone queries, `O2System` (depth-scaled decay), and depth-aware visuals.
+- **`currentDescentSpeed`** — written by `CurrentManager`, read by `SubmarinePhysicsController` (ocean current force), parallax, and UI.
 
 ## Components
 
-- **O2System** (`Sub.O2`) — the sub's air tank and single source of truth for air state: current/max air pressure, passive decay (faster under thrust/mining), max-capacity decay, health bleed at zero air, and the HUD atom write. Pumps call `Sub.O2.AddAir()` when an action succeeds.
-- **ManualBellowsPump** — the manual pump mechanic only (air state lives in O2System). A hold-and-release sweet-spot charge with anti-spam Air Lock; a Perfect/Weak release calls `Sub.O2.AddAir()`.
-- **O2PickupPump** — the intake pump that gates O2 bubble collection. Runs a looping 0→1 charge bar; pressing the input while looping grades the collect by timing (sweet spot = full reward, otherwise weak). `O2Pickup.Collect(Sub, multiplier)` routes the air into `Sub.O2`.
-- **O2Pickup** — the bubble collectible. Restores current air and max capacity on `Collect(multiplier)`. Contact collection is off by default; collection goes through O2PickupPump. `WorldChunk` injects the pump reference at spawn.
-- **ISweetSpotPump** — shared read interface (`ChargeProgress`, sweet spot bounds, plus `WantsControl`/`ControlPriority` for arbitration) consumed by `SubmarinePumpRouter` and `BellowsBar`.
-- **SubmarinePumpRouter** (`Sub.Pumps`) — central registry that decides the single *active* pump. Pumps self-register on enable; `Active` returns the highest-`ControlPriority` pump whose `WantsControl` is true. Mirrors `SubmarineFeedbackRouter`. No hand-wired references between pumps or bars.
-- **BellowsBar** — world-space charge bar. Follows `Sub.Pumps.Active` each frame (no serialized pump reference), repositioning the sweet-spot markers on hand-off and showing only while the active pump is engaged.
-
-## Input ownership (the pumps share one input action via the router)
-
-All pumps bind the same pump InputAction. The `SubmarinePumpRouter.Active` pump owns it:
-
-- **O2PickupPump** wants control while looping **or** a pickup is in range (`ControlPriority 10`). With `autoActivateInRange` on, its loop starts automatically on range-enter and stops quietly when the last pickup leaves.
-- **ManualBellowsPump** is the always-on baseline (`ControlPriority 0`, `WantsControl` = `enableManualPumping`). It's active whenever no higher-priority pump wants control. `IsActivePump` reads `Sub.Pumps.IsActive(this)`; when not active it cancels any in-flight charge so it can't get stuck mid-cycle.
-
-So the intake pump takes over near bubbles and the manual pump resumes the instant it lets go — entirely through the router, with no direct references.
-
-## Independence (upgrade-gated single pumps)
-
-Each pump works standalone: with only one pump registered, that pump is active whenever it wants control — so a sub that carries only the bellows pump, or only the intake pump, behaves correctly. With **no** router present at all, `ManualBellowsPump.IsActivePump` defaults to true so the bellows still runs solo. `autoActivateInRange`/`requirePickupToStart` still let O2PickupPump run fully manual.
-
-## Scene wiring (Proto_Descent)
-
-`O2System`, `SubmarineFeedbackRouter`, `SubmarinePumpRouter`, `ManualBellowsPump`, and `O2PickupPump` live on the submarine root, sharing one pump InputAction. A single `BellowsBar` child follows `Sub.Pumps.Active` — no per-pump bars or manual references.
+- **ActManager** — owns the run's act countdown. When the timer expires it fires `onBossSpawn`; reaching a depth threshold (read from the `currentDepth` atom) before expiry fires `onDepthBonusEarned`. `CompleteAct()` (called by the boss on death) advances the act; `onActStarted`/`onFinalBoss` round out the lifecycle. Odin play-mode buttons for skip/award/complete.
+- **ActTimerHUD** — read-only consumer of `ActManager` (`RemainingTime`, `ActDuration`, `Act`). Renders MM:SS + act label and lerps text color from `normalColor` to `urgentColor` as the act nears expiry (`urgencyThreshold`).
+- **CameraFollow** — LateUpdate smooth-follow of a target Transform (the sub) with offset, optional X-lock and top clamp. `SnapToTarget()` and `SetTarget()` for instant repositioning / runtime retargeting. Pure transform driver — no atoms or events.
+- **CurrentManager** — single source of truth for ocean descent speed. Computes `TargetSpeed` from a progression tier (`AdvanceTier`/`SetTier`) plus temporary boosts (`AddSpeedBoost`/`ResetBoosts`), and writes the `currentDescentSpeed` atom each frame (smoothed or instant). Driven by public calls, not events.
+- **DepthTracker** — a `SubmarineComponent` (lives here because depth is a generic concept). Converts the sub's world Y (via `Sub.Physics`) into metres-below-surface and writes the `currentDepth` atom each frame. Surface is `surfaceY` (Y=0), descent is negative Y; depth is clamped at 0. A `DepthTracker` prefab ships under `Prefabs/SubSystems`.
+- **CollisionDamage** — a `SubmarineComponent` requiring `Health`. On `OnCollisionEnter2D` above `minImpactSpeed` (filtered by `collisionLayers`, with a `damageCooldown`), it applies `damagePerImpact` and fires `onCollisionDamage(impactSpeed)`. Plays `SubFeedback.CollisionDamage` via `Sub.Feedbacks` (declared with `[UsesFeedbacks]`).
+- **HitFlash** — auto-wired (`GetComponent` for `Health` + `SpriteRenderer`) white-flash on damage. Subscribes to `Health.onHealthChanged`, captures and restores the original color so it composes with other tints (e.g. `EnemyController` state colors). Coroutine-guarded against rapid re-hits.
+- **LevelConfig** — per-level ScriptableObject (`Submachina/Level Config`) defining trench shape (`TotalDepth`, `HalfWidth`, exit-gate Y) and normalized zone boundaries with per-zone spawn budgets via the nested `ZoneConfig`. `GetZone(depth)` / `GetZoneConfig(...)` classify depth into `ZoneType { Shallow, Midnight, Abyss }`. Read by `ChunkSpawner`/`WorldChunk`.
+- **SpriteMaskInstanceIsolator** — requires `SpriteMask`. Confines each mask instance to its own prefab instance via sorting-order banding (`bandStride`/`maxSlots`), so pooled masked VFX don't reveal each other's particles. Claims a band from a static slot counter once in Awake (pooling-safe).
