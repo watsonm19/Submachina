@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
+using UnityAtoms.BaseAtoms;
 using MoreMountains.Feedbacks;
 using Sirenix.OdinInspector;
 
@@ -49,6 +50,16 @@ public class Health : MonoBehaviour
     [ShowIf("deathBehavior", DeathBehavior.Deactivate)]
     [Tooltip("Delay before the GameObject is deactivated.")]
     [SerializeField, Min(0f)] private float deactivateDelay = 0.5f;
+
+    // =====================
+    // Atoms
+    // =====================
+
+    [FoldoutGroup("Atoms")]
+    [Tooltip("Written with normalized health (0-1) whenever HP changes. " +
+             "HealthBar (and any other UI) subscribes to this atom's Changed event, " +
+             "so it never needs a direct reference back to this Health component.")]
+    [SerializeField] private FloatVariable currentHealth;
 
     // =====================
     // Events
@@ -114,12 +125,16 @@ public class Health : MonoBehaviour
     private void Awake()
     {
         CurrentHP = maxHP;
+
+        // Seed the atom before any UI OnEnable reads it, so bars paint correctly
+        // on the first frame without firing onHealthChanged this early.
+        if (currentHealth != null) currentHealth.Value = HealthPercent;
     }
 
     private void Start()
     {
         // Broadcast initial health so UI elements can initialize
-        onHealthChanged?.Invoke(CurrentHP, maxHP);
+        RaiseHealthChanged();
     }
 
     // -------------------------------------------------------
@@ -144,7 +159,7 @@ public class Health : MonoBehaviour
         // Apply damage, clamped to zero
         int actualDamage = Mathf.Min(CurrentHP, hitData.damage);
         CurrentHP = Mathf.Max(0, CurrentHP - hitData.damage);
-        onHealthChanged?.Invoke(CurrentHP, maxHP);
+        RaiseHealthChanged();
         if (actualDamage > 0)
         {
             onDamaged?.Invoke(actualDamage);
@@ -201,7 +216,7 @@ public class Health : MonoBehaviour
         int prevHP = CurrentHP;
         CurrentHP = Mathf.Min(maxHP, CurrentHP + amount);
         int actualHeal = CurrentHP - prevHP;
-        onHealthChanged?.Invoke(CurrentHP, maxHP);
+        RaiseHealthChanged();
         if (actualHeal > 0) onHealed?.Invoke(actualHeal);
 
         // Reset low-health flag if healed above threshold
@@ -220,7 +235,23 @@ public class Health : MonoBehaviour
         IsDead = false;
         _lowHealthFired = false;
         CurrentHP = maxHP;
+        RaiseHealthChanged();
+    }
+
+    // -------------------------------------------------------
+    // Broadcast
+    // -------------------------------------------------------
+
+    /**
+     * Publishes the current health to all listeners in one place:
+     *   - Fires the onHealthChanged UnityEvent (currentHP, maxHP) for Inspector wiring.
+     *   - Writes the normalized HealthPercent (0-1) to the currentHealth atom, which
+     *     raises its Changed event so atom subscribers (e.g. HealthBar) repaint.
+     */
+    private void RaiseHealthChanged()
+    {
         onHealthChanged?.Invoke(CurrentHP, maxHP);
+        if (currentHealth != null) currentHealth.Value = HealthPercent;
     }
 
     // -------------------------------------------------------

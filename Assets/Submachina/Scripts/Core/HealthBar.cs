@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityAtoms.BaseAtoms;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -7,17 +8,18 @@ namespace Submachina.Core
     /**
      * Drives a UI Image fill to display its submarine's current health.
      *
-     * Resolves the owning Submarine via GetComponentInParent (this bar lives
-     * inside a submarine hierarchy) and reads HealthPercent from Sub.Health
-     * each frame, updating the bar's fill and tint color accordingly. Polling
-     * the facade per-frame keeps the bar correct across runtime health swaps
-     * and works regardless of Awake ordering between this bar and the Submarine.
+     * Subscribes to the currentHealth atom — a normalized 0-1 value written by
+     * Health whenever HP changes — and repaints only on change. No Submarine
+     * lookup, no explicit Health reference, and no per-frame polling: the bar is
+     * fully decoupled from the submarine hierarchy. Mirrors O2Bar's atom-driven
+     * approach (O2Bar polls its atom each frame; this bar is event-driven since
+     * health changes infrequently).
      *
      * Setup:
      *   1. Place this Image somewhere under the submarine root (e.g. a
      *      per-sub world/screen-space Canvas in the submarine hierarchy).
      *   2. Set Image Type → Filled, Fill Method → Horizontal.
-     *   3. Attach this script — the Health source is found automatically.
+     *   3. Assign the same currentHealth atom that the submarine's Health writes.
      */
     [RequireComponent(typeof(Image))]
     public class HealthBar : MonoBehaviour
@@ -27,12 +29,9 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("References")]
-        [Tooltip("Optional explicit Health source. Leave empty to read from the " +
-                 "owning Submarine (Sub.Health), resolved via GetComponentInParent.")]
-        [SerializeField] private Health playerHealth;
-
-        /** Owning submarine, resolved once in Awake. Null if not under a Submarine. */
-        private Submarine _sub;
+        [Tooltip("Normalized health atom (0-1) written by Health. The bar subscribes " +
+                 "to this atom's Changed event and repaints whenever health changes.")]
+        [SerializeField] private FloatVariable currentHealth;
 
         // =====================
         // Colors
@@ -73,15 +72,25 @@ namespace Submachina.Core
         private void Awake()
         {
             _barImage = GetComponent<Image>();
-
-            // Resolve the owning submarine now (safe regardless of Awake order);
-            // its Health slot is read later in Update, after registration settles.
-            _sub = GetComponentInParent<Submarine>();
         }
 
-        private void Update()
+        /**
+         * Subscribes to the atom's Changed event and paints the current value
+         * immediately, so the bar is correct before the first change fires.
+         */
+        private void OnEnable()
         {
-            UpdateBar();
+            if (currentHealth != null)
+            {
+                currentHealth.Changed.Register(UpdateBar);
+                UpdateBar(currentHealth.Value);
+            }
+        }
+
+        /** Unsubscribes to avoid dangling listeners when disabled or destroyed. */
+        private void OnDisable()
+        {
+            if (currentHealth != null) currentHealth.Changed.Unregister(UpdateBar);
         }
 
         // -------------------------------------------------------
@@ -89,23 +98,18 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Sets fill amount from the active Health's HealthPercent (already 0-1).
-         *
-         * Health source resolves to the serialized override if assigned,
-         * otherwise the owning submarine's Sub.Health.
+         * Sets fill amount and tint from a normalized health value (already 0-1).
+         * Invoked by the currentHealth atom's Changed event.
          *
          * Color transitions:
-         *   fill > lowThreshold      → healthyColor
-         *   fill <= lowThreshold     → lerp toward lowColor
+         *   fill > lowThreshold       → healthyColor
+         *   fill <= lowThreshold      → lerp toward lowColor
          *   fill <= criticalThreshold → lerp toward criticalColor
          */
-        private void UpdateBar()
+        private void UpdateBar(float fill)
         {
-            // Prefer an explicit override; fall back to the submarine facade.
-            Health health = playerHealth != null ? playerHealth : _sub != null ? _sub.Health : null;
-            if (health == null) return;
+            if (_barImage == null) return;
 
-            float fill = health.HealthPercent;
             _barImage.fillAmount = fill;
 
             if (fill <= criticalThreshold)
