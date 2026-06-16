@@ -63,6 +63,20 @@ namespace Submachina.Core
                  "Example: 0.03 → ring breathes between 97% and 103% of pickupRadius.")]
         [SerializeField, Range(0f, 0.3f)] private float hintPulseAmplitude = 0.03f;
 
+        [FoldoutGroup("Radius Ring")]
+        [Tooltip("Ring color flashed when a scrap pickup is collected. " +
+                 "Warm gold reads as 'reward received'.")]
+        [SerializeField] private Color scrapCollectFlashColor = new Color(1f, 0.85f, 0.2f, 0.9f);
+
+        [FoldoutGroup("Radius Ring")]
+        [Tooltip("How long the collect flicker lasts in seconds.")]
+        [SerializeField, Min(0.05f)] private float scrapCollectFlashDuration = 0.25f;
+
+        [FoldoutGroup("Radius Ring")]
+        [Tooltip("Flicker frequency in cycles per second during the collect flash. " +
+                 "Example: 20 → ring blinks 20 times per second.")]
+        [SerializeField, Min(1f)] private float scrapCollectFlickerSpeed = 20f;
+
         // =====================
         // Debug
         // =====================
@@ -140,6 +154,7 @@ namespace Submachina.Core
         private LineRenderer _ringLine;
         private const int RingSegments = 48;
         private bool _anyInRange;
+        private float _flashTimer;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -245,6 +260,7 @@ namespace Submachina.Core
             if (scrap == null) return;
 
             scrap.Collect(Sub);
+            _flashTimer = scrapCollectFlashDuration;
         }
 
         // -------------------------------------------------------
@@ -288,6 +304,23 @@ namespace Submachina.Core
             float radius = pickupRadius;
             Color color;
             bool visible;
+
+            // Collect flash — highest priority, overrides everything for a brief flicker.
+            // Alternates between full color and transparent at flickerSpeed so it reads
+            // as a distinct "pickup received" cue rather than a steady glow.
+            if (_flashTimer > 0f)
+            {
+                _flashTimer -= Time.deltaTime;
+                float flicker = Mathf.Abs(Mathf.Sin(Time.time * scrapCollectFlickerSpeed * Mathf.PI));
+                color   = new Color(scrapCollectFlashColor.r, scrapCollectFlashColor.g,
+                                    scrapCollectFlashColor.b, scrapCollectFlashColor.a * flicker);
+                visible = true;
+                _ringLine.enabled    = visible;
+                _ringLine.startColor = color;
+                _ringLine.endColor   = color;
+                RebuildRingGeometry(radius);
+                return;
+            }
 
             if (HasRingOverride)
             {
