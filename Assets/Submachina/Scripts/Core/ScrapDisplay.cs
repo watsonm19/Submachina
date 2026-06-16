@@ -13,10 +13,16 @@ namespace Submachina.Core
      * automatically when MaxScrap changes (e.g. from an upgrade), so the
      * number of dots always matches the current cap.
      *
+     * The ScrapManager source resolves to the owning Submarine (Sub.Scrap) via
+     * GetComponentInParent, so place this display inside the submarine hierarchy.
+     * An explicit override may still be assigned. The Submarine reference is
+     * cached in Awake, but Sub.Scrap is polled in Update so the display tolerates
+     * Awake ordering and runtime scrap-module swaps.
+     *
      * Setup:
-     *   1. Create an empty GameObject on the HUD Canvas — this is the root.
+     *   1. Create an empty GameObject under the submarine root — this is the root.
      *   2. Add a child GameObject with a HorizontalLayoutGroup for dot spacing.
-     *   3. Attach this script to the root and assign all references.
+     *   3. Attach this script to the root and assign the sprite/layout references.
      *   4. Supply two small circle/dot sprites: one empty, one filled.
      */
     public class ScrapDisplay : MonoBehaviour
@@ -25,9 +31,8 @@ namespace Submachina.Core
         // References
         // =====================
 
-        [FoldoutGroup("References")]
-        [Tooltip("The ScrapManager on the GameManager object.")]
-        [SerializeField] private ScrapManager scrapManager;
+        /** Owning submarine, resolved once in Awake. Null if not under a Submarine. */
+        private Submarine _sub;
 
         [FoldoutGroup("References")]
         [Tooltip("Parent transform with a HorizontalLayoutGroup. Dots are spawned as children of this.")]
@@ -73,17 +78,26 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
+        private void Awake()
+        {
+            // Resolve the owning submarine now (safe regardless of Awake order);
+            // its Scrap slot is read later in Update, after registration settles.
+            _sub = GetComponentInParent<Submarine>();
+        }
+
         private void Update()
         {
-            if (scrapManager == null) return;
+            // Prefer an explicit override; fall back to the submarine facade.
+            ScrapManager scrap = _sub != null ? _sub.Scrap : null;
+            if (scrap == null) return;
 
             // Rebuild dot layout if the capacity has changed (e.g. from an upgrade)
-            if (scrapManager.MaxScrap != _lastMaxScrap)
-                RebuildDots();
+            if (scrap.MaxScrap != _lastMaxScrap)
+                RebuildDots(scrap);
 
             // Update sprite states only when the count changes
-            if (scrapManager.ScrapCount != _lastCount)
-                RefreshDots();
+            if (scrap.ScrapCount != _lastCount)
+                RefreshDots(scrap);
         }
 
         // -------------------------------------------------------
@@ -95,7 +109,7 @@ namespace Submachina.Core
          * the current MaxScrap value. Called once at startup and again
          * whenever MaxScrap changes.
          */
-        private void RebuildDots()
+        private void RebuildDots(ScrapManager scrap)
         {
             // Clear existing dots
             foreach (Image dot in _dots)
@@ -105,7 +119,7 @@ namespace Submachina.Core
             _dots.Clear();
 
             // Spawn one dot per scrap slot
-            for (int i = 0; i < scrapManager.MaxScrap; i++)
+            for (int i = 0; i < scrap.MaxScrap; i++)
             {
                 GameObject go = new GameObject($"ScrapDot_{i}", typeof(RectTransform), typeof(Image));
                 go.transform.SetParent(dotContainer, false);
@@ -120,7 +134,7 @@ namespace Submachina.Core
                 _dots.Add(img);
             }
 
-            _lastMaxScrap = scrapManager.MaxScrap;
+            _lastMaxScrap = scrap.MaxScrap;
             _lastCount = -1; // Force a sprite refresh on next Update
         }
 
@@ -131,9 +145,9 @@ namespace Submachina.Core
          *
          * Example: MaxScrap=3, ScrapCount=1 → [filled, empty, empty]
          */
-        private void RefreshDots()
+        private void RefreshDots(ScrapManager scrap)
         {
-            int count = scrapManager.ScrapCount;
+            int count = scrap.ScrapCount;
 
             for (int i = 0; i < _dots.Count; i++)
             {

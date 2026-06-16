@@ -37,6 +37,7 @@ namespace Submachina.Core
      *   4. Subscribe to events for audio/visual juice.
      *   5. Point a BellowsBar's pump reference at this component to display the loop.
      */
+    [UsesFeedbacks(SubFeedback.PumpPerfect, SubFeedback.PumpWeak, SubFeedback.AirLock)]
     public class O2PickupPump : SubmarineComponent, ISweetSpotPump
     {
         // =====================
@@ -434,8 +435,17 @@ namespace Submachina.Core
             _chargeProgress = 0f;
             _state = PumpState.Idle;
 
-            if (inSweetSpot) OnSweetSpotPickup?.Invoke();
-            else             OnWeakPickup?.Invoke();
+            // Route the timing-graded collect cue through the central switchboard
+            if (inSweetSpot)
+            {
+                Sub?.Feedbacks?.Play(SubFeedback.PumpPerfect, transform.position);
+                OnSweetSpotPickup?.Invoke();
+            }
+            else
+            {
+                Sub?.Feedbacks?.Play(SubFeedback.PumpWeak, transform.position);
+                OnWeakPickup?.Invoke();
+            }
             OnPickupCollected?.Invoke();
             OnLoopStopped?.Invoke();
         }
@@ -446,6 +456,7 @@ namespace Submachina.Core
             _state = PumpState.AirLocked;
             _airLockTimer = airLockDuration;
             _chargeProgress = 0f;
+            Sub?.Feedbacks?.Play(SubFeedback.AirLock, transform.position);
             OnAirLock?.Invoke();
         }
 

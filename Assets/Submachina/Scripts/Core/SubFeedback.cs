@@ -45,5 +45,7 @@ namespace Submachina.Core
         // -- Pumps (500–599) --
         PumpPerfect     = 500,
         PumpWeak        = 501,
+        PumpCharge      = 502,   // looping charge cue — Play on charge start, Stop on release/overshoot
+        AirLock         = 503,   // pump seizes from spam / a wasted stop
     }
 }

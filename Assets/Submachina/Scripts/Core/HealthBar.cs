@@ -5,15 +5,19 @@ using Sirenix.OdinInspector;
 namespace Submachina.Core
 {
     /**
-     * Drives a UI Image fill to display the player's current health.
+     * Drives a UI Image fill to display its submarine's current health.
      *
-     * Reads HealthPercent directly from the Health component each frame
-     * and updates the bar's fill and tint color accordingly.
+     * Resolves the owning Submarine via GetComponentInParent (this bar lives
+     * inside a submarine hierarchy) and reads HealthPercent from Sub.Health
+     * each frame, updating the bar's fill and tint color accordingly. Polling
+     * the facade per-frame keeps the bar correct across runtime health swaps
+     * and works regardless of Awake ordering between this bar and the Submarine.
      *
      * Setup:
-     *   1. On the same Canvas as O2Bar, add another Image.
+     *   1. Place this Image somewhere under the submarine root (e.g. a
+     *      per-sub world/screen-space Canvas in the submarine hierarchy).
      *   2. Set Image Type → Filled, Fill Method → Horizontal.
-     *   3. Attach this script and assign the player's Health component.
+     *   3. Attach this script — the Health source is found automatically.
      */
     [RequireComponent(typeof(Image))]
     public class HealthBar : MonoBehaviour
@@ -23,8 +27,12 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("References")]
-        [Tooltip("The player's Health component.")]
+        [Tooltip("Optional explicit Health source. Leave empty to read from the " +
+                 "owning Submarine (Sub.Health), resolved via GetComponentInParent.")]
         [SerializeField] private Health playerHealth;
+
+        /** Owning submarine, resolved once in Awake. Null if not under a Submarine. */
+        private Submarine _sub;
 
         // =====================
         // Colors
@@ -65,6 +73,10 @@ namespace Submachina.Core
         private void Awake()
         {
             _barImage = GetComponent<Image>();
+
+            // Resolve the owning submarine now (safe regardless of Awake order);
+            // its Health slot is read later in Update, after registration settles.
+            _sub = GetComponentInParent<Submarine>();
         }
 
         private void Update()
@@ -77,7 +89,10 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Sets fill amount directly from Health.HealthPercent (already 0-1).
+         * Sets fill amount from the active Health's HealthPercent (already 0-1).
+         *
+         * Health source resolves to the serialized override if assigned,
+         * otherwise the owning submarine's Sub.Health.
          *
          * Color transitions:
          *   fill > lowThreshold      → healthyColor
@@ -86,9 +101,11 @@ namespace Submachina.Core
          */
         private void UpdateBar()
         {
-            if (playerHealth == null) return;
+            // Prefer an explicit override; fall back to the submarine facade.
+            Health health = playerHealth != null ? playerHealth : _sub != null ? _sub.Health : null;
+            if (health == null) return;
 
-            float fill = playerHealth.HealthPercent;
+            float fill = health.HealthPercent;
             _barImage.fillAmount = fill;
 
             if (fill <= criticalThreshold)

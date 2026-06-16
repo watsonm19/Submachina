@@ -29,6 +29,8 @@ namespace Submachina.Core
      *   3. Optionally assign a PumpAction InputActionReference.
      *   4. Subscribe to events (OnPerfectPump, OnAirLock, etc.) for audio/visual juice.
      */
+    [UsesFeedbacks(SubFeedback.PumpCharge, SubFeedback.PumpPerfect,
+                   SubFeedback.PumpWeak, SubFeedback.AirLock)]
     public class ManualBellowsPump : SubmarineComponent, ISweetSpotPump
     {
         // =====================
@@ -284,6 +286,7 @@ namespace Submachina.Core
                         _chargeProgress = 0f;
                         _state = PumpState.Overshot;
                         _wasInSweetSpot = false;
+                        Sub?.Feedbacks?.Stop(SubFeedback.PumpCharge);
                         OnPumpChargeStopped?.Invoke();
                         OnOvershotPump?.Invoke();
                     }
@@ -313,6 +316,7 @@ namespace Submachina.Core
                     _chargeProgress = 0f;
                     _wasInSweetSpot = false;
                     _state = PumpState.Idle;
+                    Sub?.Feedbacks?.Stop(SubFeedback.PumpCharge);
                     OnPumpChargeStopped?.Invoke();
                 }
                 return;
@@ -368,10 +372,11 @@ namespace Submachina.Core
                 return;
             }
 
-            // Begin a fresh compression cycle
+            // Begin a fresh compression cycle — start the looping charge cue
             _chargeProgress = 0f;
             _wasInSweetSpot = false;
             _state = PumpState.Charging;
+            Sub?.Feedbacks?.Play(SubFeedback.PumpCharge, transform.position);
             OnPumpChargeStarted?.Invoke();
         }
 
@@ -406,6 +411,10 @@ namespace Submachina.Core
                 _rapidPressCount = 0;
                 _chargeProgress = 0f;
                 _wasInSweetSpot = false;
+
+                // Stop the charge loop, then fire the perfect-pump reward cue
+                Sub?.Feedbacks?.Stop(SubFeedback.PumpCharge);
+                Sub?.Feedbacks?.Play(SubFeedback.PumpPerfect, transform.position);
                 OnPumpChargeStopped?.Invoke();
                 OnPerfectPump?.Invoke();
 
@@ -417,6 +426,10 @@ namespace Submachina.Core
             Sub?.O2?.AddAir(weakPumpAir);
             _chargeProgress = 0f;
             _wasInSweetSpot = false;
+
+            // Stop the charge loop, then fire the weak-pump cue
+            Sub?.Feedbacks?.Stop(SubFeedback.PumpCharge);
+            Sub?.Feedbacks?.Play(SubFeedback.PumpWeak, transform.position);
             OnPumpChargeStopped?.Invoke();
             OnWeakPump?.Invoke();
 
@@ -445,6 +458,10 @@ namespace Submachina.Core
             _chargeProgress = 0f;
             _wasInSweetSpot = false;
             _rapidPressCount = 0;
+
+            // Kill any in-flight charge loop and fire the lock-up cue
+            Sub?.Feedbacks?.Stop(SubFeedback.PumpCharge);
+            Sub?.Feedbacks?.Play(SubFeedback.AirLock, transform.position);
             OnAirLock?.Invoke();
         }
 
