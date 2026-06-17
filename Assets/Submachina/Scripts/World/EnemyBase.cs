@@ -52,6 +52,34 @@ namespace Submachina.Core
         [SerializeField, Min(0.05f)] private float intentPunchDuration = 0.15f;
 
         // =====================
+        // Death Behavior
+        // =====================
+
+        [FoldoutGroup("Death Behavior")]
+        [Tooltip("Zero out the Rigidbody's velocity on death so the corpse stops dead " +
+                 "instead of coasting on its last movement vector.")]
+        [SerializeField] private bool killVelocityOnDeath = true;
+
+        [FoldoutGroup("Death Behavior")]
+        [Tooltip("Disable the enemy's collider on death so the corpse no longer blocks or " +
+                 "damages anything as it drifts off.")]
+        [SerializeField] private bool disableColliderOnDeath = true;
+
+        [FoldoutGroup("Death Behavior")]
+        [Tooltip("Release the upright lock so death feedbacks can spin the corpse as it drifts off.")]
+        [SerializeField] private bool releaseRotationOnDeath = true;
+        
+        // =====================
+        // Physics
+        // =====================
+
+        [FoldoutGroup("Physics")]
+        [Tooltip("Lock the Rigidbody's rotation while alive so swimmers stay level. " +
+                 "Released on death so feedbacks can spin the corpse. Disable for enemies " +
+                 "that should rotate freely (e.g. tumbling or physics-driven types).")]
+        [SerializeField] private bool freezeRotationWhileAlive = true;
+
+        // =====================
         // Debug (shared)
         // =====================
 
@@ -95,7 +123,11 @@ namespace Submachina.Core
             // Physics setup — all enemies float freely with no gravity
             Rb = GetComponent<Rigidbody2D>();
             Rb.gravityScale = 0f;
-            Rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+
+            // Optionally lock rotation so swimmers stay upright while alive
+            if (freezeRotationWhileAlive)
+                Rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+
             SpawnPosition = transform.position;
 
             Sr = GetComponent<SpriteRenderer>();
@@ -143,10 +175,22 @@ namespace Submachina.Core
         protected virtual void OnDeath()
         {
             IsDead = true;
-            Rb.linearVelocity = Vector2.zero;
 
-            Collider2D col = GetComponent<Collider2D>();
-            if (col != null) col.enabled = false;
+            // Optionally stop the corpse dead instead of letting it coast.
+            if (killVelocityOnDeath)
+                Rb.linearVelocity = Vector2.zero;
+
+            // Optionally drop the collider so the corpse stops blocking/damaging.
+            if (disableColliderOnDeath)
+            {
+                Collider2D col = GetComponent<Collider2D>();
+                if (col != null) col.enabled = false;
+            }
+
+            // Release the upright lock so death feedbacks can spin the corpse as it
+            // drifts off. Only relevant if we froze rotation while alive in the first place.
+            if (freezeRotationWhileAlive || releaseRotationOnDeath)
+                Rb.constraints = RigidbodyConstraints2D.None;
 
             SetIntentIndicator(false);
             SpawnDeathDrops();
