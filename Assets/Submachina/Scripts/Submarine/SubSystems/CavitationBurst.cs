@@ -31,7 +31,7 @@ namespace Submachina.Core
      *   3. Create a "CavitationBurst" Button action in your Input Asset and assign it.
      */
     [RequireComponent(typeof(Rigidbody2D))]
-    [UsesFeedbacks(nameof(SubFeedbacks.DashStart), nameof(SubFeedbacks.DashEnd))]
+    [UsesFeedbacks(nameof(SubFeedbacks.DashStart), nameof(SubFeedbacks.DashEnd), nameof(SubFeedbacks.DashReady))]
     public class CavitationBurst : SubmarineComponent
     {
         // =====================
@@ -80,6 +80,11 @@ namespace Submachina.Core
         [Tooltip("Fired when the burst ends and normal drag is restored.")]
         [SerializeField] private UnityEvent onBurstEnd;
 
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired once when the cooldown finishes and the burst is ready again — " +
+                 "distinct from onBurstEnd, which fires earlier when the slide phase ends.")]
+        [SerializeField] private UnityEvent onBurstReady;
+
         // =====================
         // Visual Feedback
         // =====================
@@ -112,6 +117,7 @@ namespace Submachina.Core
         private float _originalDrag;
         private float _cooldownEnd = -1f;
         private bool _isBursting;
+        private bool _rechargePending;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -147,6 +153,17 @@ namespace Submachina.Core
         {
             if (burstAction != null && burstAction.action.WasPressedThisFrame())
                 TryBurst();
+
+            // Fire the "ready again" cue exactly once when the cooldown elapses,
+            // so feedbacks (e.g. a recharge light) can react to the dash becoming
+            // available. This is later than onBurstEnd, which fires when the slide
+            // phase ends — the cooldown keeps running for burstCooldown after that.
+            if (_rechargePending && Time.time >= _cooldownEnd)
+            {
+                _rechargePending = false;
+                Sub?.Feedbacks?.Play(SubFeedbacks.DashReady, transform.position);
+                onBurstReady?.Invoke();
+            }
         }
 
         // -------------------------------------------------------
@@ -230,6 +247,7 @@ namespace Submachina.Core
 
             _isBursting = false;
             _cooldownEnd = Time.time + burstCooldown;
+            _rechargePending = true;
         }
 
         // -------------------------------------------------------

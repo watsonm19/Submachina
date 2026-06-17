@@ -10,5 +10,6 @@ namespace Submachina.Core
         public static readonly FeedbackId DashEnd         = new(CombatCat, 2);
         public static readonly FeedbackId TakeDamage      = new(CombatCat, 3);
         public static readonly FeedbackId CollisionDamage = new(CombatCat, 4);
+        public static readonly FeedbackId DashReady       = new(CombatCat, 5);
     }
 }

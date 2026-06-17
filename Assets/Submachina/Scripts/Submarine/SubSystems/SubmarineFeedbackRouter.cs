@@ -137,31 +137,53 @@ namespace Submachina.Core
         }
 
         // =====================
+        // Broadcast (publish/subscribe)
+        // =====================
+
+        /**
+         * Raised whenever a key is played, carrying the key, world position, and
+         * intensity. This is the pub/sub side of the bus: components like
+         * FeedbackEventListener subscribe and react via UnityEvents, so a cue can
+         * drive arbitrary behaviour with no direct reference to the firing system.
+         */
+        public event Action<FeedbackId, Vector3, float> FeedbackPlayed;
+
+        /** Raised whenever a key is stopped (looping feedbacks). */
+        public event Action<FeedbackId> FeedbackStopped;
+
+        // =====================
         // Public API
         // =====================
 
         /**
-         * Plays all MMF_Players mapped to the given feedback key.
-         * Safe to call even if the key has no mapping — silently returns.
+         * Plays all MMF_Players mapped to the given feedback key, then broadcasts
+         * FeedbackPlayed. The broadcast fires even when the key has no MMF mapping,
+         * so a key can drive pure event listeners with no player attached.
          */
         public void Play(FeedbackId key, Vector3 position, float intensity = 1f)
         {
-            if (_lookup == null || !_lookup.TryGetValue(key, out var players)) return;
+            // Fire any MMF players mapped to this key.
+            if (_lookup != null && _lookup.TryGetValue(key, out var players))
+                for (int i = 0; i < players.Length; i++)
+                    if (players[i] != null) players[i].PlayFeedbacks(position, intensity);
 
-            for (int i = 0; i < players.Length; i++)
-                if (players[i] != null) players[i].PlayFeedbacks(position, intensity);
+            // Notify subscribers regardless of whether a player was mapped.
+            FeedbackPlayed?.Invoke(key, position, intensity);
         }
 
         /**
-         * Stops all MMF_Players mapped to the given feedback key.
-         * Used for looping feedbacks (e.g. mining active) that need explicit stop.
+         * Stops all MMF_Players mapped to the given feedback key, then broadcasts
+         * FeedbackStopped. Used for looping feedbacks (e.g. mining active).
          */
         public void Stop(FeedbackId key)
         {
-            if (_lookup == null || !_lookup.TryGetValue(key, out var players)) return;
+            // Stop any MMF players mapped to this key.
+            if (_lookup != null && _lookup.TryGetValue(key, out var players))
+                for (int i = 0; i < players.Length; i++)
+                    if (players[i] != null) players[i].StopFeedbacks();
 
-            for (int i = 0; i < players.Length; i++)
-                if (players[i] != null) players[i].StopFeedbacks();
+            // Notify subscribers regardless of whether a player was mapped.
+            FeedbackStopped?.Invoke(key);
         }
 
         // =====================

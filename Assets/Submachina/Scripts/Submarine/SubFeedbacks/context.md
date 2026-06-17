@@ -8,7 +8,7 @@ This folder defines the **feedback key types and registry** used by the submarin
 
 - **SubFeedbacks** (`SubFeedbacks.cs` + `SubFeedbacks.*.cs`) — partial static class registering all feedback keys as `static readonly FeedbackId` fields. The shell file holds `CategoryNames` (ID → display name); each category file defines a private category constant and its keys:
   - `SubFeedbacks.Mining.cs` (cat 1) — MiningActive, MiningCollect
-  - `SubFeedbacks.Combat.cs` (cat 2) — AttackSwing, DashStart, DashEnd, TakeDamage, CollisionDamage
+  - `SubFeedbacks.Combat.cs` (cat 2) — AttackSwing, DashStart, DashEnd, TakeDamage, CollisionDamage, DashReady
   - `SubFeedbacks.Scrap.cs` (cat 3) — ScrapAdded, ScrapFull, ScrapUsed, NoScrap, FullHealth
   - `SubFeedbacks.Resources.cs` (cat 4) — ResourcesAdded, LevelUp
   - `SubFeedbacks.Pumps.cs` (cat 5) — PumpPerfect, PumpWeak, PumpCharge, AirLock
