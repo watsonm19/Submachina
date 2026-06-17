@@ -109,6 +109,14 @@ namespace Submachina.Core
             return false;
         }
 
+        /**
+         * Live key → marker registry, read-only. Exposed for the scene-view
+         * visualizer (SubmarineAnchorRouterEditor, a separate editor assembly)
+         * to draw runtime markers that reflect the actual registered state,
+         * including any module swaps. Also handy for debug tooling.
+         */
+        public IReadOnlyDictionary<AnchorId, SubmarineAnchor> Registry => _anchors;
+
         // =====================
         // Debug
         // =====================
@@ -116,16 +124,35 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private int RegisteredAnchors => _anchors.Count;
 
+        /**
+         * Read-only key → Transform map shown in the inspector. Each value is a
+         * live Transform reference, so Odin renders it as a clickable object
+         * field — click to select / ping that anchor in the hierarchy.
+         *
+         * Play mode reads the live registry (reflects runtime swaps); edit mode
+         * sweeps children, since registration is a runtime-only path.
+         */
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private string[] AnchorKeys
+        [DictionaryDrawerSettings(KeyLabel = "Anchor", ValueLabel = "Transform")]
+        private Dictionary<AnchorId, Transform> AnchorTransforms
         {
             get
             {
-                var keys = new string[_anchors.Count];
-                int i = 0;
-                foreach (var kv in _anchors)
-                    keys[i++] = $"{kv.Key} → {(kv.Value != null ? kv.Value.name : "(null)")}";
-                return keys;
+                var map = new Dictionary<AnchorId, Transform>();
+
+                // Live registry while playing — mirrors what callers resolve.
+                if (Application.isPlaying)
+                {
+                    foreach (var kv in _anchors)
+                        map[kv.Key] = kv.Value != null ? kv.Value.Point : null;
+                    return map;
+                }
+
+                // Edit mode: nothing has registered yet, so sweep the hierarchy.
+                var found = GetComponentsInChildren<SubmarineAnchor>(true);
+                for (int i = 0; i < found.Length; i++)
+                    map[found[i].Key] = found[i].Point;
+                return map;
             }
         }
     }
