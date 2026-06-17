@@ -41,6 +41,14 @@ public class HitReceiver : MonoBehaviour
              "Convenient for wiring MMF feedbacks, animations, or sounds.")]
     public UnityEvent onHit;
 
+    [FoldoutGroup("Events")]
+    [Tooltip("Fired when invulnerability is explicitly enabled via SetInvulnerable(true).")]
+    public UnityEvent onInvulnerableEnabled;
+
+    [FoldoutGroup("Events")]
+    [Tooltip("Fired when invulnerability is explicitly disabled via SetInvulnerable(false).")]
+    public UnityEvent onInvulnerableDisabled;
+
     // =====================
     // MMF Feedbacks
     // =====================
@@ -119,6 +127,9 @@ public class HitReceiver : MonoBehaviour
     public void SetInvulnerable(bool value)
     {
         invulnerable = value;
+
+        if (value) onInvulnerableEnabled?.Invoke();
+        else onInvulnerableDisabled?.Invoke();
     }
 
     // -------------------------------------------------------

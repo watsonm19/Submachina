@@ -113,6 +113,29 @@ namespace Submachina.Core
         [SerializeField, Min(0.05f)] private float stunPunchDuration = 0.2f;
 
         // =====================
+        // Invulnerability
+        // =====================
+        // Per-state damage immunity. By default the enemy can ONLY be hurt while
+        // Stunned (the post-charge reward window) — but each state's immunity is
+        // individually toggleable here for tuning the risk/reward feel.
+
+        [FoldoutGroup("Invulnerability")]
+        [Tooltip("Immune to damage while patrolling. Default on — the enemy isn't a threat yet, so it isn't a target yet.")]
+        [SerializeField] private bool invulnerableWhilePatrolling = true;
+
+        [FoldoutGroup("Invulnerability")]
+        [Tooltip("Immune to damage during the wind-up telegraph. Default on.")]
+        [SerializeField] private bool invulnerableWhileWindingUp = true;
+
+        [FoldoutGroup("Invulnerability")]
+        [Tooltip("Immune to damage during the charge burst. Default on — turning this off lets skilled players punish the charge itself.")]
+        [SerializeField] private bool invulnerableWhileCharging = true;
+
+        [FoldoutGroup("Invulnerability")]
+        [Tooltip("Immune to damage while stunned. Default OFF — the stun is the player's reward window. Turn on only for a tankier variant.")]
+        [SerializeField] private bool invulnerableWhileStunned = false;
+
+        // =====================
         // Debug
         // =====================
 
@@ -148,9 +171,10 @@ namespace Submachina.Core
         {
             base.Start();
 
-            // Start invulnerable — only the Stunned phase accepts damage
+            // Apply the starting (Patrol) invulnerability flag — by default the
+            // enemy can only be hurt while Stunned, but it's per-state configurable.
             _hitReceiver = GetComponent<HitReceiver>();
-            _hitReceiver?.SetInvulnerable(true);
+            _hitReceiver?.SetInvulnerable(invulnerableWhilePatrolling);
         }
 
         // -------------------------------------------------------
@@ -224,7 +248,7 @@ namespace Submachina.Core
             _state = AiState.Patrol;
             SetSpriteColor(BaseColor);
             SetIntentIndicator(false);
-            _hitReceiver?.SetInvulnerable(true);
+            _hitReceiver?.SetInvulnerable(invulnerableWhilePatrolling);
         }
 
         /**
@@ -240,6 +264,7 @@ namespace Submachina.Core
 
             SetSpriteColor(windUpColor);
             SetIntentIndicator(true);
+            _hitReceiver?.SetInvulnerable(invulnerableWhileWindingUp);
         }
 
         private void EnterCharging()
@@ -251,6 +276,7 @@ namespace Submachina.Core
 
             SetSpriteColor(chargeColor);
             SetIntentIndicator(false);
+            _hitReceiver?.SetInvulnerable(invulnerableWhileCharging);
         }
 
         /**
@@ -264,7 +290,7 @@ namespace Submachina.Core
             _stunDriftDirection = Random.insideUnitCircle.normalized;
 
             SetSpriteColor(stunColor);
-            _hitReceiver?.SetInvulnerable(false);
+            _hitReceiver?.SetInvulnerable(invulnerableWhileStunned);
 
             // Scale punch communicates impact — the enemy recoils from its own charge
             transform.DOPunchScale(Vector3.one * stunPunchScale, stunPunchDuration, 1, 0f);
