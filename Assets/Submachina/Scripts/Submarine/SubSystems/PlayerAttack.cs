@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.InputSystem;
@@ -72,24 +71,51 @@ namespace Submachina.Core
         // Arc Visual
         // =====================
 
-        [FoldoutGroup("Arc")] [Tooltip("Color of the idle aim arc. Low alpha keeps it subtle.")] [SerializeField]
+        [FoldoutGroup("Arc")]
+        [Tooltip("Resting color of the aim arc once fully recovered. Low alpha keeps it subtle. " +
+                 "HDR — push values above 1 to bloom with post-processing.")]
+        [SerializeField, ColorUsage(true, true)]
         private Color arcIdleColor = new Color(0.4f, 1f, 1f, 0.15f);
 
         [FoldoutGroup("Arc")]
-        [Tooltip("Color of the arc when an attack fires. Higher alpha for the flash.")]
+        [Tooltip("Color the arc snaps to the instant an attack fires, then recovers back to the " +
+                 "idle color over the cooldown. HDR — bright values (>1) bloom for a glowing pop.")]
+        [SerializeField, ColorUsage(true, true)]
+        private Color arcCooldownColor = new Color(2.5f, 5f, 6f, 0.85f);
+
+        [FoldoutGroup("Arc")]
+        [Tooltip("Line width of the arc when idle (fully recovered).")]
+        [SerializeField, Min(0f)]
+        private float arcIdleWidth = 0.06f;
+
+        [FoldoutGroup("Arc")]
+        [Tooltip("Line width the instant an attack fires, then recovers to the idle width.")]
+        [SerializeField, Min(0f)]
+        private float arcCooldownWidth = 0.18f;
+
+        [FoldoutGroup("Arc")]
+        [Tooltip("Color blend across the cooldown. X = recovery progress (0 = just fired, " +
+                 "1 = recovered), Y = blend from cooldown color (0) to idle color (1).")]
         [SerializeField]
-        private Color arcFlashColor = new Color(0.6f, 1f, 1f, 0.75f);
+        private AnimationCurve colorRecoveryCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [FoldoutGroup("Arc")]
-        [Tooltip("Duration of the flash when an attack fires, in seconds.")]
-        [SerializeField, Min(0.01f)]
-        private float flashDuration = 0.12f;
+        [Tooltip("Width blend across the cooldown. X = recovery progress (0 = just fired, " +
+                 "1 = recovered), Y = blend from cooldown width (0) to idle width (1).")]
+        [SerializeField]
+        private AnimationCurve widthRecoveryCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [FoldoutGroup("Arc")]
-        [Tooltip("Material for the arc LineRenderer. Assign a URP Unlit/Particle material. " +
-                 "Leave empty to use Unity default (may appear pink in URP).")]
+        [Tooltip("Material for the arc LineRenderer. Use a URP Unlit/Particle additive material so " +
+                 "HDR vertex colors bloom. Leave empty to use Unity default (may appear pink in URP).")]
         [SerializeField]
         private Material arcMaterial;
+
+        [FoldoutGroup("Arc")]
+        [Tooltip("Optional material swapped in while on cooldown, reverting to the main material " +
+                 "when ready. Leave empty to keep using the main material throughout.")]
+        [SerializeField]
+        private Material arcCooldownMaterial;
 
         // =====================
         // Events
@@ -102,6 +128,16 @@ namespace Submachina.Core
 
         [FoldoutGroup("Events")] [Tooltip("Fired when the swing hits at least one enemy.")] [SerializeField]
         private UnityEvent onDamageDealt;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired the instant an attack starts the cooldown (the weapon becomes unavailable).")]
+        [SerializeField]
+        private UnityEvent onCooldownStart;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired once when the cooldown elapses and the attack is ready to fire again.")]
+        [SerializeField]
+        private UnityEvent onCooldownReady;
 
         // =====================
         // Debug
@@ -116,6 +152,10 @@ namespace Submachina.Core
 
         private float _attackCooldownEnd = -1f;
         private LineRenderer _arcLine;
+
+        // True while a cooldown is in progress; used to fire onCooldownReady
+        // exactly once on the frame the cooldown elapses (edge detection).
+        private bool _cooldownActive;
 
         // Arc geometry: origin + arc fan + return to origin
         // 8 arc segments = 11 total line positions
@@ -145,6 +185,17 @@ namespace Submachina.Core
         {
             if (attackAction != null && attackAction.action.WasPressedThisFrame())
                 TryAttack();
+
+            // Announce readiness exactly once on the frame the cooldown elapses.
+            if (_cooldownActive && Time.time >= _attackCooldownEnd)
+            {
+                _cooldownActive = false;
+                ApplyArcMaterial(false);
+                onCooldownReady?.Invoke();
+            }
+
+            // Drive the arc's color/width recovery every frame.
+            UpdateArcRecovery();
         }
 
         // -------------------------------------------------------
@@ -166,6 +217,12 @@ namespace Submachina.Core
             if (Sub?.Turret == null) return;
 
             _attackCooldownEnd = Time.time + attackCooldown;
+
+            // Mark the cooldown active so the recovery update can fire
+            // onCooldownReady once when it elapses, and announce the start.
+            _cooldownActive = true;
+            ApplyArcMaterial(true);
+            onCooldownStart?.Invoke();
 
             // Route the swing cue through the central feedback switchboard.
             // Resolve the spawn point from the anchor registry so the VFX origin
@@ -214,7 +271,6 @@ namespace Submachina.Core
             if (hitCount > 0) onDamageDealt?.Invoke();
 
             Debug.Log($"[PlayerAttack] Swing hit {hitCount} enemies.");
-            StartCoroutine(FlashArc());
         }
 
         // -------------------------------------------------------
@@ -238,14 +294,14 @@ namespace Submachina.Core
             _arcLine.useWorldSpace = false;
             _arcLine.loop = false;
             _arcLine.positionCount = ArcSegments + 3;
-            _arcLine.startWidth = 0.06f;
-            _arcLine.endWidth = 0.06f;
+            _arcLine.startWidth = arcIdleWidth;
+            _arcLine.endWidth = arcIdleWidth;
             _arcLine.startColor = arcIdleColor;
             _arcLine.endColor = arcIdleColor;
             _arcLine.sortingOrder = 5; // render above sprites
 
-            if (arcMaterial != null)
-                _arcLine.material = arcMaterial;
+            // Seed the idle material (cooldown swaps are handled by ApplyArcMaterial).
+            ApplyArcMaterial(false);
         }
 
         /**
@@ -276,18 +332,48 @@ namespace Submachina.Core
         }
 
         /**
-         * Briefly shows the attack flash by swapping to a high-alpha color,
-         * then returning to the idle color after flashDuration seconds.
+         * Drives the arc's color and width from their "just fired" cooldown values
+         * back to the resting idle values across the cooldown window.
+         *
+         * progress runs 0 → 1 over attackCooldown seconds (0 = the instant of the
+         * swing, 1 = fully recovered). Each recovery curve remaps that progress so
+         * color and width can ease, snap, or overshoot independently. LerpUnclamped
+         * lets curves that go below 0 / above 1 push HDR colors brighter for a pop.
          */
-        private IEnumerator FlashArc()
+        private void UpdateArcRecovery()
         {
-            _arcLine.startColor = arcFlashColor;
-            _arcLine.endColor = arcFlashColor;
+            if (_arcLine == null) return;
 
-            yield return new WaitForSeconds(flashDuration);
+            // Normalized recovery progress since the last swing.
+            // Before any attack _attackCooldownEnd is in the past, so progress clamps to 1 (idle).
+            float attackStart = _attackCooldownEnd - attackCooldown;
+            float progress = attackCooldown > 0f
+                ? Mathf.Clamp01((Time.time - attackStart) / attackCooldown)
+                : 1f;
 
-            _arcLine.startColor = arcIdleColor;
-            _arcLine.endColor = arcIdleColor;
+            // Blend color: curve Y=0 → cooldown color (bright HDR), Y=1 → idle color.
+            Color color = Color.LerpUnclamped(arcCooldownColor, arcIdleColor, colorRecoveryCurve.Evaluate(progress));
+            _arcLine.startColor = color;
+            _arcLine.endColor = color;
+
+            // Blend width against its own curve the same way.
+            float width = Mathf.LerpUnclamped(arcCooldownWidth, arcIdleWidth, widthRecoveryCurve.Evaluate(progress));
+            _arcLine.startWidth = width;
+            _arcLine.endWidth = width;
+        }
+
+        /**
+         * Swaps the arc's material between cooldown and idle states.
+         * Uses sharedMaterial so we toggle between the assigned assets without
+         * leaking per-swap material instances. When no cooldown material is
+         * assigned we fall back to the main material, so the look is unchanged.
+         */
+        private void ApplyArcMaterial(bool onCooldown)
+        {
+            if (_arcLine == null) return;
+
+            Material target = onCooldown && arcCooldownMaterial != null ? arcCooldownMaterial : arcMaterial;
+            if (target != null) _arcLine.sharedMaterial = target;
         }
 
         // -------------------------------------------------------
