@@ -27,6 +27,7 @@ namespace Submachina.Core
             { 3, "Scrap" },
             { 4, "Resources" },
             { 5, "Pumps" },
+            { 6, "Upgrades" },
         };
     }
 }

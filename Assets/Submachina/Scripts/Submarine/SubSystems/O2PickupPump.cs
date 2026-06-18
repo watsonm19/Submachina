@@ -179,6 +179,14 @@ namespace Submachina.Core
         public UnityEvent OnPickupUnavailable;
 
         // =====================
+        // Upgrade Accessors
+        // =====================
+
+        private float SweetMultMod   => Sub?.Upgrades?.Stats.Resolve(SubStats.IntakeSweetMultiplier, sweetSpotRewardMultiplier) ?? sweetSpotRewardMultiplier;
+        private float WeakMultMod    => Sub?.Upgrades?.Stats.Resolve(SubStats.IntakeWeakMultiplier, weakRewardMultiplier) ?? weakRewardMultiplier;
+        private float ChargeSpeedMod => Sub?.Upgrades?.Stats.Resolve(SubStats.IntakeChargeSpeed, chargeSpeed) ?? chargeSpeed;
+
+        // =====================
         // ISweetSpotPump (read by BellowsBar)
         // =====================
 
@@ -282,7 +290,7 @@ namespace Submachina.Core
             switch (_state)
             {
                 case PumpState.Looping:
-                    _chargeProgress += chargeSpeed * Time.deltaTime;
+                    _chargeProgress += ChargeSpeedMod * Time.deltaTime;
 
                     // Wrap around: e.g. 1.07 → 0.07, signal listeners on each lap
                     if (_chargeProgress >= 1f)
@@ -374,7 +382,7 @@ namespace Submachina.Core
 
             // Grade the reward by timing; Collect() routes the air into the tank
             bool inSweetSpot = _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax;
-            float airCollected = pickup.Collect(Sub, inSweetSpot ? sweetSpotRewardMultiplier : weakRewardMultiplier);
+            float airCollected = pickup.Collect(Sub, inSweetSpot ? SweetMultMod : WeakMultMod);
 
             _chargeProgress = 0f;
             _state = PumpState.Idle;

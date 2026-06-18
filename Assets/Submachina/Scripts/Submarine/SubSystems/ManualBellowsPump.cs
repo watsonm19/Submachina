@@ -149,6 +149,17 @@ namespace Submachina.Core
         public UnityEvent OnCooldownEnded;
 
         // =====================
+        // Upgrade Accessors
+        // =====================
+
+        private float PerfectAirMod   => Sub?.Upgrades?.Stats.Resolve(SubStats.PerfectPumpAir, perfectPumpAir) ?? perfectPumpAir;
+        private float WeakAirMod      => Sub?.Upgrades?.Stats.Resolve(SubStats.WeakPumpAir, weakPumpAir) ?? weakPumpAir;
+        private float ChargeSpeedMod  => Sub?.Upgrades?.Stats.Resolve(SubStats.PumpChargeSpeed, chargeSpeed) ?? chargeSpeed;
+        private float CooldownMod     => Sub?.Upgrades?.Stats.Resolve(SubStats.PumpCooldown, perfectPumpCooldown) ?? perfectPumpCooldown;
+        private float LockDurationMod => Sub?.Upgrades?.Stats.Resolve(SubStats.AirLockDuration, airLockDuration) ?? airLockDuration;
+        private int   SpamLimitMod    => Sub?.Upgrades?.Stats.ResolveInt(SubStats.SpamPressLimit, spamPressLimit) ?? spamPressLimit;
+
+        // =====================
         // Public Read-Only State (ISweetSpotPump)
         // =====================
 
@@ -275,7 +286,7 @@ namespace Submachina.Core
                     break;
 
                 case PumpState.Charging:
-                    _chargeProgress += chargeSpeed * Time.deltaTime;
+                    _chargeProgress += ChargeSpeedMod * Time.deltaTime;
 
                     // Sweet spot edge detection — fire events on enter/exit transitions
                     bool inSweetSpot = _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax;
@@ -369,7 +380,7 @@ namespace Submachina.Core
 
             _lastPressTime = Time.time;
 
-            if (_rapidPressCount >= spamPressLimit)
+            if (_rapidPressCount >= SpamLimitMod)
             {
                 TriggerAirLock();
                 return;
@@ -410,7 +421,7 @@ namespace Submachina.Core
 
             if (inSweetSpot)
             {
-                Sub?.O2?.AddAir(perfectPumpAir);
+                Sub?.O2?.AddAir(PerfectAirMod);
                 _rapidPressCount = 0;
                 _chargeProgress = 0f;
                 _wasInSweetSpot = false;
@@ -421,12 +432,12 @@ namespace Submachina.Core
                 OnPumpChargeStopped?.Invoke();
                 OnPerfectPump?.Invoke();
 
-                if (perfectPumpCooldown > 0f) StartCooldown();
+                if (CooldownMod > 0f) StartCooldown();
                 else _state = PumpState.Idle;
                 return;
             }
 
-            Sub?.O2?.AddAir(weakPumpAir);
+            Sub?.O2?.AddAir(WeakAirMod);
             _chargeProgress = 0f;
             _wasInSweetSpot = false;
 
@@ -446,7 +457,7 @@ namespace Submachina.Core
         private void StartCooldown()
         {
             _state = PumpState.CoolingDown;
-            _cooldownTimer = perfectPumpCooldown;
+            _cooldownTimer = CooldownMod;
             OnCooldownStarted?.Invoke();
         }
 
@@ -457,7 +468,7 @@ namespace Submachina.Core
         private void TriggerAirLock()
         {
             _state = PumpState.AirLocked;
-            _airLockTimer = airLockDuration;
+            _airLockTimer = LockDurationMod;
             _chargeProgress = 0f;
             _wasInSweetSpot = false;
             _rapidPressCount = 0;
@@ -538,7 +549,7 @@ namespace Submachina.Core
                         ? "★ SWEET SPOT — release now!"
                         : $"Charging... ({_chargeProgress:F2})",
                 PumpState.Overshot    => "OVERSHOT — vented, release to reset",
-                _                     => $"Idle  |  spam: {_rapidPressCount}/{spamPressLimit}  |  Space / pump button"
+                _                     => $"Idle  |  spam: {_rapidPressCount}/{SpamLimitMod}  |  Space / pump button"
             };
 
             GUI.color = _state == PumpState.AirLocked   ? Color.red
@@ -570,7 +581,7 @@ namespace Submachina.Core
         private void DebugPerfectPump()
         {
             if (!Application.isPlaying) { Debug.Log("[BellowsPump] Play mode only."); return; }
-            Sub?.O2?.AddAir(perfectPumpAir);
+            Sub?.O2?.AddAir(PerfectAirMod);
             OnPerfectPump?.Invoke();
         }
 #endif

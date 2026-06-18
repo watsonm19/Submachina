@@ -48,6 +48,12 @@ namespace Submachina.Core
         private float attackCooldown = 0.4f;
 
         [FoldoutGroup("Attack")]
+        [Tooltip("Knockback force applied to enemies on hit via HitData. " +
+                 "0 = no knockback (default). Upgradeable via SubStats.KnockbackForce.")]
+        [SerializeField, Min(0f)]
+        private float knockbackForce;
+
+        [FoldoutGroup("Attack")]
         [Tooltip("Anchor the swing feedback spawns from. Drives passed-position feedbacks; " +
                  "feedbacks that self-bind via FeedbackAnchorBinder ignore this.")]
         [SerializeField]
@@ -147,6 +153,15 @@ namespace Submachina.Core
         private float CooldownRemaining => Mathf.Max(0f, _attackCooldownEnd - Time.time);
 
         // =====================
+        // Upgrade Accessors
+        // =====================
+
+        private int   DamageMod    => Sub?.Upgrades?.Stats.ResolveInt(SubStats.AttackDamage, attackDamage) ?? attackDamage;
+        private float RangeMod     => Sub?.Upgrades?.Stats.Resolve(SubStats.AttackRange, attackRange) ?? attackRange;
+        private float CooldownMod  => Sub?.Upgrades?.Stats.Resolve(SubStats.AttackCooldown, attackCooldown) ?? attackCooldown;
+        private float KnockbackMod => Sub?.Upgrades?.Stats.Resolve(SubStats.KnockbackForce, knockbackForce) ?? knockbackForce;
+
+        // =====================
         // State
         // =====================
 
@@ -212,7 +227,7 @@ namespace Submachina.Core
             if (Time.time < _attackCooldownEnd) return;
             if (Sub?.Turret == null) return;
 
-            _attackCooldownEnd = Time.time + attackCooldown;
+            _attackCooldownEnd = Time.time + CooldownMod;
 
             // Mark the cooldown active so the recovery update can fire
             // onCooldownReady once when it elapses, and announce the start.
@@ -233,7 +248,7 @@ namespace Submachina.Core
             float cosHalfAngle = Mathf.Cos(coneHalfAngle * Mathf.Deg2Rad);
 
             // Gather all enemies in range, then filter to cone
-            Collider2D[] candidates = Physics2D.OverlapCircleAll(origin, attackRange, enemyLayer);
+            Collider2D[] candidates = Physics2D.OverlapCircleAll(origin, RangeMod, enemyLayer);
             int hitCount = 0;
 
             foreach (Collider2D col in candidates)
@@ -249,18 +264,18 @@ namespace Submachina.Core
                 {
                     HitData hitData = new HitData
                     {
-                        damage        = attackDamage,
-                        hitPoint      = col.transform.position,
-                        hitDirection  = toEnemy,
-                        knockbackForce = 0f,
-                        source        = gameObject
+                        damage         = DamageMod,
+                        hitPoint       = col.transform.position,
+                        hitDirection   = toEnemy,
+                        knockbackForce = KnockbackMod,
+                        source         = gameObject
                     };
                     if (hitReceiver.ReceiveHit(hitData)) hitCount++;
                 }
                 else
                 {
                     Health health = col.GetComponent<Health>();
-                    if (health != null) { health.TakeDamage(attackDamage); hitCount++; }
+                    if (health != null) { health.TakeDamage(DamageMod); hitCount++; }
                 }
             }
 
@@ -319,8 +334,8 @@ namespace Submachina.Core
                 float angleDeg = Mathf.Lerp(-coneHalfAngle, coneHalfAngle, t);
                 float angleRad = angleDeg * Mathf.Deg2Rad;
                 _arcLine.SetPosition(i + 1, new Vector3(
-                    Mathf.Cos(angleRad) * attackRange,
-                    Mathf.Sin(angleRad) * attackRange,
+                    Mathf.Cos(angleRad) * RangeMod,
+                    Mathf.Sin(angleRad) * RangeMod,
                     0f));
             }
 
@@ -342,9 +357,10 @@ namespace Submachina.Core
 
             // Normalized recovery progress since the last swing.
             // Before any attack _attackCooldownEnd is in the past, so progress clamps to 1 (idle).
-            float attackStart = _attackCooldownEnd - attackCooldown;
-            float progress = attackCooldown > 0f
-                ? Mathf.Clamp01((Time.time - attackStart) / attackCooldown)
+            float cd = CooldownMod;
+            float attackStart = _attackCooldownEnd - cd;
+            float progress = cd > 0f
+                ? Mathf.Clamp01((Time.time - attackStart) / cd)
                 : 1f;
 
             // Blend color: curve Y=0 → cooldown color (bright HDR), Y=1 → idle color.

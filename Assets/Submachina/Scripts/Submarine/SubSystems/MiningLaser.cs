@@ -71,6 +71,13 @@ namespace Submachina.Core
         private bool HasTarget => _currentTarget != null;
 
         // =====================
+        // Upgrade Accessors
+        // =====================
+
+        private float MineDurationMod => Sub?.Upgrades?.Stats.Resolve(SubStats.MiningDuration, miningDuration) ?? miningDuration;
+        private float LaserRangeMod   => Sub?.Upgrades?.Stats.Resolve(SubStats.MiningRange, maxRange) ?? maxRange;
+
+        // =====================
         // State
         // =====================
 
@@ -86,7 +93,7 @@ namespace Submachina.Core
         protected override void Awake()
         {
             base.Awake();
-            _miningDuration = miningDuration;
+            _miningDuration = MineDurationMod;
             RegisterAction(mineAction);
         }
 
@@ -128,11 +135,12 @@ namespace Submachina.Core
             Vector2 direction = Sub.Turret.AimDirection;
 
             // Cast along the aim direction; only hits Resource-layer colliders
-            RaycastHit2D hit = Physics2D.Raycast(origin, direction, maxRange, miningLayer);
+            float range = LaserRangeMod;
+            RaycastHit2D hit = Physics2D.Raycast(origin, direction, range, miningLayer);
 
             Vector2 beamEnd = hit.collider != null
                 ? hit.point
-                : origin + direction * maxRange;
+                : origin + direction * range;
 
             // Try to get a MiningResource from whatever was hit
             MiningResource hitResource = hit.collider != null
