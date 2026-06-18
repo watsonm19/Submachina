@@ -1,6 +1,6 @@
 namespace Submachina.Core
 {
-    // Combat feedback keys — used by PlayerAttack, CavitationBurst, CollisionDamage.
+    // Combat feedback keys — used by PlayerAttack, CavitationBurst, CollisionDamage, DashRam.
     public static partial class SubFeedbacks
     {
         private const int CombatCat = 2;
@@ -11,5 +11,6 @@ namespace Submachina.Core
         public static readonly FeedbackId TakeDamage      = new(CombatCat, 3);
         public static readonly FeedbackId CollisionDamage = new(CombatCat, 4);
         public static readonly FeedbackId DashReady       = new(CombatCat, 5);
+        public static readonly FeedbackId DashRam         = new(CombatCat, 6);
     }
 }

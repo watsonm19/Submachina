@@ -100,9 +100,7 @@ namespace Submachina.Core
         {
             if (PrimaryAction == null || Sub?.Turret == null || beamVFX == null) return;
 
-            bool firing = PrimaryAction.IsPressed()
-                && (Sub?.O2 == null || Sub.O2.CurrentAirPressure > 0f);
-            if (Sub?.O2 != null) Sub.O2.IsMining = firing;
+            bool firing = PrimaryAction.IsPressed();
 
             if (firing)
                 FireLaser();
