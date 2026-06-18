@@ -42,6 +42,8 @@ namespace Submachina.Core
         [Tooltip("Button InputAction that triggers the burst.")]
         [SerializeField] private InputActionReference burstAction;
 
+        private InputAction _resolvedBurst;
+
         // =====================
         // Burst Settings
         // =====================
@@ -128,6 +130,7 @@ namespace Submachina.Core
             base.Awake();
             _rb = GetComponent<Rigidbody2D>();
             _spriteRenderer = GetComponent<SpriteRenderer>();
+            _resolvedBurst = ResolveAction(burstAction);
         }
 
         private void Start()
@@ -141,17 +144,17 @@ namespace Submachina.Core
 
         private void OnEnable()
         {
-            if (burstAction != null) burstAction.action.Enable();
+            _resolvedBurst?.Enable();
         }
 
         private void OnDisable()
         {
-            if (burstAction != null) burstAction.action.Disable();
+            _resolvedBurst?.Disable();
         }
 
         private void Update()
         {
-            if (burstAction != null && burstAction.action.WasPressedThisFrame())
+            if (_resolvedBurst != null && _resolvedBurst.WasPressedThisFrame())
                 TryBurst();
 
             // Fire the "ready again" cue exactly once when the cooldown elapses,

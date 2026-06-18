@@ -34,6 +34,8 @@ namespace Submachina.Core
                  "When this stick is pushed past the deadzone it overrides mouse aim.")]
         [SerializeField] private InputActionReference aimAction;
 
+        private InputAction _resolvedAim;
+
         [FoldoutGroup("Input")]
         [Tooltip("Minimum stick magnitude to be treated as intentional input. " +
                  "Keeps the turret from twitching on stick drift.")]
@@ -70,16 +72,21 @@ namespace Submachina.Core
         {
             base.Awake();
             _camera = Camera.main;
+            _resolvedAim = ResolveAction(aimAction);
+
+            // Gamepad-only players start in gamepad mode so they don't
+            // begin aiming at the mouse cursor on the first frame
+            _gamepadMode = !HasMouseInput;
         }
 
         private void OnEnable()
         {
-            if (aimAction != null) aimAction.action.Enable();
+            _resolvedAim?.Enable();
         }
 
         private void OnDisable()
         {
-            if (aimAction != null) aimAction.action.Disable();
+            _resolvedAim?.Disable();
         }
 
         private void Update()
@@ -103,9 +110,9 @@ namespace Submachina.Core
         private void UpdateActiveDevice()
         {
             // Gamepad stick pushed → enter gamepad mode
-            if (aimAction != null)
+            if (_resolvedAim != null)
             {
-                Vector2 stick = aimAction.action.ReadValue<Vector2>();
+                Vector2 stick = _resolvedAim.ReadValue<Vector2>();
                 if (stick.magnitude > stickDeadzone)
                 {
                     _gamepadMode = true;
@@ -113,8 +120,8 @@ namespace Submachina.Core
                 }
             }
 
-            // Mouse moved → enter mouse mode
-            if (Mouse.current != null && Mouse.current.delta.ReadValue().sqrMagnitude > 0.5f)
+            // Mouse moved → enter mouse mode (only for players with mouse input)
+            if (HasMouseInput && Mouse.current != null && Mouse.current.delta.ReadValue().sqrMagnitude > 0.5f)
                 _gamepadMode = false;
         }
 
@@ -141,8 +148,8 @@ namespace Submachina.Core
 
         private Vector2 GetStickDirection()
         {
-            if (aimAction == null) return Vector2.zero;
-            return aimAction.action.ReadValue<Vector2>();
+            if (_resolvedAim == null) return Vector2.zero;
+            return _resolvedAim.ReadValue<Vector2>();
         }
 
         /**
@@ -151,7 +158,7 @@ namespace Submachina.Core
          */
         private Vector2 GetMouseDirection()
         {
-            if (_camera == null || Mouse.current == null) return Vector2.zero;
+            if (!HasMouseInput || _camera == null || Mouse.current == null) return Vector2.zero;
 
             Vector2 screenPos = Mouse.current.position.ReadValue();
             Vector3 mouseWorld = _camera.ScreenToWorldPoint(

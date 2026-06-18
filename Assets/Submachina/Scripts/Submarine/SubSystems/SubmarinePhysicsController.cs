@@ -157,6 +157,8 @@ namespace Submachina.Core
                  "Assign from your Input Action Asset (e.g., the 'Move' action).")]
         [SerializeField] private InputActionReference thrustAction;
 
+        private InputAction _resolvedThrust;
+
         // =====================
         // Debug / Read-Only State
         // =====================
@@ -210,6 +212,7 @@ namespace Submachina.Core
         {
             base.Awake();
             _rb = GetComponent<Rigidbody2D>();
+            _resolvedThrust = ResolveAction(thrustAction);
 
             // Apply feel settings to the Rigidbody at startup so the Inspector
             // values stay as the single source of truth (not the Rigidbody component fields)
@@ -226,19 +229,19 @@ namespace Submachina.Core
 
         private void OnEnable()
         {
-            if (thrustAction != null) thrustAction.action.Enable();
+            _resolvedThrust?.Enable();
         }
 
         private void OnDisable()
         {
-            if (thrustAction != null) thrustAction.action.Disable();
+            _resolvedThrust?.Disable();
         }
 
         private void Update()
         {
             // Cache input each frame; physics application deferred to FixedUpdate
-            _thrustInput = thrustAction != null
-                ? thrustAction.action.ReadValue<Vector2>()
+            _thrustInput = _resolvedThrust != null
+                ? _resolvedThrust.ReadValue<Vector2>()
                 : Vector2.zero;
 
             if (Sub?.O2 != null) Sub.O2.IsThrusting = _thrustInput.sqrMagnitude > 0.01f;

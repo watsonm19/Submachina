@@ -124,6 +124,8 @@ namespace Submachina.Core
         [Tooltip("Button InputAction for the pump. If unassigned, Spacebar is used as a fallback.")]
         [SerializeField] private InputActionReference pumpAction;
 
+        private InputAction _resolvedPump;
+
         // =====================
         // Events
         // =====================
@@ -242,15 +244,21 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
+        protected override void Awake()
+        {
+            base.Awake();
+            _resolvedPump = ResolveAction(pumpAction);
+        }
+
         private void OnEnable()
         {
-            if (pumpAction != null) pumpAction.action.Enable();
+            _resolvedPump?.Enable();
             Sub?.Pumps?.Register(this);
         }
 
         private void OnDisable()
         {
-            if (pumpAction != null) pumpAction.action.Disable();
+            _resolvedPump?.Disable();
             Sub?.Pumps?.Unregister(this);
 
             // Release ring override when disabled so the detector resets cleanly
@@ -322,8 +330,8 @@ namespace Submachina.Core
         }
 
         private bool GetPumpPressed() =>
-            pumpAction != null
-                ? pumpAction.action.WasPressedThisFrame()
+            _resolvedPump != null
+                ? _resolvedPump.WasPressedThisFrame()
                 : Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
 
         // -------------------------------------------------------

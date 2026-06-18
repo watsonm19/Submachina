@@ -60,6 +60,8 @@ namespace Submachina.Core
         [FoldoutGroup("Input")] [Tooltip("Button InputAction that triggers the attack.")] [SerializeField]
         private InputActionReference attackAction;
 
+        private InputAction _resolvedAttack;
+
         // =====================
         // Targeting
         // =====================
@@ -165,6 +167,12 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
+        protected override void Awake()
+        {
+            base.Awake();
+            _resolvedAttack = ResolveAction(attackAction);
+        }
+
         private void Start()
         {
             BuildArcRenderer();
@@ -173,17 +181,17 @@ namespace Submachina.Core
 
         private void OnEnable()
         {
-            if (attackAction != null) attackAction.action.Enable();
+            _resolvedAttack?.Enable();
         }
 
         private void OnDisable()
         {
-            if (attackAction != null) attackAction.action.Disable();
+            _resolvedAttack?.Disable();
         }
 
         private void Update()
         {
-            if (attackAction != null && attackAction.action.WasPressedThisFrame())
+            if (_resolvedAttack != null && _resolvedAttack.WasPressedThisFrame())
                 TryAttack();
 
             // Announce readiness exactly once on the frame the cooldown elapses.

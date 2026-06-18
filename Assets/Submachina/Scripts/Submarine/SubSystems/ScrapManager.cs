@@ -43,6 +43,7 @@ namespace Submachina.Core
                  "Assign from your Input Action Asset.")]
         [SerializeField] private InputActionReference useScrapAction;
 
+        private InputAction _resolvedUseScrap;
 
         // =====================
         // Events
@@ -91,19 +92,25 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
+        protected override void Awake()
+        {
+            base.Awake();
+            _resolvedUseScrap = ResolveAction(useScrapAction);
+        }
+
         private void OnEnable()
         {
-            if (useScrapAction != null) useScrapAction.action.Enable();
+            _resolvedUseScrap?.Enable();
         }
 
         private void OnDisable()
         {
-            if (useScrapAction != null) useScrapAction.action.Disable();
+            _resolvedUseScrap?.Disable();
         }
 
         private void Update()
         {
-            if (useScrapAction != null && useScrapAction.action.WasPressedThisFrame())
+            if (_resolvedUseScrap != null && _resolvedUseScrap.WasPressedThisFrame())
                 UseScrap();
         }
 

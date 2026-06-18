@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using Sirenix.OdinInspector;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -24,10 +25,29 @@ namespace Submachina.Core
         /** The Submarine this component belongs to. Null if not under a Submarine hierarchy. */
         protected Submarine Sub { get; private set; }
 
+        private SubmarineInputModule _inputModule;
+
         protected virtual void Awake()
         {
             Sub = GetComponentInParent<Submarine>();
             Sub?.Register(this);
+            _inputModule = GetComponentInParent<SubmarineInputModule>();
+        }
+
+        /** True when this player has mouse input (single-player, or keyboard+mouse mode). */
+        protected bool HasMouseInput => _inputModule == null || _inputModule.HasMouse;
+
+        /**
+         * Resolves an InputAction for this player. When a SubmarineInputModule
+         * is present (local multiplayer), returns the per-player action from the
+         * cloned asset. Otherwise returns the shared action from the reference
+         * (standard single-player path).
+         */
+        protected InputAction ResolveAction(InputActionReference reference)
+        {
+            if (reference?.action == null) return null;
+            if (_inputModule != null) return _inputModule.FindAction(reference.action.name);
+            return reference.action;
         }
 
         protected virtual void OnDestroy()

@@ -41,6 +41,8 @@ namespace Submachina.Core
         [Tooltip("Hold InputAction that fires the mining laser. Create a 'Mine' Button action and assign it here.")]
         [SerializeField] private InputActionReference mineAction;
 
+        private InputAction _resolvedMine;
+
         // =====================
         // Mining Settings
         // =====================
@@ -87,24 +89,25 @@ namespace Submachina.Core
         {
             base.Awake();
             _miningDuration = miningDuration;
+            _resolvedMine = ResolveAction(mineAction);
         }
 
         private void OnEnable()
         {
-            if (mineAction != null) mineAction.action.Enable();
+            _resolvedMine?.Enable();
         }
 
         private void OnDisable()
         {
-            if (mineAction != null) mineAction.action.Disable();
+            _resolvedMine?.Disable();
             StopLaser();
         }
 
         private void Update()
         {
-            if (mineAction == null || Sub?.Turret == null || beamVFX == null) return;
+            if (_resolvedMine == null || Sub?.Turret == null || beamVFX == null) return;
 
-            bool firing = mineAction.action.IsPressed()
+            bool firing = _resolvedMine.IsPressed()
                 && (Sub?.O2 == null || Sub.O2.CurrentAirPressure > 0f);
             if (Sub?.O2 != null) Sub.O2.IsMining = firing;
 
