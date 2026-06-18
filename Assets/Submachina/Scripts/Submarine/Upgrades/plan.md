@@ -35,6 +35,10 @@ Phases 1-3 (foundation, component integration, draft pool) are implemented. The 
 - `SubUI/UpgradeDraftUI.cs` — SubmarineObserver that listens to `ResourceManager.onLevelUp`, builds a screen-space overlay Canvas at runtime, pauses the game, shows N choices as TMPro buttons with name/description/stat summary, grants on click, unpauses
 - `Editor/UpgradeSetupWizard.cs` — menu item `Tools > Submachina > Setup Upgrade System` that creates 8 sample UpgradeDef assets + 1 UpgradeDraftPool, and wires UpgradeManager + UpgradeDraftUI onto all submarines in the scene
 
+### Debug Panel
+- `SubUI/UpgradeDebugPanel.cs` — SubmarineObserver toggled with Tab key. Shows a scrollable grid of compact cards for every upgrade in the catalog. Click to grant, Shift+Click to remove. Color-coded: grey=inactive, green=active, yellow=maxed, red=prereqs unmet. Does NOT pause the game — apply upgrades while playing.
+- Wired automatically by the setup wizard alongside the draft UI.
+
 ### Remaining polish (future)
 - Card-style layout with icons, descriptions, level indicators
 - Animation/juice on appear/select (MMF feedbacks)

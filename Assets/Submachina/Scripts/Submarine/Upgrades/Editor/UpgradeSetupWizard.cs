@@ -104,12 +104,28 @@ namespace Submachina.Core.Editor
                 }
 
                 // Assign the draft pool to the UI
-                var poolField = typeof(UpgradeDraftUI).GetField("draftPool",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (poolField != null)
+                SetPrivateField(draftUI, "draftPool", pool);
+
+                // Add UpgradeDebugPanel if missing (requires UIDocument)
+                var debugPanel = sub.GetComponentInChildren<UpgradeDebugPanel>();
+                if (debugPanel == null)
                 {
-                    poolField.SetValue(draftUI, pool);
-                    EditorUtility.SetDirty(draftUI);
+                    var debugGO = new GameObject("UpgradeDebugPanel");
+                    debugGO.transform.SetParent(sub.transform, false);
+                    debugPanel = debugGO.AddComponent<UpgradeDebugPanel>();
+                    Undo.RegisterCreatedObjectUndo(debugGO, "Add UpgradeDebugPanel");
+                }
+
+                // Assign the full catalog to the debug panel
+                SetPrivateField(debugPanel, "catalog", pool);
+
+                // Ensure UIDocument has PanelSettings
+                var uiDoc = debugPanel.GetComponent<UnityEngine.UIElements.UIDocument>();
+                if (uiDoc != null && uiDoc.panelSettings == null)
+                {
+                    var panelSettings = FindOrCreatePanelSettings();
+                    uiDoc.panelSettings = panelSettings;
+                    EditorUtility.SetDirty(uiDoc);
                 }
 
                 wired++;
@@ -119,7 +135,8 @@ namespace Submachina.Core.Editor
             AssetDatabase.Refresh();
 
             Debug.Log($"[UpgradeSetupWizard] Created 8 sample upgrades + 1 draft pool at {AssetFolder}");
-            Debug.Log($"[UpgradeSetupWizard] Wired UpgradeManager + UpgradeDraftUI on {wired} submarine(s)");
+            Debug.Log($"[UpgradeSetupWizard] Wired UpgradeManager + UpgradeDraftUI + UpgradeDebugPanel on {wired} submarine(s)");
+            Debug.Log($"[UpgradeSetupWizard] Press Tab in play mode to open the debug upgrade panel");
 
             if (wired == 0)
                 Debug.LogWarning("[UpgradeSetupWizard] No Submarine found in the active scene. " +
@@ -164,6 +181,35 @@ namespace Submachina.Core.Editor
             var asset = ScriptableObject.CreateInstance<T>();
             AssetDatabase.CreateAsset(asset, path);
             return asset;
+        }
+
+        private static UnityEngine.UIElements.PanelSettings FindOrCreatePanelSettings()
+        {
+            // Reuse our own PanelSettings if it already exists
+            string settingsPath = $"{AssetFolder}/UpgradeDebugPanelSettings.asset";
+            var existing = AssetDatabase.LoadAssetAtPath<UnityEngine.UIElements.PanelSettings>(settingsPath);
+            if (existing != null) return existing;
+
+            // Create a dedicated one — don't grab random demo assets
+            var settings = ScriptableObject.CreateInstance<UnityEngine.UIElements.PanelSettings>();
+            settings.scaleMode = UnityEngine.UIElements.PanelScaleMode.ScaleWithScreenSize;
+            settings.referenceResolution = new Vector2Int(1920, 1080);
+            settings.screenMatchMode = UnityEngine.UIElements.PanelScreenMatchMode.MatchWidthOrHeight;
+            settings.match = 0.5f;
+            settings.sortingOrder = 200;
+            AssetDatabase.CreateAsset(settings, settingsPath);
+            return settings;
+        }
+
+        private static void SetPrivateField(Object target, string fieldName, Object value)
+        {
+            var field = target.GetType().GetField(fieldName,
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (field != null)
+            {
+                field.SetValue(target, value);
+                EditorUtility.SetDirty(target);
+            }
         }
 
         private static void EnsureFolder(string path)
