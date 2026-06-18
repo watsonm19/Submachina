@@ -31,7 +31,7 @@ namespace Submachina.Core
      */
     [UsesFeedbacks(nameof(SubFeedbacks.PumpCharge), nameof(SubFeedbacks.PumpPerfect),
                    nameof(SubFeedbacks.PumpWeak), nameof(SubFeedbacks.AirLock))]
-    public class ManualBellowsPump : SubmarineComponent, ISweetSpotPump
+    public class ManualBellowsPump : SweetSpotPump
     {
         // =====================
         // Charge Cycle
@@ -155,34 +155,34 @@ namespace Submachina.Core
         // =====================
 
         /** Current charge progress (0–1) — read by HUD charge meter. */
-        public float ChargeProgress => _chargeProgress;
+        public override float ChargeProgress => _chargeProgress;
 
         /** True while the Air Lock penalty is active. */
-        public bool IsAirLocked => _state == PumpState.AirLocked;
+        public override bool IsAirLocked => _state == PumpState.AirLocked;
 
         /** True while the post-Perfect-Pump cooldown is active. */
-        public bool IsOnCooldown => _state == PumpState.CoolingDown;
+        public override bool IsOnCooldown => _state == PumpState.CoolingDown;
 
         /** Seconds left on the sweet spot cooldown — read by HUD for a radial/timer display. */
         public float CooldownRemaining => IsOnCooldown ? Mathf.Max(0f, _cooldownTimer) : 0f;
 
         /** Lower bound of the sweet spot window — read by BellowsBar to position markers. */
-        public float SweetSpotMin => sweetSpotMin;
+        public override float SweetSpotMin => sweetSpotMin;
 
         /** Upper bound of the sweet spot window — read by BellowsBar to position markers. */
-        public float SweetSpotMax => sweetSpotMax;
+        public override float SweetSpotMax => sweetSpotMax;
 
         /** True while charging and the current charge progress sits within the sweet spot. */
-        public bool IsInSweetSpot =>
+        public override bool IsInSweetSpot =>
             _state == PumpState.Charging &&
             _chargeProgress >= sweetSpotMin &&
             _chargeProgress <= sweetSpotMax;
 
         /** Wants control whenever manual pumping is enabled — the always-on baseline pump. */
-        public bool WantsControl => enableManualPumping;
+        public override bool WantsControl => enableManualPumping;
 
         /** Lowest priority: any contextual pump (e.g. the intake pump) outranks the manual baseline. */
-        public int ControlPriority => 0;
+        public override int ControlPriority => 0;
 
         /**
          * True while this pump is the one the router has handed control to.
@@ -238,25 +238,9 @@ namespace Submachina.Core
             _resolvedPump = ResolveAction(pumpAction);
         }
 
-        private void OnEnable()
-        {
-            _resolvedPump?.Enable();
-            Sub?.Pumps?.Register(this);
-        }
-
-        private void Start()
-        {
-            // Registration fallback: OnEnable may have fired before SubmarinePumpRouter
-            // registered with Submarine (Awake order isn't guaranteed across components).
-            // SubmarinePumpRouter.Register() is duplicate-safe so this is always safe to call.
-            Sub?.Pumps?.Register(this);
-        }
-
-        private void OnDisable()
-        {
-            _resolvedPump?.Disable();
-            Sub?.Pumps?.Unregister(this);
-        }
+        /** Router registration is handled by SweetSpotPump; here we just toggle our input. */
+        protected override void OnPumpEnabled()  => _resolvedPump?.Enable();
+        protected override void OnPumpDisabled() => _resolvedPump?.Disable();
 
         private void Update()
         {

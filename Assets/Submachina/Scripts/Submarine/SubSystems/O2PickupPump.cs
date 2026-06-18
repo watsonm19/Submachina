@@ -30,7 +30,7 @@ namespace Submachina.Core
      *   3. Optionally assign a PumpAction InputActionReference (Spacebar fallback).
      */
     [UsesFeedbacks(nameof(SubFeedbacks.PumpPerfect), nameof(SubFeedbacks.PumpWeak), nameof(SubFeedbacks.AirLock))]
-    public class O2PickupPump : SubmarineComponent, ISweetSpotPump
+    public class O2PickupPump : SweetSpotPump
     {
         // =====================
         // Activation
@@ -180,25 +180,25 @@ namespace Submachina.Core
         // =====================
 
         /** Current loop progress (0–1) — read by BellowsBar for the fill. */
-        public float ChargeProgress => _chargeProgress;
+        public override float ChargeProgress => _chargeProgress;
 
         /** True while the Air Lock penalty is active. */
-        public bool IsAirLocked => _state == PumpState.AirLocked;
+        public override bool IsAirLocked => _state == PumpState.AirLocked;
 
         /** The intake pump has no cooldown mechanic. */
-        public bool IsOnCooldown => false;
+        public override bool IsOnCooldown => false;
 
         /** True while looping and the charge currently sits within the sweet spot. */
-        public bool IsInSweetSpot =>
+        public override bool IsInSweetSpot =>
             _state == PumpState.Looping &&
             _chargeProgress >= sweetSpotMin &&
             _chargeProgress <= sweetSpotMax;
 
         /** Lower bound of the sweet spot window — read by BellowsBar to position markers. */
-        public float SweetSpotMin => sweetSpotMin;
+        public override float SweetSpotMin => sweetSpotMin;
 
         /** Upper bound of the sweet spot window — read by BellowsBar to position markers. */
-        public float SweetSpotMax => sweetSpotMax;
+        public override float SweetSpotMax => sweetSpotMax;
 
         /** True while the pump loop is running. */
         public bool IsLooping => _state == PumpState.Looping;
@@ -210,10 +210,10 @@ namespace Submachina.Core
         public bool IsPickupInRange => _pickupInRange;
 
         /** Wants control whenever it's actively looping or an O2 bubble is in range. */
-        public bool WantsControl => IsLooping || IsPickupInRange;
+        public override bool WantsControl => IsLooping || IsPickupInRange;
 
         /** Outranks the always-on manual pump so it takes over near bubbles. */
-        public int ControlPriority => 10;
+        public override int ControlPriority => 10;
 
         // =====================
         // Debug (Inspector)
@@ -250,16 +250,12 @@ namespace Submachina.Core
             _resolvedPump = ResolveAction(pumpAction);
         }
 
-        private void OnEnable()
-        {
-            _resolvedPump?.Enable();
-            Sub?.Pumps?.Register(this);
-        }
+        /** Router registration is handled by SweetSpotPump; here we toggle input and the ring. */
+        protected override void OnPumpEnabled() => _resolvedPump?.Enable();
 
-        private void OnDisable()
+        protected override void OnPumpDisabled()
         {
             _resolvedPump?.Disable();
-            Sub?.Pumps?.Unregister(this);
 
             // Release ring override when disabled so the detector resets cleanly
             Sub?.PickupRange?.ClearRingOverride();
