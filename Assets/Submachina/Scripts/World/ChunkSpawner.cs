@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityAtoms.BaseAtoms;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -16,110 +15,60 @@ namespace Submachina.Core
      * Cells only spawn below the water surface (cellY < 0). The surface boundary
      * collider at Y=0 handles blocking the player from going above water.
      *
+     * WHAT spawns in each cell is entirely data-driven via the SpawnProfile —
+     * this component owns only the grid, camera tracking, and persistence.
+     *
      * Place this on the GameManager object. The main camera is found automatically.
      */
     public class ChunkSpawner : MonoBehaviour
     {
-        // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("Prefab for rock obstacles.")]
-        [SerializeField] private GameObject rockPrefab;
-
-        [FoldoutGroup("References")]
-        [Tooltip("Prefab for mining resource nodes.")]
-        [SerializeField] private GameObject resourcePrefab;
-
-        [FoldoutGroup("References")]
-        [Tooltip("Regular aggressive enemy prefab.")]
-        [SerializeField] private GameObject enemyPrefab;
-
-        [FoldoutGroup("References")]
-        [Tooltip("O2 bubble prefab scattered passively throughout each chunk.")]
-        [SerializeField] private GameObject o2BubblePrefab;
-
-        [FoldoutGroup("References")]
-        [Tooltip("Passive creature — flees the player, drops more O2. " +
-                 "Configure spawn chance and min depth in the config below.")]
-        [SerializeField] private EnemySpawnConfig passiveCreature = new EnemySpawnConfig
+        /** How each chunk's deterministic seed is derived. */
+        public enum SeedMode
         {
-            spawnChance = 0.4f,
-            minDepth    = 0f
-        };
+            /** Seed from the cell coordinate only — identical worlds every run. */
+            CoordHash,
 
-        [FoldoutGroup("References")]
-        [Tooltip("Ramming enemy — telegraphed charge, stunned after. Only appears past minDepth. " +
-                 "Configure spawn chance and min depth in the config below.")]
-        [SerializeField] private EnemySpawnConfig rammingEnemy = new EnemySpawnConfig
-        {
-            spawnChance = 0.3f,
-            minDepth    = 200f
-        };
+            /** Mix in worldSeed — same layout for a given worldSeed, varies between runs/seeds. */
+            WorldSeedPlusCoord
+        }
+
+        // =====================
+        // Spawn Data
+        // =====================
+
+        [FoldoutGroup("Spawn Data")]
+        [Tooltip("The set of spawn rules driving every chunk. Create via " +
+                 "Assets → Create → Submachina → Spawning → Spawn Profile.")]
+        [Required, InlineEditor(objectFieldMode: InlineEditorObjectFieldModes.Boxed)]
+        [SerializeField] private SpawnProfile spawnProfile;
+
+        // =====================
+        // Determinism
+        // =====================
+
+        [FoldoutGroup("Determinism")]
+        [Tooltip("How each chunk's RNG seed is derived. WorldSeedPlusCoord gives a " +
+                 "reproducible-but-varied world per worldSeed; CoordHash is identical every run.")]
+        [SerializeField] private SeedMode seedMode = SeedMode.WorldSeedPlusCoord;
+
+        [FoldoutGroup("Determinism")]
+        [Tooltip("World seed mixed into each chunk's RNG (used when seedMode is WorldSeedPlusCoord). " +
+                 "Change it to reroll the whole world layout.")]
+        [ShowIf(nameof(seedMode), SeedMode.WorldSeedPlusCoord)]
+        [SerializeField] private int worldSeed = 12345;
+
+        /** The world seed used to vary chunk layout (read by editor spawn-preview tools). */
+        public int WorldSeed => worldSeed;
 
         // Surfaces the implicit camera dependency: not a serialized field, but
         // resolved automatically from Camera.main at Awake so it's clear a camera
         // is part of this component's references under the hood.
-        [FoldoutGroup("References")]
+        [FoldoutGroup("Determinism")]
         [Tooltip("Resolved automatically from Camera.main at runtime — not assignable.")]
         [ReadOnly, ShowInInspector, LabelText("Camera (auto)")]
         private string CameraReference => Application.isPlaying
             ? (_camera != null ? _camera.name : "<none found>")
             : "Main Camera (resolved at runtime)";
-
-        // =====================
-        // O2 Size
-        // =====================
-
-        [FoldoutGroup("O2 Size")]
-        [Tooltip("Minimum O2 bubble size as a function of depth (metres). " +
-                 "X = depth, Y = minimum size passed to O2Pickup.SetSize().\n\n" +
-                 "Example: at 0m → min 0.5, at 300m → min 1.0.")]
-        [SerializeField]
-        private AnimationCurve o2SizeMinByDepth = AnimationCurve.Linear(0f, 0.5f, 300f, 1f);
-
-        [FoldoutGroup("O2 Size")]
-        [Tooltip("Maximum O2 bubble size as a function of depth (metres). " +
-                 "X = depth, Y = maximum size passed to O2Pickup.SetSize().\n\n" +
-                 "Example: at 0m → max 1.5, at 300m → max 4.0.")]
-        [SerializeField]
-        private AnimationCurve o2SizeMaxByDepth = AnimationCurve.Linear(0f, 1.5f, 300f, 4f);
-
-        [FoldoutGroup("O2 Size")]
-        [Tooltip("Remaps a uniform random roll [0,1] (X) to a normalized position " +
-                 "[0,1] (Y) between the depth-evaluated sizeMin and sizeMax.\n\n" +
-                 "Straight diagonal = uniform distribution.\n" +
-                 "Flat at bottom, steep rise = most bubbles small, rare large.")]
-        [SerializeField]
-        private AnimationCurve o2SizeDistribution = AnimationCurve.Linear(0f, 0f, 1f, 1f);
-
-        [FoldoutGroup("O2 Size")]
-        [ShowInInspector, ReadOnly, LabelText("At 0m")]
-        private string PreviewShallow => DepthStats(0f);
-
-        [FoldoutGroup("O2 Size")]
-        [ShowInInspector, ReadOnly, LabelText("At 150m")]
-        private string PreviewMid => DepthStats(150f);
-
-        [FoldoutGroup("O2 Size")]
-        [ShowInInspector, ReadOnly, LabelText("At 300m")]
-        private string PreviewDeep => DepthStats(300f);
-
-        /** Computes distribution stats at a given depth for the preview labels. */
-        private string DepthStats(float depth)
-        {
-            if (o2SizeDistribution == null || o2SizeMinByDepth == null || o2SizeMaxByDepth == null)
-                return "—";
-
-            float min = o2SizeMinByDepth.Evaluate(depth);
-            float max = o2SizeMaxByDepth.Evaluate(depth);
-            if (min >= max) return $"all size {min:F1}";
-
-            float p50 = Mathf.Lerp(min, max, o2SizeDistribution.Evaluate(0.5f));
-            float p90 = Mathf.Lerp(min, max, o2SizeDistribution.Evaluate(0.9f));
-            return $"median {p50:F2},  top 10% >= {p90:F2}  (range {min:F1}–{max:F1})";
-        }
 
         // =====================
         // World Settings
@@ -230,20 +179,14 @@ namespace Submachina.Core
             float centerX = cell.x * cellWidth + cellWidth * 0.5f;
             float depth   = Mathf.Max(0f, -topY);
 
-            // Evaluate O2 size range for this depth
-            float o2SizeMin = o2SizeMinByDepth.Evaluate(depth);
-            float o2SizeMax = o2SizeMaxByDepth.Evaluate(depth);
-
             GameObject cellGO = new GameObject($"Cell_{cell.x}_{cell.y}");
             cellGO.transform.SetParent(transform);
             cellGO.transform.position = new Vector3(centerX, topY, 0f);
 
+            // Hand the chunk its geometry, the shared profile, and a deterministic seed
             WorldChunk chunk = cellGO.AddComponent<WorldChunk>();
-            chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, depth,
-                rockPrefab, resourcePrefab,
-                enemyPrefab, o2BubblePrefab,
-                passiveCreature, rammingEnemy,
-                o2SizeMin, o2SizeMax, o2SizeDistribution);
+            chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, centerX,
+                depth, spawnProfile, SeedFor(cell));
 
             _chunks[cell] = chunk;
         }
@@ -264,6 +207,22 @@ namespace Submachina.Core
                 Mathf.FloorToInt(worldPos.y / cellHeight));
         }
 
+        /**
+         * Derives a stable seed for a cell. The coordinate hash uses large
+         * primes so neighbouring cells get well-separated seeds; worldSeed is
+         * mixed in (when enabled) to vary whole-world layout between runs.
+         */
+        private int SeedFor(Vector2Int cell)
+        {
+            unchecked
+            {
+                int hash = cell.x * 73856093 ^ cell.y * 19349663;
+                if (seedMode == SeedMode.WorldSeedPlusCoord)
+                    hash ^= worldSeed * 83492791;
+                return hash;
+            }
+        }
+
         // -------------------------------------------------------
         // Editor Utilities
         // -------------------------------------------------------
@@ -275,6 +234,41 @@ namespace Submachina.Core
         {
             if (!Application.isPlaying) { Debug.Log("[ChunkSpawner] Play mode only."); return; }
             Debug.Log($"[ChunkSpawner] {_chunks.Count} cells generated. Camera at cell {WorldToCell(_camera.transform.position)}.");
+        }
+
+        /**
+         * Draws each spawn rule's active depth band as a horizontal line in the
+         * scene, colored per rule, so designers can see where things appear
+         * relative to the surface (Y=0) without entering Play mode.
+         */
+        private void OnDrawGizmosSelected()
+        {
+            if (spawnProfile == null) return;
+
+            float lineHalf = cellWidth * (spawnRadius + 1);
+            int index = 0;
+
+            foreach (SpawnRuleData rule in spawnProfile.AllRules)
+            {
+                // Distinct hue per rule for quick visual separation
+                Gizmos.color = Color.HSVToRGB((index * 0.13f) % 1f, 0.7f, 1f);
+                index++;
+
+                // Top of the band (min depth → world Y = -minDepth)
+                float minY = -rule.depth.minDepth;
+                Gizmos.DrawLine(new Vector3(-lineHalf, minY, 0f), new Vector3(lineHalf, minY, 0f));
+
+                // Bottom of the band when bounded
+                if (rule.depth.hasMax)
+                {
+                    float maxY = -rule.depth.maxDepth;
+                    Gizmos.DrawLine(new Vector3(-lineHalf, maxY, 0f), new Vector3(lineHalf, maxY, 0f));
+                }
+
+                UnityEditor.Handles.color = Gizmos.color;
+                UnityEditor.Handles.Label(new Vector3(lineHalf, minY, 0f),
+                    $"  {rule.ruleName} (from {rule.depth.minDepth:F0}m)");
+            }
         }
 #endif
     }

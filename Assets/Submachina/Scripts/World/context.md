@@ -4,9 +4,22 @@ Procedural world generation and the world entities the submarine interacts with 
 
 ## Generation
 
-- **ChunkSpawner** — generates the world as a persistent grid of chunks around the camera. Pre-spawns every cell within `spawnRadius` (e.g. a 7×7 ring) and **never despawns** them. Maps grid coords → world space with `FloorToInt` (correct for negative Y), filters out cells above the surface (Y ≥ 0), and instantiates one `WorldChunk` per cell, handing it the rock/resource/enemy/O2 prefabs. Keyed dictionary keeps chunks unique. Depends on `Camera.main`.
-- **WorldChunk** — populates a single chunk via `Initialize(topY, height, halfWidth, depth, rock, resource, enemy, o2)`. Generation is **depth-scaled** (denser/harder deeper): rocks (wall protrusions + center obstacles), mining resources (outer band), passive O2 bubbles (sparse, central, only past ~3 m — combat is the main air source), and enemies (from a ~20 m grace depth, lerping 1→4 over depth, kept central for patrol room). Spawned entities are parented under the chunk.
+Spawning is **data-driven**: WHAT spawns lives in `SpawnProfile`/`SpawnRule` assets, not in code. `ChunkSpawner` owns the grid/camera/persistence; `WorldChunk` is a generic executor. See `Spawning/` for the rule types.
+
+- **ChunkSpawner** — generates the world as a persistent grid of chunks around the camera. Pre-spawns every cell within `spawnRadius` (e.g. a 7×7 ring) and **never despawns** them. Maps grid coords → world space with `FloorToInt` (correct for negative Y), filters out cells above the surface (Y ≥ 0), and instantiates one `WorldChunk` per cell, handing it the assigned `SpawnProfile` and a **deterministic per-cell seed** (`SeedMode` = coord-hash, optionally mixed with `worldSeed`). Keyed dictionary keeps chunks unique. Depends on `Camera.main`. A scene gizmo draws each rule's active depth band.
+- **WorldChunk** — `Initialize(topY, height, halfWidth, worldX, depth, profile, seed)` builds a seeded `System.Random` + a `SpawnContext` and runs every rule in `profile.AllRules` against the chunk's depth. Holds no rock/enemy/resource knowledge. Fires `onChunkGenerated` (UnityEvent). Spawned entities are parented under the chunk and resolve their own sub deps from context.
 - **WorldBoundary** — attach to the camera. Creates invisible left/right `BoxCollider2D` walls parented to the camera so they scroll with the viewport. `halfWidth` must match `ChunkSpawner`'s cell half-width so the walls align with the generated world edges; `wallHeight` covers the view plus buffer.
+
+## Spawning (data model — `Spawning/`)
+
+- **SpawnProfile** (SO) — the rule set a level uses; referenced by `ChunkSpawner`. Aggregates reusable `SpawnRule` assets (`sharedRules`) **and** inline one-off rules (`inlineRules`) via `AllRules`. Has a `globalDensityMultiplier`, validation warnings, and editor buttons: **Test Spawn Chunk** (throwaway in-editor chunk at a depth) and **Generate Default Rules** (scaffolds the 7 legacy-parity rules via `SpawnProfileDefaults`).
+- **SpawnRule** (SO) — thin reusable wrapper around one `SpawnRuleData`.
+- **SpawnRuleData** — one spawnable: `prefab`, `DepthRange` (min + optional max), `prevalenceByDepth` curve, `CountModel`, `maxPerChunk`, `minSpacing`, `[SerializeReference] PlacementStrategy`, optional `[SerializeReference] InstanceConfigurator`, `zoneTag` + `developerNotes` (per-segment dev notes). `Execute(in ctx, rng, density, parent)` does depth-gate → count → place (spacing retries) → instantiate → scale/configure.
+- **PlacementStrategy** (`[SerializeReference]`) — `ScatterPlacement` (width band + insets), `WallProtrusionPlacement` (flush-edge rocks; returns a `scaleOverride` = protrusion×height), `CenterBandPlacement` (tighter central band). Returns a `PlacementResult { position, scaleOverride? }`.
+- **CountModel** — `SingleRoll` (probability), `Range` (flat min–max), `CurveRange` (ramps with depth). Optional `CountSplit` (Floor/Ceil half) lets two rules share one rounded budget — used to reproduce the original wall/center rock split exactly.
+- **InstanceConfigurator** (`[SerializeReference]`) — post-spawn setup. `DepthSizeConfigurator` (depth-driven O2 `SetSize`), `DepthScaleConfigurator` (depth-driven rock localScale).
+- **SizeSampler** — shared roll→curve→lerp helper, reused by `O2DropConfig` and `DepthSizeConfigurator`. **SpawnRng** — `System.Random` float/bool extensions for deterministic sampling.
+- Generation is reproducible: same `worldSeed` + cell → identical chunk. `LevelConfig`'s zone spawn budgets (`ZoneConfig`) are **deprecated** by this system; its world shape, `ZoneType`, and `ExitGateWorldY` remain live (`ZoneType` is an optional inspector tag on rules, not a gate).
 
 ## Entities
 

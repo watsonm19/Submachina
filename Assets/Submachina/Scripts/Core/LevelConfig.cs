@@ -77,7 +77,11 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Shallow Zone")]
-        [Tooltip("Spawn budgets for the early level — high O2, basic enemies, low-tier resources.")]
+        [InfoBox("DEPRECATED: Per-zone spawn budgets no longer drive spawning. " +
+                 "Spawning is now data-driven via SpawnProfile (depth ranges + prevalence curves per rule). " +
+                 "These fields are retained for reference/migration only. World shape, zone thresholds, " +
+                 "and ExitGateWorldY are still live.", InfoMessageType.Warning)]
+        [Tooltip("DEPRECATED — see SpawnProfile. Spawn budgets for the early level.")]
         [SerializeField] private ZoneConfig shallow = new ZoneConfig
         {
             enemyMin = 0, enemyMax = 1, enemyGraceDepth = 20f,
@@ -161,6 +165,11 @@ namespace Submachina.Core
 
     /**
      * Spawn budget for a single depth zone.
+     *
+     * DEPRECATED for spawning: the data-driven SpawnProfile system (per-rule
+     * depth ranges + prevalence curves) now governs what spawns and how often.
+     * These budgets are kept for reference and potential migration only.
+     *
      * Min/max ranges add natural variation between chunks in the same zone.
      * SampleX() methods return a random value in the range each time they're called.
      */

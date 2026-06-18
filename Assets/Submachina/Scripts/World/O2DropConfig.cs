@@ -78,9 +78,9 @@ namespace Submachina.Core
             O2Pickup pickup = instance.GetComponent<O2Pickup>();
             if (pickup == null) return;
 
-            // Remap a uniform roll through the distribution curve, then lerp into the size range
-            float t = sizeDistribution.Evaluate(Random.value);
-            float size = Mathf.Lerp(sizeMin, sizeMax, t);
+            // Sample a size through the distribution curve (shared with the chunk spawner's
+            // DepthSizeConfigurator via SizeSampler so the bias math lives in one place)
+            float size = SizeSampler.Sample(sizeMin, sizeMax, sizeDistribution, Random.value);
             pickup.SetSize(size);
         }
     }
