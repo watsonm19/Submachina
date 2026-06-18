@@ -20,7 +20,27 @@ Every subsystem extends **SubmarineComponent**, which auto-discovers its parent 
 - O2Pickups resolve the collecting sub from collision: `other.GetComponentInParent<Submarine>()`.
 - MiningResources receive the collecting sub from `MiningLaser`'s `Collect(Sub)` call.
 
-**Supports multiple submarines** (future local multiplayer) — discovery is by hierarchy and the static list, with no singletons.
+**Supports multiple submarines** (local multiplayer) — discovery is by hierarchy and the static list, with no singletons.
+
+## Local multiplayer input
+
+**SubmarineInputModule** (`SubmarineInputModule.cs`) — MonoBehaviour on the submarine root, alongside `Submarine`. Provides per-player input isolation by cloning the shared `InputActionAsset` at runtime and restricting it to specific devices via `InputActionAsset.devices`. Runs at `[DefaultExecutionOrder(-100)]` so the clone is ready before any subsystem resolves actions.
+
+**How it works:**
+1. On Awake, clones the shared `PlayerControls` asset and restricts it to one `DeviceMode`: keyboard+mouse, gamepad 1, or gamepad 2.
+2. Subsystems call `SubmarineComponent.ResolveAction(InputActionReference)` — when a module is present, this delegates to `SubmarineInputModule.FindAction(name)` which returns the per-player action from the clone. Without the module, the shared action is used directly (single-player, backward-compatible).
+3. Each input component registers its action(s) via `InputSubmarineComponent.RegisterAction`, which handles enable/disable lifecycle automatically.
+
+**Runtime hot-swap:** `Reassign(DeviceMode newMode)` destroys the old clone, creates a fresh one with new device restriction, and calls `RebindActions()` on all child `InputSubmarineComponent`s. The inspector dropdown uses Odin's `[OnValueChanged]` so changing the device mode at runtime triggers reassignment immediately.
+
+**Scene setup for local multiplayer:**
+- Place two submarine prefab instances in the scene.
+- Add `SubmarineInputModule` to each submarine root.
+- Assign the shared `PlayerControls` InputActionAsset.
+- Set Player 1 to `Keyboard + Mouse`, Player 2 to `Gamepad 1` (or both to gamepads).
+- No `PlayerInput` component, no control schemes, no `PlayerInputManager` needed.
+
+**Limitations:** Mouse aiming is exclusive to the keyboard+mouse player (`HasMouseInput` gates `TurretAim`'s mouse path). Camera and UI are not yet per-player.
 
 ## Semantic feedback system
 

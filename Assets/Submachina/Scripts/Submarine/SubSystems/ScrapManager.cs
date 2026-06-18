@@ -18,7 +18,7 @@ namespace Submachina.Core
      */
     [UsesFeedbacks(nameof(SubFeedbacks.ScrapAdded), nameof(SubFeedbacks.ScrapFull),
                    nameof(SubFeedbacks.ScrapUsed), nameof(SubFeedbacks.NoScrap), nameof(SubFeedbacks.FullHealth))]
-    public class ScrapManager : SubmarineComponent
+    public class ScrapManager : InputSubmarineComponent
     {
         // =====================
         // Settings
@@ -42,8 +42,6 @@ namespace Submachina.Core
         [Tooltip("Button action that consumes one scrap to repair the hull. " +
                  "Assign from your Input Action Asset.")]
         [SerializeField] private InputActionReference useScrapAction;
-
-        private InputAction _resolvedUseScrap;
 
         // =====================
         // Events
@@ -95,22 +93,12 @@ namespace Submachina.Core
         protected override void Awake()
         {
             base.Awake();
-            _resolvedUseScrap = ResolveAction(useScrapAction);
-        }
-
-        private void OnEnable()
-        {
-            _resolvedUseScrap?.Enable();
-        }
-
-        private void OnDisable()
-        {
-            _resolvedUseScrap?.Disable();
+            RegisterAction(useScrapAction);
         }
 
         private void Update()
         {
-            if (_resolvedUseScrap != null && _resolvedUseScrap.WasPressedThisFrame())
+            if (PrimaryAction != null && PrimaryAction.WasPressedThisFrame())
                 UseScrap();
         }
 

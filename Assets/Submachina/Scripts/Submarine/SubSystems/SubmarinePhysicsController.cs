@@ -30,7 +30,7 @@ namespace Submachina.Core
      *      (e.g., "Move" from your Input Action Asset — WASD/left-stick).
      */
     [RequireComponent(typeof(Rigidbody2D))]
-    public class SubmarinePhysicsController : SubmarineComponent
+    public class SubmarinePhysicsController : InputSubmarineComponent
     {
         // =====================
         // Thrust Settings
@@ -157,8 +157,6 @@ namespace Submachina.Core
                  "Assign from your Input Action Asset (e.g., the 'Move' action).")]
         [SerializeField] private InputActionReference thrustAction;
 
-        private InputAction _resolvedThrust;
-
         // =====================
         // Debug / Read-Only State
         // =====================
@@ -212,7 +210,7 @@ namespace Submachina.Core
         {
             base.Awake();
             _rb = GetComponent<Rigidbody2D>();
-            _resolvedThrust = ResolveAction(thrustAction);
+            RegisterAction(thrustAction);
 
             // Apply feel settings to the Rigidbody at startup so the Inspector
             // values stay as the single source of truth (not the Rigidbody component fields)
@@ -227,21 +225,11 @@ namespace Submachina.Core
             _neutralRotation = FacingTransform.localRotation;
         }
 
-        private void OnEnable()
-        {
-            _resolvedThrust?.Enable();
-        }
-
-        private void OnDisable()
-        {
-            _resolvedThrust?.Disable();
-        }
-
         private void Update()
         {
             // Cache input each frame; physics application deferred to FixedUpdate
-            _thrustInput = _resolvedThrust != null
-                ? _resolvedThrust.ReadValue<Vector2>()
+            _thrustInput = PrimaryAction != null
+                ? PrimaryAction.ReadValue<Vector2>()
                 : Vector2.zero;
 
             if (Sub?.O2 != null) Sub.O2.IsThrusting = _thrustInput.sqrMagnitude > 0.01f;

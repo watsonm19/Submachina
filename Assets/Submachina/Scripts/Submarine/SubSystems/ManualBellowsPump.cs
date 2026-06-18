@@ -104,8 +104,6 @@ namespace Submachina.Core
         [Tooltip("Button InputAction for the pump. If unassigned, Spacebar is used as a fallback.")]
         [SerializeField] private InputActionReference pumpAction;
 
-        private InputAction _resolvedPump;
-
         // =====================
         // Events
         // =====================
@@ -235,12 +233,9 @@ namespace Submachina.Core
         protected override void Awake()
         {
             base.Awake();
-            _resolvedPump = ResolveAction(pumpAction);
+            RegisterAction(pumpAction);
         }
 
-        /** Router registration is handled by SweetSpotPump; here we just toggle our input. */
-        protected override void OnPumpEnabled()  => _resolvedPump?.Enable();
-        protected override void OnPumpDisabled() => _resolvedPump?.Disable();
 
         private void Update()
         {
@@ -335,13 +330,13 @@ namespace Submachina.Core
         }
 
         private bool GetPumpPressed() =>
-            _resolvedPump != null
-                ? _resolvedPump.WasPressedThisFrame()
+            PrimaryAction != null
+                ? PrimaryAction.WasPressedThisFrame()
                 : Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
 
         private bool GetPumpReleased() =>
-            _resolvedPump != null
-                ? _resolvedPump.WasReleasedThisFrame()
+            PrimaryAction != null
+                ? PrimaryAction.WasReleasedThisFrame()
                 : Keyboard.current != null && Keyboard.current.spaceKey.wasReleasedThisFrame;
 
         // -------------------------------------------------------

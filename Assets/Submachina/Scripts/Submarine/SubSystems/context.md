@@ -2,9 +2,13 @@
 
 These are the modular subsystems that make up a submarine. Each extends **SubmarineComponent** and is reached from siblings via the facade (`Sub.O2`, `Sub.Physics`, etc.). Most ship as prefabs under `Prefabs/SubSystems`, slotted into a `SubmarineConfig` and assembled by `Submarine.Build()`. See `../context.md` for the facade and feedback overview.
 
-## Base class
+## Base classes
 
-- **SubmarineComponent** — abstract base. `Awake()` does `GetComponentInParent<Submarine>()` then `Sub.Register(this)`; `OnDestroy()` unregisters. Derived classes call `base.Awake()` first. This auto-registration is what enables **runtime swapping** (destroy old, instantiate new — the registry stays current) and upgrade-gated loadouts. An editor-only banner reads the component's `[UsesFeedbacks]` attribute and renders the feedback keys as chips.
+- **SubmarineComponent** — abstract base for all submarine subsystems. `Awake()` does `GetComponentInParent<Submarine>()` then `Sub.Register(this)`; `OnDestroy()` unregisters. Derived classes call `base.Awake()` first. This auto-registration enables **runtime swapping** (destroy old, instantiate new — the registry stays current). An editor-only banner reads the component's `[UsesFeedbacks]` attribute and renders the feedback keys as chips. Also provides `ResolveAction(InputActionReference)` and `HasMouseInput` for the per-player input system.
+
+- **InputSubmarineComponent** — intermediate base for any subsystem that reads player input (extends `SubmarineComponent`). Eliminates the per-component boilerplate of declaring/resolving/enabling/disabling actions. Subclasses call `RegisterAction(ref)` in Awake; the base handles enable/disable lifecycle in `virtual OnEnable`/`OnDisable`, and `PrimaryAction` exposes the first (usually only) registered action. Supports N actions per component and runtime rebinding via `RebindActions()` (called by `SubmarineInputModule.Reassign`). A green "Input" sub-banner renders action names as chips in the inspector.
+
+- **SweetSpotPump** — abstract base for sweet-spot timing pumps (`extends InputSubmarineComponent, ISweetSpotPump`). Owns router registration in `sealed override OnEnable/OnDisable` (chains base action lifecycle + `Sub.Pumps.Register/Unregister` + `OnPumpEnabled`/`OnPumpDisabled` hooks). The sealed methods prevent derived pumps from accidentally losing registration; pump-specific work goes in the hooks. New pumps get correct action lifecycle and registration for free.
 
 ## Routers (arbitration & decoupling)
 
@@ -30,9 +34,7 @@ These are the modular subsystems that make up a submarine. Each extends **Submar
 
 ## Pump system (sweet-spot air mechanics)
 
-All pumps extend the **SweetSpotPump** base (`SubmarineComponent` + `ISweetSpotPump`) and bind the **same** pump InputAction; the `SubmarinePumpRouter.Active` pump owns the input and the shared `BellowsBar`. The interface exposes the read state the router/HUD need: `ChargeProgress`, `IsInSweetSpot`, `SweetSpotMin/Max`, `IsAirLocked`, `IsOnCooldown`, plus `WantsControl` and `ControlPriority` for arbitration.
-
-- **SweetSpotPump** — abstract base that owns the one bit of lifecycle every pump must get right: router registration. It registers in both `OnEnable` **and** `Start` (the Start call is the fallback for the Awake-order race — on a runtime-instantiated/enabled sub a pump's `OnEnable` can run before `SubmarinePumpRouter` has registered with `Submarine`, so `Sub.Pumps` is null and the OnEnable register no-ops; `Register` is duplicate-safe). These lifecycle methods are non-virtual so a pump can't override registration away — pump-specific enable/disable work (input actions, ring overrides) goes in the `OnPumpEnabled`/`OnPumpDisabled` hooks. New pumps get correct registration for free.
+All pumps extend the **SweetSpotPump** base (`InputSubmarineComponent` + `ISweetSpotPump`) and bind the **same** pump InputAction; the `SubmarinePumpRouter.Active` pump owns the input and the shared `BellowsBar`. The interface exposes the read state the router/HUD need: `ChargeProgress`, `IsInSweetSpot`, `SweetSpotMin/Max`, `IsAirLocked`, `IsOnCooldown`, plus `WantsControl` and `ControlPriority` for arbitration. See the base classes section above for `SweetSpotPump`'s lifecycle.
 
 - **ManualBellowsPump** — the always-on baseline (`ControlPriority 0`, `WantsControl = enableManualPumping`). Hold-to-charge with a sweet-spot window; a Perfect/Weak release calls `Sub.O2.AddAir(...)`, overshoot vents for nothing. Anti-spam **Air Lock** after rapid presses, plus a post-Perfect cooldown. `IsActivePump` reads `Sub.Pumps.IsActive(this)` (defaults true if no router exists, so it runs solo); when not active it cancels any in-flight charge so it can't stick. Plays `PumpCharge`/`PumpPerfect`/`PumpWeak`/`AirLock`.
 - **O2PickupPump** — contextual intake pump (`ControlPriority 10`, outranks manual). Runs a looping 0→1 charge; pressing while looping grades the collect by timing (sweet spot = full reward, otherwise weak) and routes air via `O2Pickup.Collect(Sub, multiplier)`. `WantsControl` while looping **or** a pickup is in range. With `autoActivateInRange` it starts on range-enter and stops quietly when the last pickup leaves; `requirePickupToStart` gates manual starts. No cooldown. Detects pickups via `Physics2D.OverlapCircleAll`; draws a procedural LineRenderer ring.

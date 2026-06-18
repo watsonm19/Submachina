@@ -124,8 +124,6 @@ namespace Submachina.Core
         [Tooltip("Button InputAction for the pump. If unassigned, Spacebar is used as a fallback.")]
         [SerializeField] private InputActionReference pumpAction;
 
-        private InputAction _resolvedPump;
-
         // =====================
         // Events
         // =====================
@@ -247,16 +245,11 @@ namespace Submachina.Core
         protected override void Awake()
         {
             base.Awake();
-            _resolvedPump = ResolveAction(pumpAction);
+            RegisterAction(pumpAction);
         }
-
-        /** Router registration is handled by SweetSpotPump; here we toggle input and the ring. */
-        protected override void OnPumpEnabled() => _resolvedPump?.Enable();
 
         protected override void OnPumpDisabled()
         {
-            _resolvedPump?.Disable();
-
             // Release ring override when disabled so the detector resets cleanly
             Sub?.PickupRange?.ClearRingOverride();
         }
@@ -326,8 +319,8 @@ namespace Submachina.Core
         }
 
         private bool GetPumpPressed() =>
-            _resolvedPump != null
-                ? _resolvedPump.WasPressedThisFrame()
+            PrimaryAction != null
+                ? PrimaryAction.WasPressedThisFrame()
                 : Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
 
         // -------------------------------------------------------

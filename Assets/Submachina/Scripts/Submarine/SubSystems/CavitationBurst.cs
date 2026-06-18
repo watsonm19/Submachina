@@ -32,7 +32,7 @@ namespace Submachina.Core
      */
     [RequireComponent(typeof(Rigidbody2D))]
     [UsesFeedbacks(nameof(SubFeedbacks.DashStart), nameof(SubFeedbacks.DashEnd), nameof(SubFeedbacks.DashReady))]
-    public class CavitationBurst : SubmarineComponent
+    public class CavitationBurst : InputSubmarineComponent
     {
         // =====================
         // Input
@@ -41,8 +41,6 @@ namespace Submachina.Core
         [FoldoutGroup("Input")]
         [Tooltip("Button InputAction that triggers the burst.")]
         [SerializeField] private InputActionReference burstAction;
-
-        private InputAction _resolvedBurst;
 
         // =====================
         // Burst Settings
@@ -130,7 +128,7 @@ namespace Submachina.Core
             base.Awake();
             _rb = GetComponent<Rigidbody2D>();
             _spriteRenderer = GetComponent<SpriteRenderer>();
-            _resolvedBurst = ResolveAction(burstAction);
+            RegisterAction(burstAction);
         }
 
         private void Start()
@@ -142,19 +140,9 @@ namespace Submachina.Core
             if (_spriteRenderer != null) _originalColor = _spriteRenderer.color;
         }
 
-        private void OnEnable()
-        {
-            _resolvedBurst?.Enable();
-        }
-
-        private void OnDisable()
-        {
-            _resolvedBurst?.Disable();
-        }
-
         private void Update()
         {
-            if (_resolvedBurst != null && _resolvedBurst.WasPressedThisFrame())
+            if (PrimaryAction != null && PrimaryAction.WasPressedThisFrame())
                 TryBurst();
 
             // Fire the "ready again" cue exactly once when the cooldown elapses,

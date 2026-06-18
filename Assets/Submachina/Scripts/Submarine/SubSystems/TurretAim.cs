@@ -23,7 +23,7 @@ namespace Submachina.Core
      *   3. Assign the action reference to Aim Action below.
      *   Mouse fallback requires no extra setup — it reads Mouse.current automatically.
      */
-    public class TurretAim : SubmarineComponent
+    public class TurretAim : InputSubmarineComponent
     {
         // =====================
         // Input
@@ -33,8 +33,6 @@ namespace Submachina.Core
         [Tooltip("Vector2 action bound to the gamepad right stick. " +
                  "When this stick is pushed past the deadzone it overrides mouse aim.")]
         [SerializeField] private InputActionReference aimAction;
-
-        private InputAction _resolvedAim;
 
         [FoldoutGroup("Input")]
         [Tooltip("Minimum stick magnitude to be treated as intentional input. " +
@@ -72,21 +70,11 @@ namespace Submachina.Core
         {
             base.Awake();
             _camera = Camera.main;
-            _resolvedAim = ResolveAction(aimAction);
+            RegisterAction(aimAction);
 
             // Gamepad-only players start in gamepad mode so they don't
             // begin aiming at the mouse cursor on the first frame
             _gamepadMode = !HasMouseInput;
-        }
-
-        private void OnEnable()
-        {
-            _resolvedAim?.Enable();
-        }
-
-        private void OnDisable()
-        {
-            _resolvedAim?.Disable();
         }
 
         private void Update()
@@ -110,9 +98,9 @@ namespace Submachina.Core
         private void UpdateActiveDevice()
         {
             // Gamepad stick pushed → enter gamepad mode
-            if (_resolvedAim != null)
+            if (PrimaryAction != null)
             {
-                Vector2 stick = _resolvedAim.ReadValue<Vector2>();
+                Vector2 stick = PrimaryAction.ReadValue<Vector2>();
                 if (stick.magnitude > stickDeadzone)
                 {
                     _gamepadMode = true;
@@ -148,8 +136,8 @@ namespace Submachina.Core
 
         private Vector2 GetStickDirection()
         {
-            if (_resolvedAim == null) return Vector2.zero;
-            return _resolvedAim.ReadValue<Vector2>();
+            if (PrimaryAction == null) return Vector2.zero;
+            return PrimaryAction.ReadValue<Vector2>();
         }
 
         /**

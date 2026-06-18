@@ -23,7 +23,7 @@ namespace Submachina.Core
      *   5. Set Mining Layer to the "Resource" layer.
      */
     [UsesFeedbacks(nameof(SubFeedbacks.MiningActive), nameof(SubFeedbacks.MiningCollect))]
-    public class MiningLaser : SubmarineComponent
+    public class MiningLaser : InputSubmarineComponent
     {
         // =====================
         // References
@@ -40,8 +40,6 @@ namespace Submachina.Core
         [FoldoutGroup("Input")]
         [Tooltip("Hold InputAction that fires the mining laser. Create a 'Mine' Button action and assign it here.")]
         [SerializeField] private InputActionReference mineAction;
-
-        private InputAction _resolvedMine;
 
         // =====================
         // Mining Settings
@@ -89,25 +87,20 @@ namespace Submachina.Core
         {
             base.Awake();
             _miningDuration = miningDuration;
-            _resolvedMine = ResolveAction(mineAction);
+            RegisterAction(mineAction);
         }
 
-        private void OnEnable()
+        protected override void OnDisable()
         {
-            _resolvedMine?.Enable();
-        }
-
-        private void OnDisable()
-        {
-            _resolvedMine?.Disable();
+            base.OnDisable();
             StopLaser();
         }
 
         private void Update()
         {
-            if (_resolvedMine == null || Sub?.Turret == null || beamVFX == null) return;
+            if (PrimaryAction == null || Sub?.Turret == null || beamVFX == null) return;
 
-            bool firing = _resolvedMine.IsPressed()
+            bool firing = PrimaryAction.IsPressed()
                 && (Sub?.O2 == null || Sub.O2.CurrentAirPressure > 0f);
             if (Sub?.O2 != null) Sub.O2.IsMining = firing;
 

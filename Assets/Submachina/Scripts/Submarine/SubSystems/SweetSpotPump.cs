@@ -3,8 +3,10 @@ namespace Submachina.Core
     /**
      * Shared base for every sweet-spot timing pump (ManualBellowsPump, O2PickupPump).
      *
-     * Owns the one piece of lifecycle every pump must get right: registering with
-     * the sub's SubmarinePumpRouter so the router can arbitrate which pump is Active
+     * Extends InputSubmarineComponent so registered actions are automatically
+     * enabled/disabled with the component. On top of that, owns the one piece
+     * of lifecycle every pump must get right: registering with the sub's
+     * SubmarinePumpRouter so the router can arbitrate which pump is Active
      * and BellowsBar can follow it. Registration happens in BOTH OnEnable and Start:
      *
      *   - OnEnable is the normal path.
@@ -14,14 +16,14 @@ namespace Submachina.Core
      *     Sub.Pumps null so the OnEnable Register no-ops. By Start the slot is
      *     populated. Register() is duplicate-safe, so the double call is harmless.
      *
-     * These lifecycle methods are intentionally not virtual: a pump can't accidentally
-     * override away its own registration. Pump-specific enable/disable work (input
-     * actions, ring overrides, etc.) goes in the OnPumpEnabled/OnPumpDisabled hooks.
+     * OnEnable/OnDisable are sealed: a pump can't accidentally override away its
+     * own registration or action lifecycle. Pump-specific enable/disable work
+     * (ring overrides, etc.) goes in the OnPumpEnabled/OnPumpDisabled hooks.
      *
      * Derived pumps implement the ISweetSpotPump contract (declared abstract here) and
      * may override Awake — calling base.Awake() first, per SubmarineComponent.
      */
-    public abstract class SweetSpotPump : SubmarineComponent, ISweetSpotPump
+    public abstract class SweetSpotPump : InputSubmarineComponent, ISweetSpotPump
     {
         // =====================
         // ISweetSpotPump — implemented by derived pumps
@@ -55,9 +57,10 @@ namespace Submachina.Core
         // Router Registration (owned here, once)
         // =====================
 
-        /** Registers with the router and runs the pump's own enable logic. */
-        protected void OnEnable()
+        /** Enables registered actions, registers with the router, then runs the pump hook. */
+        protected sealed override void OnEnable()
         {
+            base.OnEnable();
             Sub?.Pumps?.Register(this);
             OnPumpEnabled();
         }
@@ -68,9 +71,10 @@ namespace Submachina.Core
             Sub?.Pumps?.Register(this);
         }
 
-        /** Unregisters from the router and runs the pump's own disable logic. */
-        protected void OnDisable()
+        /** Disables registered actions, unregisters from the router, then runs the pump hook. */
+        protected sealed override void OnDisable()
         {
+            base.OnDisable();
             Sub?.Pumps?.Unregister(this);
             OnPumpDisabled();
         }
@@ -79,10 +83,10 @@ namespace Submachina.Core
         // Hooks for derived pumps
         // =====================
 
-        /** Called after the pump registers with the router. Enable input actions, etc. */
+        /** Called after action enable + router registration. Ring overrides, etc. */
         protected virtual void OnPumpEnabled() { }
 
-        /** Called after the pump unregisters from the router. Disable input, clear ring overrides, etc. */
+        /** Called after action disable + router unregistration. Clear ring overrides, etc. */
         protected virtual void OnPumpDisabled() { }
     }
 }

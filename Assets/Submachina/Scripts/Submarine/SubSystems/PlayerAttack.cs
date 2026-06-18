@@ -26,7 +26,7 @@ namespace Submachina.Core
      */
     [UsesFeedbacks(nameof(SubFeedbacks.AttackSwing))]
     [UsesAnchors(nameof(SubAnchors.Muzzle))]
-    public class PlayerAttack : SubmarineComponent
+    public class PlayerAttack : InputSubmarineComponent
     {
         // =====================
         // Attack Settings
@@ -59,8 +59,6 @@ namespace Submachina.Core
 
         [FoldoutGroup("Input")] [Tooltip("Button InputAction that triggers the attack.")] [SerializeField]
         private InputActionReference attackAction;
-
-        private InputAction _resolvedAttack;
 
         // =====================
         // Targeting
@@ -170,7 +168,7 @@ namespace Submachina.Core
         protected override void Awake()
         {
             base.Awake();
-            _resolvedAttack = ResolveAction(attackAction);
+            RegisterAction(attackAction);
         }
 
         private void Start()
@@ -179,19 +177,9 @@ namespace Submachina.Core
             UpdateArcGeometry();
         }
 
-        private void OnEnable()
-        {
-            _resolvedAttack?.Enable();
-        }
-
-        private void OnDisable()
-        {
-            _resolvedAttack?.Disable();
-        }
-
         private void Update()
         {
-            if (_resolvedAttack != null && _resolvedAttack.WasPressedThisFrame())
+            if (PrimaryAction != null && PrimaryAction.WasPressedThisFrame())
                 TryAttack();
 
             // Announce readiness exactly once on the frame the cooldown elapses.
