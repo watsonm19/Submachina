@@ -53,6 +53,9 @@ namespace Submachina.Core
         private GameObject _o2BubblePrefab;
         private EnemySpawnConfig _passiveCreature;
         private EnemySpawnConfig _rammingEnemy;
+        private float _o2SizeMin;
+        private float _o2SizeMax;
+        private AnimationCurve _o2SizeDistribution;
 
         // -------------------------------------------------------
         // Initialization
@@ -62,11 +65,18 @@ namespace Submachina.Core
          * Called by ChunkSpawner immediately after instantiation.
          * Spawned prefabs (resources, enemies, pickups) resolve their own
          * submarine dependencies via Submarine.All or collision context.
+         *
+         * o2SizeMin/o2SizeMax control the random size range for passive O2
+         * bubbles in this chunk — evaluated from ChunkSpawner's depth curves.
+         * o2SizeDistribution remaps the uniform roll to bias toward certain
+         * sizes (null = uniform distribution).
          */
         public void Initialize(float topY, float height, float halfWidth, float depth,
             GameObject rockPrefab, GameObject resourcePrefab,
             GameObject enemyPrefab, GameObject o2BubblePrefab,
-            EnemySpawnConfig passiveCreature, EnemySpawnConfig rammingEnemy)
+            EnemySpawnConfig passiveCreature, EnemySpawnConfig rammingEnemy,
+            float o2SizeMin = 1f, float o2SizeMax = 1f,
+            AnimationCurve o2SizeDistribution = null)
         {
             _topY = topY;
             _height = height;
@@ -77,6 +87,9 @@ namespace Submachina.Core
             _o2BubblePrefab = o2BubblePrefab;
             _passiveCreature = passiveCreature;
             _rammingEnemy = rammingEnemy;
+            _o2SizeMin = o2SizeMin;
+            _o2SizeMax = o2SizeMax;
+            _o2SizeDistribution = o2SizeDistribution;
 
             GenerateObstacles(depth);
             GenerateResources(depth);
@@ -189,9 +202,19 @@ namespace Submachina.Core
                 float x = Random.Range(-_halfWidth * 0.7f, _halfWidth * 0.7f);
                 float y = Random.Range(_topY - _height + 1f, _topY - 1f);
 
-                Instantiate(_o2BubblePrefab,
+                GameObject bubble = Instantiate(_o2BubblePrefab,
                     new Vector3(transform.position.x + x, y, 0f),
                     Quaternion.identity, transform);
+
+                // Apply depth-driven size, remapped through the distribution curve
+                O2Pickup pickup = bubble.GetComponent<O2Pickup>();
+                if (pickup != null)
+                {
+                    float t = _o2SizeDistribution != null
+                        ? _o2SizeDistribution.Evaluate(Random.value)
+                        : Random.value;
+                    pickup.SetSize(Mathf.Lerp(_o2SizeMin, _o2SizeMax, t));
+                }
             }
         }
 

@@ -69,6 +69,59 @@ namespace Submachina.Core
             : "Main Camera (resolved at runtime)";
 
         // =====================
+        // O2 Size
+        // =====================
+
+        [FoldoutGroup("O2 Size")]
+        [Tooltip("Minimum O2 bubble size as a function of depth (metres). " +
+                 "X = depth, Y = minimum size passed to O2Pickup.SetSize().\n\n" +
+                 "Example: at 0m → min 0.5, at 300m → min 1.0.")]
+        [SerializeField]
+        private AnimationCurve o2SizeMinByDepth = AnimationCurve.Linear(0f, 0.5f, 300f, 1f);
+
+        [FoldoutGroup("O2 Size")]
+        [Tooltip("Maximum O2 bubble size as a function of depth (metres). " +
+                 "X = depth, Y = maximum size passed to O2Pickup.SetSize().\n\n" +
+                 "Example: at 0m → max 1.5, at 300m → max 4.0.")]
+        [SerializeField]
+        private AnimationCurve o2SizeMaxByDepth = AnimationCurve.Linear(0f, 1.5f, 300f, 4f);
+
+        [FoldoutGroup("O2 Size")]
+        [Tooltip("Remaps a uniform random roll [0,1] (X) to a normalized position " +
+                 "[0,1] (Y) between the depth-evaluated sizeMin and sizeMax.\n\n" +
+                 "Straight diagonal = uniform distribution.\n" +
+                 "Flat at bottom, steep rise = most bubbles small, rare large.")]
+        [SerializeField]
+        private AnimationCurve o2SizeDistribution = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+
+        [FoldoutGroup("O2 Size")]
+        [ShowInInspector, ReadOnly, LabelText("At 0m")]
+        private string PreviewShallow => DepthStats(0f);
+
+        [FoldoutGroup("O2 Size")]
+        [ShowInInspector, ReadOnly, LabelText("At 150m")]
+        private string PreviewMid => DepthStats(150f);
+
+        [FoldoutGroup("O2 Size")]
+        [ShowInInspector, ReadOnly, LabelText("At 300m")]
+        private string PreviewDeep => DepthStats(300f);
+
+        /** Computes distribution stats at a given depth for the preview labels. */
+        private string DepthStats(float depth)
+        {
+            if (o2SizeDistribution == null || o2SizeMinByDepth == null || o2SizeMaxByDepth == null)
+                return "—";
+
+            float min = o2SizeMinByDepth.Evaluate(depth);
+            float max = o2SizeMaxByDepth.Evaluate(depth);
+            if (min >= max) return $"all size {min:F1}";
+
+            float p50 = Mathf.Lerp(min, max, o2SizeDistribution.Evaluate(0.5f));
+            float p90 = Mathf.Lerp(min, max, o2SizeDistribution.Evaluate(0.9f));
+            return $"median {p50:F2},  top 10% >= {p90:F2}  (range {min:F1}–{max:F1})";
+        }
+
+        // =====================
         // World Settings
         // =====================
 
@@ -177,6 +230,10 @@ namespace Submachina.Core
             float centerX = cell.x * cellWidth + cellWidth * 0.5f;
             float depth   = Mathf.Max(0f, -topY);
 
+            // Evaluate O2 size range for this depth
+            float o2SizeMin = o2SizeMinByDepth.Evaluate(depth);
+            float o2SizeMax = o2SizeMaxByDepth.Evaluate(depth);
+
             GameObject cellGO = new GameObject($"Cell_{cell.x}_{cell.y}");
             cellGO.transform.SetParent(transform);
             cellGO.transform.position = new Vector3(centerX, topY, 0f);
@@ -185,7 +242,8 @@ namespace Submachina.Core
             chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, depth,
                 rockPrefab, resourcePrefab,
                 enemyPrefab, o2BubblePrefab,
-                passiveCreature, rammingEnemy);
+                passiveCreature, rammingEnemy,
+                o2SizeMin, o2SizeMax, o2SizeDistribution);
 
             _chunks[cell] = chunk;
         }

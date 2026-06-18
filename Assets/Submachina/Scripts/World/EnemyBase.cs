@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using DG.Tweening;
 using Sirenix.OdinInspector;
@@ -27,12 +28,11 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Death Drops")]
-        [Tooltip("O2Pickup prefab scattered on death.")]
-        [SerializeField] private GameObject o2BubblePrefab;
-
-        [FoldoutGroup("Death Drops")]
-        [Tooltip("How many O2 bubbles to scatter. Passive/rare enemies warrant more.")]
-        [SerializeField, Min(0)] private int bubbleDropCount = 1;
+        [Tooltip("Drop configurations spawned on death. Each entry is a drop type " +
+                 "(O2, scrap, etc.) with its own prefab, count, and type-specific settings. " +
+                 "Use the type picker to add entries.")]
+        [SerializeReference]
+        private DropConfig[] deathDrops = Array.Empty<DropConfig>();
 
         // =====================
         // Intent Indicator
@@ -238,17 +238,11 @@ namespace Submachina.Core
         // Private Helpers
         // -------------------------------------------------------
 
-        /** Scatters O2 pickup prefabs in a small radius on death. */
+        /** Spawns all configured death drops (O2, scrap, etc.) at this enemy's position. */
         private void SpawnDeathDrops()
         {
-            for (int i = 0; i < bubbleDropCount; i++)
-            {
-                if (o2BubblePrefab == null) break;
-                Vector2 offset = Random.insideUnitCircle * 0.8f;
-                Instantiate(o2BubblePrefab,
-                    transform.position + (Vector3)offset,
-                    Quaternion.identity);
-            }
+            foreach (var drop in deathDrops)
+                drop?.Spawn(transform.position);
         }
 
         /** Flips the sprite to face the direction of horizontal movement. */

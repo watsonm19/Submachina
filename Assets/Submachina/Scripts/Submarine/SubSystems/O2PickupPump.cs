@@ -150,6 +150,11 @@ namespace Submachina.Core
         public UnityEvent OnPickupCollected;
 
         [FoldoutGroup("Events")]
+        [Tooltip("Fired with the exact air amount granted after all multipliers " +
+                 "(size × timing). Wire to FloatingTextPool.Show to display collection numbers.")]
+        public UnityEvent<float> OnAirCollected;
+
+        [FoldoutGroup("Events")]
         [Tooltip("Fired when the pump is stopped with no pickup in range and seizes up.")]
         public UnityEvent OnAirLock;
 
@@ -369,7 +374,7 @@ namespace Submachina.Core
 
             // Grade the reward by timing; Collect() routes the air into the tank
             bool inSweetSpot = _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax;
-            pickup.Collect(Sub, inSweetSpot ? sweetSpotRewardMultiplier : weakRewardMultiplier);
+            float airCollected = pickup.Collect(Sub, inSweetSpot ? sweetSpotRewardMultiplier : weakRewardMultiplier);
 
             _chargeProgress = 0f;
             _state = PumpState.Idle;
@@ -385,6 +390,7 @@ namespace Submachina.Core
                 Sub?.Feedbacks?.Play(SubFeedbacks.PumpWeak, transform.position);
                 OnWeakPickup?.Invoke();
             }
+            OnAirCollected?.Invoke(airCollected);
             OnPickupCollected?.Invoke();
             OnLoopStopped?.Invoke();
         }

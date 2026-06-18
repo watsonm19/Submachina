@@ -32,6 +32,46 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float capacityRestoreAmount = 10f;
 
         [FoldoutGroup("Settings")]
+        [Tooltip("Smallest size value that can be passed to SetSize(). " +
+                 "Sizes below this are clamped. Also defines the left edge of sizeRewardCurve's X axis.")]
+        [SerializeField, Min(0.1f)] private float sizeRangeMin = 0.5f;
+
+        [FoldoutGroup("Settings")]
+        [Tooltip("Largest size value that can be passed to SetSize(). " +
+                 "Sizes above this are clamped. Also defines the right edge of sizeRewardCurve's X axis.")]
+        [SerializeField, Min(0.1f)] private float sizeRangeMax = 5f;
+
+        [FoldoutGroup("Settings")]
+        [Tooltip("Maps bubble size (X axis) to a reward multiplier (Y axis). " +
+                 "Both replenishAmount and capacityRestoreAmount are scaled by this curve's output. " +
+                 "The X axis should span from sizeRangeMin to sizeRangeMax.")]
+        [InfoBox("$SizeRewardPreview")]
+        [SerializeField]
+        private AnimationCurve sizeRewardCurve = AnimationCurve.Linear(0.5f, 0.3f, 5f, 15f);
+
+        private string SizeRewardPreview
+        {
+            get
+            {
+                if (sizeRewardCurve == null) return "No curve assigned.";
+                if (sizeRangeMin >= sizeRangeMax) return "sizeRangeMin must be less than sizeRangeMax.";
+
+                // Sample 5 evenly spaced points across the size range
+                string result = "";
+                for (int i = 0; i <= 4; i++)
+                {
+                    float size = Mathf.Lerp(sizeRangeMin, sizeRangeMax, i / 4f);
+                    float mult = sizeRewardCurve.Evaluate(size);
+                    float air = replenishAmount * mult;
+                    float cap = capacityRestoreAmount * mult;
+                    if (i > 0) result += "\n";
+                    result += $"Size {size:F1}:  x{mult:F1} mult  ->  {air:F1} air, {cap:F1} cap";
+                }
+                return result;
+            }
+        }
+
+        [FoldoutGroup("Settings")]
         [Tooltip("If true, the player collects this pickup just by touching it. " +
                  "Disabled by default — collection now goes through O2PickupPump's " +
                  "sweet spot mechanic, which calls Collect() directly.")]
@@ -45,15 +85,66 @@ namespace Submachina.Core
                  "Wire VFX/SFX (e.g. a ripple emit) here.")]
         public UnityEvent onCollected;
 
+        // =====================
+        // Debug
+        // =====================
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        private float SizeMultiplier => _sizeMultiplier;
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector, LabelText("Effective Air")]
+        private float EffectiveAir => replenishAmount * _sizeMultiplier;
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector, LabelText("Effective Capacity")]
+        private float EffectiveCapacity => capacityRestoreAmount * _sizeMultiplier;
+
+        // =====================
+        // State
+        // =====================
+
+        private Vector3 _baseScale;
+        private float _sizeMultiplier = 1f;
+
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
 
         private void Awake()
         {
+            // Capture the prefab's authored scale so SetSize works relative to it
+            _baseScale = transform.localScale;
+
             // Ensure the collider is a trigger — pickups should never block movement
             Collider2D col = GetComponent<Collider2D>();
             col.isTrigger = true;
+        }
+
+        // -------------------------------------------------------
+        // Size Configuration
+        // -------------------------------------------------------
+
+        /**
+         * Configures this pickup's visual size and reward multiplier.
+         * Call immediately after Instantiate().
+         *
+         * The size value scales relative to the prefab's authored scale —
+         * size 1.0 preserves the original visual, size 3.0 makes it 3x larger.
+         * The reward multiplier is evaluated from sizeRewardCurve independently,
+         * so large bubbles can grant disproportionately more air than their
+         * visual size suggests.
+         *
+         * Example: size=2.0, curve maps 2.0→3.0 → bubble is 2x bigger and
+         * grants 3x the base replenish/capacity amounts.
+         */
+        public void SetSize(float size)
+        {
+            size = Mathf.Clamp(size, sizeRangeMin, sizeRangeMax);
+
+            // Visual: scale relative to the prefab's authored scale
+            transform.localScale = _baseScale * size;
+
+            // Reward: evaluate the designer-tuned curve
+            _sizeMultiplier = sizeRewardCurve.Evaluate(size);
         }
 
         // -------------------------------------------------------
@@ -75,26 +166,32 @@ namespace Submachina.Core
         }
 
         /**
-         * Restores O2 and destroys this pickup.
-         * Separated from OnTriggerEnter2D so it can be called from
-         * other systems (e.g., O2PickupPump, or a magnet upgrade).
+         * Restores O2 and destroys this pickup. Returns the actual air amount
+         * added (after size and timing multipliers) so callers can display it.
          *
          * airMultiplier scales the air granted — lets the collector grade the
-         * reward by timing quality. Example: replenishAmount=10, multiplier=0.35
-         * → a weak pump stop restores 3.5 air instead of 10.
+         * reward by timing quality. This is orthogonal to the size multiplier:
+         * both stack multiplicatively.
+         *
+         * Example: replenishAmount=10, sizeMultiplier=3.0, airMultiplier=0.35
+         * → weak pump on a large bubble restores 10 * 3.0 * 0.35 = 10.5 air.
          */
-        public void Collect(Submarine sub, float airMultiplier = 1f)
+        public float Collect(Submarine sub, float airMultiplier = 1f)
         {
+            float airAmount = 0f;
+
             if (sub?.O2 != null)
             {
-                sub.O2.RestoreCapacity(capacityRestoreAmount);
-                sub.O2.AddAir(replenishAmount * airMultiplier);
+                sub.O2.RestoreCapacity(capacityRestoreAmount * _sizeMultiplier);
+                airAmount = replenishAmount * _sizeMultiplier * airMultiplier;
+                sub.O2.AddAir(airAmount);
             }
             else
                 Debug.LogWarning("[O2Pickup] No Submarine O2System available — pickup consumed but air not restored.");
 
             onCollected?.Invoke();
             Destroy(gameObject);
+            return airAmount;
         }
     }
 }
