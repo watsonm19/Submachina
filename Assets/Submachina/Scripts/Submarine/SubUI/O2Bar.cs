@@ -1,41 +1,31 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityAtoms.BaseAtoms;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
 {
     /**
-     * Drives a UI Image fill to display the player's current O2 level.
+     * Drives a UI Image fill to display its submarine's current O2 level.
      *
-     * Reads the CurrentO2 atom each frame and sets the Image's fillAmount
-     * to a 0-1 normalised value. Also tints the bar based on O2 level:
-     * healthy (cyan) → low (yellow) → critical/empty (red).
+     * Reads air state live off the owning submarine each frame (Sub.O2) and sets
+     * the Image's fillAmount to a 0-1 normalised value. Also tints the bar based
+     * on O2 level: healthy (cyan) → low (yellow) → critical/empty (red).
+     *
+     * As a SubmarineObserver it resolves its sub from the hierarchy, so each
+     * player's HUD reads its own air tank with no shared global state — drop one
+     * inside each sub's Player Canvas and local multiplayer just works.
      *
      * Setup:
-     *   1. Create a Canvas (Screen Space – Overlay).
-     *   2. Add a child Image, set Image Type to Filled, Fill Method to Horizontal.
+     *   1. Place this Image under the submarine root (e.g. its Player Canvas).
+     *   2. Set Image Type to Filled, Fill Method to Horizontal.
      *   3. Attach this script to that Image's GameObject.
-     *   4. Assign the CurrentO2 atom and O2System reference.
      */
     [RequireComponent(typeof(Image))]
-    public class O2Bar : MonoBehaviour
+    public class O2Bar : SubmarineObserver
     {
         // =====================
         // References
         // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("The CurrentO2 atom written by O2System. Used to read the live O2 value.")]
-        [SerializeField] private FloatVariable currentO2;
-
-        [FoldoutGroup("References")]
-        [Tooltip("Atom written by O2System with the current dynamic max capacity.")]
-        [SerializeField] private FloatVariable maxAirCapacity;
-
-        [FoldoutGroup("References")]
-        [Tooltip("Atom written once by O2System with the original max capacity ceiling.")]
-        [SerializeField] private FloatVariable originalMaxAir;
 
         [FoldoutGroup("References")]
         [Tooltip("A second Filled Image (same rect as the main bar, placed behind it in the hierarchy) " +
@@ -74,8 +64,9 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();   // resolves Sub from the hierarchy
             _barImage = GetComponent<Image>();
         }
 
@@ -89,8 +80,9 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Calculates the normalised fill (0-1) from the atom value and maxO2,
-         * then updates both the fill amount and the tint color.
+         * Calculates the normalised fill (0-1) from the sub's air state, then
+         * updates both the fill amount and the tint color. The ghost capacity
+         * bar tracks the current (degraded) max against the original ceiling.
          *
          * Color transitions:
          *   fill > lowThreshold  → healthyColor
@@ -99,11 +91,13 @@ namespace Submachina.Core
          */
         private void UpdateBar()
         {
-            if (currentO2 == null || originalMaxAir == null) return;
+            // Resolve the air system off the facade; bail until the sub is ready
+            O2System o2 = Sub != null ? Sub.O2 : null;
+            if (o2 == null) return;
 
-            float ceiling = originalMaxAir.Value;
-            float fill    = ceiling > 0f ? currentO2.Value / ceiling : 0f;
-            float maxFill = ceiling > 0f && maxAirCapacity != null ? maxAirCapacity.Value / ceiling : 0f;
+            float ceiling = o2.OriginalMaxAir;
+            float fill    = ceiling > 0f ? o2.CurrentAirPressure / ceiling : 0f;
+            float maxFill = ceiling > 0f ? o2.MaxAir / ceiling : 0f;
 
             _barImage.fillAmount = fill;
             if (capacityBar != null) capacityBar.fillAmount = maxFill;

@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityAtoms.BaseAtoms;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -8,31 +7,20 @@ namespace Submachina.Core
     /**
      * Drives a UI Image fill to display its submarine's current health.
      *
-     * Subscribes to the currentHealth atom — a normalized 0-1 value written by
-     * Health whenever HP changes — and repaints only on change. No Submarine
-     * lookup, no explicit Health reference, and no per-frame polling: the bar is
-     * fully decoupled from the submarine hierarchy. Mirrors O2Bar's atom-driven
-     * approach (O2Bar polls its atom each frame; this bar is event-driven since
-     * health changes infrequently).
+     * Reads the normalised HealthPercent (0-1) live off the owning submarine
+     * (Sub.Health) and repaints only when it changes — health changes
+     * infrequently, so a cheap per-frame compare avoids needless work without
+     * any event wiring. As a SubmarineObserver it resolves its sub from the
+     * hierarchy, so each player's HUD tracks its own health with no shared
+     * global state.
      *
      * Setup:
-     *   1. Place this Image somewhere under the submarine root (e.g. a
-     *      per-sub world/screen-space Canvas in the submarine hierarchy).
+     *   1. Place this Image under the submarine root (e.g. its Player Canvas).
      *   2. Set Image Type → Filled, Fill Method → Horizontal.
-     *   3. Assign the same currentHealth atom that the submarine's Health writes.
      */
     [RequireComponent(typeof(Image))]
-    public class HealthBar : MonoBehaviour
+    public class HealthBar : SubmarineObserver
     {
-        // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("Normalized health atom (0-1) written by Health. The bar subscribes " +
-                 "to this atom's Changed event and repaints whenever health changes.")]
-        [SerializeField] private FloatVariable currentHealth;
-
         // =====================
         // Colors
         // =====================
@@ -64,33 +52,27 @@ namespace Submachina.Core
         // =====================
 
         private Image _barImage;
+        private float _lastFill = -1f;   // sentinel so the first valid read always paints
 
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();   // resolves Sub from the hierarchy
             _barImage = GetComponent<Image>();
         }
 
-        /**
-         * Subscribes to the atom's Changed event and paints the current value
-         * immediately, so the bar is correct before the first change fires.
-         */
-        private void OnEnable()
+        private void Update()
         {
-            if (currentHealth != null)
-            {
-                currentHealth.Changed.Register(UpdateBar);
-                UpdateBar(currentHealth.Value);
-            }
-        }
+            // Resolve health off the facade; bail until the sub is ready
+            Health health = Sub != null ? Sub.Health : null;
+            if (health == null) return;
 
-        /** Unsubscribes to avoid dangling listeners when disabled or destroyed. */
-        private void OnDisable()
-        {
-            if (currentHealth != null) currentHealth.Changed.Unregister(UpdateBar);
+            // Repaint only when the value actually changes
+            float fill = health.HealthPercent;
+            if (!Mathf.Approximately(fill, _lastFill)) UpdateBar(fill);
         }
 
         // -------------------------------------------------------
@@ -99,7 +81,6 @@ namespace Submachina.Core
 
         /**
          * Sets fill amount and tint from a normalized health value (already 0-1).
-         * Invoked by the currentHealth atom's Changed event.
          *
          * Color transitions:
          *   fill > lowThreshold       → healthyColor
@@ -108,8 +89,7 @@ namespace Submachina.Core
          */
         private void UpdateBar(float fill)
         {
-            if (_barImage == null) return;
-
+            _lastFill = fill;
             _barImage.fillAmount = fill;
 
             if (fill <= criticalThreshold)

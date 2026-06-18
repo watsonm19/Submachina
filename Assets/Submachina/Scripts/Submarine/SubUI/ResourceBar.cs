@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using UnityAtoms.BaseAtoms;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -8,29 +7,19 @@ namespace Submachina.Core
     /**
      * Drives a UI Image fill to show progress toward the next level up.
      *
-     * Reads currentResources and resourceThreshold atoms each frame.
-     * Fill = currentResources / resourceThreshold, giving a 0-1 progress bar
-     * that resets each level as the threshold increases.
+     * Reads its submarine's resource progress live each frame (Sub.Resources):
+     * fill = CurrentResources / CurrentThreshold, giving a 0-1 progress bar that
+     * resets each level as the threshold increases. As a SubmarineObserver it
+     * resolves its sub from the hierarchy, so each player's bar tracks its own
+     * progression with no shared global state.
      *
      * Setup:
-     *   1. Add another Image to the HUD Canvas, set Type → Filled, Horizontal.
-     *   2. Attach this script and assign both atoms from the Data/ folder.
+     *   1. Add an Image to the sub's Player Canvas, set Type → Filled, Horizontal.
+     *   2. Attach this script.
      */
     [RequireComponent(typeof(Image))]
-    public class ResourceBar : MonoBehaviour
+    public class ResourceBar : SubmarineObserver
     {
-        // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("CurrentResources atom — written by ResourceManager on each collection.")]
-        [SerializeField] private FloatVariable currentResources;
-
-        [FoldoutGroup("References")]
-        [Tooltip("ResourceThreshold atom — the target for the current level.")]
-        [SerializeField] private FloatVariable resourceThreshold;
-
         // =====================
         // Colors
         // =====================
@@ -53,17 +42,11 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();   // resolves Sub from the hierarchy
             _barImage = GetComponent<Image>();
             _barImage.fillAmount = 0f;
-        }
-
-        private void Start()
-        {
-            // Read atoms after all Awake calls have run so ResourceManager
-            // has already written its initial values to the atoms
-            UpdateBar();
         }
 
         private void Update()
@@ -77,10 +60,14 @@ namespace Submachina.Core
 
         private void UpdateBar()
         {
-            if (currentResources == null || resourceThreshold == null) return;
-            if (resourceThreshold.Value <= 0f) { _barImage.fillAmount = 0f; return; }
+            // Resolve the resource manager off the facade; bail until the sub is ready
+            ResourceManager resources = Sub != null ? Sub.Resources : null;
+            if (resources == null) return;
 
-            float fill = Mathf.Clamp01(currentResources.Value / resourceThreshold.Value);
+            // Guard against a zero threshold (no valid progression target yet)
+            if (resources.CurrentThreshold <= 0f) { _barImage.fillAmount = 0f; return; }
+
+            float fill = Mathf.Clamp01(resources.CurrentResources / resources.CurrentThreshold);
             _barImage.fillAmount = fill;
             _barImage.color = Color.Lerp(emptyColor, fullColor, fill);
         }

@@ -13,10 +13,9 @@ namespace Submachina.Core
      * automatically when MaxScrap changes (e.g. from an upgrade), so the
      * number of dots always matches the current cap.
      *
-     * The ScrapManager source resolves to the owning Submarine (Sub.Scrap) via
-     * GetComponentInParent, so place this display inside the submarine hierarchy.
-     * An explicit override may still be assigned. The Submarine reference is
-     * cached in Awake, but Sub.Scrap is polled in Update so the display tolerates
+     * As a SubmarineObserver the ScrapManager source resolves to the owning
+     * Submarine (Sub.Scrap) via the hierarchy, so place this display inside the
+     * submarine hierarchy. Sub.Scrap is polled in Update so the display tolerates
      * Awake ordering and runtime scrap-module swaps.
      *
      * Setup:
@@ -25,14 +24,11 @@ namespace Submachina.Core
      *   3. Attach this script to the root and assign the sprite/layout references.
      *   4. Supply two small circle/dot sprites: one empty, one filled.
      */
-    public class ScrapDisplay : MonoBehaviour
+    public class ScrapDisplay : SubmarineObserver
     {
         // =====================
         // References
         // =====================
-
-        /** Owning submarine, resolved once in Awake. Null if not under a Submarine. */
-        private Submarine _sub;
 
         [FoldoutGroup("References")]
         [Tooltip("Parent transform with a HorizontalLayoutGroup. Dots are spawned as children of this.")]
@@ -78,17 +74,11 @@ namespace Submachina.Core
         // Lifecycle
         // -------------------------------------------------------
 
-        private void Awake()
-        {
-            // Resolve the owning submarine now (safe regardless of Awake order);
-            // its Scrap slot is read later in Update, after registration settles.
-            _sub = GetComponentInParent<Submarine>();
-        }
-
         private void Update()
         {
-            // Prefer an explicit override; fall back to the submarine facade.
-            ScrapManager scrap = _sub != null ? _sub.Scrap : null;
+            // Resolve the scrap manager off the facade; its slot settles after
+            // registration, so we poll here rather than caching in Awake.
+            ScrapManager scrap = Sub != null ? Sub.Scrap : null;
             if (scrap == null) return;
 
             // Rebuild dot layout if the capacity has changed (e.g. from an upgrade)

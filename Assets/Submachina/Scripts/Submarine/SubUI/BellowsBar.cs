@@ -26,7 +26,7 @@ namespace Submachina.Core
      *   2. Ensure a SubmarinePumpRouter and at least one pump live on the sub.
      *   3. Tweak WorldOffset to position above the sub sprite.
      */
-    public class BellowsBar : SubmarineComponent
+    public class BellowsBar : SubmarineObserver
     {
         // =====================
         // Layout

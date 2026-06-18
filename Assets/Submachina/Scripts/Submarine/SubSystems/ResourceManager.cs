@@ -69,7 +69,10 @@ namespace Submachina.Core
         private float _currentResources;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private float CurrentThreshold => baseThreshold + (_currentLevel * thresholdIncrement);
+        public float CurrentThreshold => baseThreshold + (_currentLevel * thresholdIncrement);
+
+        /** Resources banked toward the next level (0 to CurrentThreshold). Read by ResourceBar. */
+        public float CurrentResources => _currentResources;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private float ProgressPercent => CurrentThreshold > 0f ? (_currentResources / CurrentThreshold) * 100f : 0f;
