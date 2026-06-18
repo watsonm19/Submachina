@@ -9,15 +9,14 @@ namespace Submachina.Core
      * O2System — the submarine's air tank and core survival pressure system.
      *
      * Single source of truth for all air state. Owns:
-     *   - Current air pressure and dynamic max capacity
+     *   - Current air pressure against a fixed max capacity
      *   - Passive decay (scaled by exertion and depth)
-     *   - Max capacity degradation (only restored by O2 bubble pickups)
      *   - Health bleed when air hits zero
      *   - The CurrentO2 atom written to the HUD each frame
      *
      * External systems interact via:
      *   - IsThrusting / IsMining flags (set by SubmarinePhysicsController and MiningLaser)
-     *   - AddAir / ConsumeAir / RestoreCapacity (called by O2Pickup and abilities)
+     *   - AddAir / ConsumeAir (called by O2Pickup and abilities)
      *
      * Setup:
      *   - Add to the submarine root alongside ManualBellowsPump.
@@ -36,13 +35,8 @@ namespace Submachina.Core
         [SerializeField, Min(1f)] private float maxAirPressure = 100f;
 
         [FoldoutGroup("Air Capacity")]
-        [Tooltip("Rate at which max capacity shrinks per second. " +
-                 "Only O2 bubble pickups can restore it. Example: 0.5 → max drops by 30 over a minute.")]
-        [SerializeField, Min(0f)] private float maxCapacityDecayRate = 0.5f;
-
-        [FoldoutGroup("Air Capacity")]
-        [Tooltip("Floor for max air capacity — never decays below this value.")]
-        [SerializeField, Min(1f)] private float minMaxCapacity = 20f;
+        [Tooltip("Written each frame with the current air pressure. Read by O2Bar.")]
+        [SerializeField] private FloatVariable currentO2;
 
         // =====================
         // Decay
@@ -99,23 +93,6 @@ namespace Submachina.Core
         [SerializeField] private Health playerHealth;
 
         // =====================
-        // Atoms
-        // =====================
-
-        [FoldoutGroup("Atoms")]
-        [Tooltip("Written each frame with the current air pressure. " +
-                 "Read by O2Bar and any other system that cares about O2.")]
-        [SerializeField] private FloatVariable currentO2;
-
-        [FoldoutGroup("Atoms")]
-        [Tooltip("Written when max capacity changes. Read by O2Bar for the capacity ghost bar.")]
-        [SerializeField] private FloatVariable maxAirCapacity;
-
-        [FoldoutGroup("Atoms")]
-        [Tooltip("Written once at startup with the original ceiling. Read by O2Bar for normalisation.")]
-        [SerializeField] private FloatVariable originalMaxAir;
-
-        // =====================
         // Events
         // =====================
 
@@ -168,8 +145,10 @@ namespace Submachina.Core
         // =====================
 
         public float CurrentAirPressure => _currentAirPressure;
-        public float MaxAir             => _currentMaxAir;
-        public float OriginalMaxAir     => MaxAirMod;
+
+        /** Current max capacity — always the upgrade-resolved ceiling. */
+        public float MaxAir         => MaxAirMod;
+        public float OriginalMaxAir => MaxAirMod;
 
         // =====================
         // Upgrade Accessors
@@ -209,7 +188,6 @@ namespace Submachina.Core
         // =====================
 
         private float _currentAirPressure;
-        private float _currentMaxAir;
         private bool  _isDepleted;
         private float _pendingHealthDamage;
 
@@ -222,9 +200,7 @@ namespace Submachina.Core
             base.Awake();
             // Use raw base values in Awake — UpgradeManager may not be registered yet.
             // Start() re-initializes with modifier-resolved values.
-            _currentMaxAir      = maxAirPressure;
             _currentAirPressure = maxAirPressure;
-            if (originalMaxAir != null) originalMaxAir.Value = maxAirPressure;
             WriteAtom();
         }
 
@@ -232,15 +208,12 @@ namespace Submachina.Core
         {
             // Re-init with upgrade-resolved values now that all SubmarineComponents
             // (including UpgradeManager) are guaranteed registered.
-            _currentMaxAir      = MaxAirMod;
-            _currentAirPressure = Mathf.Min(_currentAirPressure, _currentMaxAir);
-            if (originalMaxAir != null) originalMaxAir.Value = MaxAirMod;
+            _currentAirPressure = Mathf.Min(_currentAirPressure, MaxAirMod);
             WriteAtom();
         }
 
         private void Update()
         {
-            DecayMaxCapacity();
             DecayAirPressure();
             if (_isDepleted) BleedHealth();
         }
@@ -250,32 +223,13 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Slowly lowers the max air capacity each frame.
-         * If current pressure exceeds the new ceiling it is clamped down with it.
-         * Floored at minMaxCapacity so the sub always has some capacity remaining.
-         */
-        private void DecayMaxCapacity()
-        {
-            if (maxCapacityDecayRate <= 0f) return;
-
-            _currentMaxAir = Mathf.Max(minMaxCapacity, _currentMaxAir - maxCapacityDecayRate * Time.deltaTime);
-
-            // Pull current pressure down if it exceeds the new ceiling
-            if (_currentAirPressure > _currentMaxAir)
-            {
-                _currentAirPressure = _currentMaxAir;
-                WriteAtom();
-            }
-        }
-
-        /**
          * Drains air each frame at the exertion-scaled and depth-scaled rate.
          * Fires onO2Depleted the first time air hits zero.
          *
          * Example: baseDecayRate=3, exertionMult=3, depth=100m, drainPerMetre=0.005
-         *   → at rest:       3 × 1.5  = 4.5/s
-         *   → while thrusting: 9 × 1.5 = 13.5/s
-         *   → while mining:   11 × 1.5 = 16.5/s  (9 + 2 extra, × depth mult)
+         *   → at rest:         3 × 1.5  = 4.5/s
+         *   → while thrusting: 9 × 1.5  = 13.5/s
+         *   → while mining:   11 × 1.5  = 16.5/s  (9 + 2 extra, × depth mult)
          */
         private void DecayAirPressure()
         {
@@ -315,7 +269,7 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Adds air, clamped to the current dynamic max capacity.
+         * Adds air, clamped to max capacity.
          * Clears the depletion state and fires onO2Restored if returning from empty.
          * Called by O2 bubble pickups and the manual pump.
          */
@@ -323,7 +277,7 @@ namespace Submachina.Core
         {
             bool wasDepletedBefore = _isDepleted;
 
-            _currentAirPressure  = Mathf.Min(_currentMaxAir, _currentAirPressure + amount);
+            _currentAirPressure  = Mathf.Min(MaxAirMod, _currentAirPressure + amount);
             _isDepleted          = _currentAirPressure <= 0f;
             _pendingHealthDamage = 0f;
 
@@ -350,19 +304,10 @@ namespace Submachina.Core
                 onO2Depleted?.Invoke();
         }
 
-        /**
-         * Raises the max air capacity by amount, clamped to the original maxAirPressure ceiling.
-         * Called by O2 bubble pickups — the only way to push the capacity back up.
-         */
-        public void RestoreCapacity(float amount)
-        {
-            _currentMaxAir = Mathf.Min(MaxAirMod, _currentMaxAir + amount);
-        }
-
         /** Instantly fills air to max. Useful for boss transitions or debug. */
         public void RefillAir()
         {
-            _currentAirPressure  = _currentMaxAir;
+            _currentAirPressure  = MaxAirMod;
             _isDepleted          = false;
             _pendingHealthDamage = 0f;
             WriteAtom();
@@ -375,7 +320,6 @@ namespace Submachina.Core
         private void WriteAtom()
         {
             if (currentO2 != null) currentO2.Value = _currentAirPressure;
-            if (maxAirCapacity != null) maxAirCapacity.Value = _currentMaxAir;
         }
 
         // -------------------------------------------------------
@@ -383,13 +327,9 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Draws the on-screen air-tank debug overlay: current pressure / live max
-         * capacity, plus a full breakdown of the decay rate as it is actually
-         * applied — effective = (base × exertion + mining extra) × depth.
-         *
-         * Reads this component's own authoritative state, so the headline number
-         * always matches what drains the tank, and the live THRUST / MINING flags
-         * make a "stuck" rate self-diagnosing (e.g. an unwired exertion source).
+         * Draws the on-screen air-tank debug overlay: current pressure / max,
+         * plus a full breakdown of the decay rate as it is actually applied —
+         * effective = (base × exertion + mining extra) × depth.
          */
         private void OnGUI()
         {
@@ -398,7 +338,7 @@ namespace Submachina.Core
             const float x   = 10f;
             const float y0  = 10f;
             const float w   = 290f;
-            const float h   = 136f;
+            const float h   = 118f;
             const float pad = 8f;
             const float bar = 22f;
 
@@ -415,10 +355,10 @@ namespace Submachina.Core
             GUI.Label(new Rect(bx, y, bw, 18f), "<b>[ O2 System ]</b>");
             y += 22f;
 
-            // ── Air pressure bar (filled against the live max capacity) ──
-            float pct = _currentMaxAir > 0f ? _currentAirPressure / _currentMaxAir : 0f;
+            // ── Air pressure bar ──
+            float pct = MaxAirMod > 0f ? _currentAirPressure / MaxAirMod : 0f;
             GUI.Label(new Rect(bx, y, bw, 16f),
-                $"Air:  {_currentAirPressure:F1} / {_currentMaxAir:F0}   (cap ceiling {MaxAirMod:F0})");
+                $"Air:  {_currentAirPressure:F1} / {MaxAirMod:F0}");
             y += 17f;
 
             // Track
@@ -433,12 +373,12 @@ namespace Submachina.Core
             GUI.color = Color.white;
             y += bar + pad;
 
-            // ── Decay headline: the rate actually being applied this frame ──
+            // ── Decay headline ──
             GUI.Label(new Rect(bx, y, bw, 16f),
                 $"<b>Decay {EffectiveDecayRate:F1}/s</b>");
             y += 17f;
 
-            // ── Breakdown: base × exertion (+ mining extra) × depth ──
+            // ── Breakdown ──
             float exertMult = 1f;
             if (IsThrustingLateral)  exertMult = Mathf.Max(exertMult, LateralExertionMod);
             if (IsThrustingVertical) exertMult = Mathf.Max(exertMult, VerticalExertionMod);
@@ -450,7 +390,7 @@ namespace Submachina.Core
                 $"base {BaseDecayMod:F1} · exert ×{exertMult:F1}{mineExtra} · depth ×{DepthMultiplier:F2}");
             y += 17f;
 
-            // ── Live exertion flags — a rate stuck at base means neither is firing ──
+            // ── Live exertion flags ──
             float thirdW = bw / 3f;
             GUI.color = IsThrustingLateral ? Color.cyan : new Color(0.4f, 0.4f, 0.4f);
             GUI.Label(new Rect(bx, y, thirdW, 16f), IsThrustingLateral ? "▶ LAT" : "· lat");
