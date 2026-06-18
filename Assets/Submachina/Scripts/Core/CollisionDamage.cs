@@ -69,6 +69,12 @@ namespace Submachina.Core
         private float CooldownRemaining => Mathf.Max(0f, _cooldownEnd - Time.time);
 
         // =====================
+        // Upgrade Accessors
+        // =====================
+
+        private int DamagePerImpactMod => Mathf.Max(0, Sub?.Upgrades?.Stats.ResolveInt(SubStats.CollisionDamagePerImpact, damagePerImpact) ?? damagePerImpact);
+
+        // =====================
         // State
         // =====================
 
@@ -112,11 +118,14 @@ namespace Submachina.Core
             // Threshold check — ignore gentle contact
             if (impactSpeed < minImpactSpeed) return;
 
-            _health.TakeDamage(damagePerImpact);
+            int damage = DamagePerImpactMod;
+            if (damage <= 0) return;
+
+            _health.TakeDamage(damage);
             _cooldownEnd = Time.time + damageCooldown;
 
             onCollisionDamage?.Invoke(impactSpeed);
-            Sub?.Feedbacks?.Play(SubFeedbacks.CollisionDamage, transform.position, damagePerImpact);
+            Sub?.Feedbacks?.Play(SubFeedbacks.CollisionDamage, transform.position, damage);
         }
 
         // -------------------------------------------------------

@@ -192,6 +192,13 @@ namespace Submachina.Core
         public float FacingSign => _facingSign;
 
         // =====================
+        // Upgrade Accessors
+        // =====================
+
+        private float LateralForceMod  => Sub?.Upgrades?.Stats.Resolve(SubStats.LateralThrustForce, lateralThrustForce) ?? lateralThrustForce;
+        private float CounterForceMod  => Sub?.Upgrades?.Stats.Resolve(SubStats.CounterThrustForce, counterThrustForce) ?? counterThrustForce;
+
+        // =====================
         // Internals
         // =====================
 
@@ -232,7 +239,11 @@ namespace Submachina.Core
                 ? PrimaryAction.ReadValue<Vector2>()
                 : Vector2.zero;
 
-            if (Sub?.O2 != null) Sub.O2.IsThrusting = _thrustInput.sqrMagnitude > 0.01f;
+            if (Sub?.O2 != null)
+            {
+                Sub.O2.IsThrustingLateral  = Mathf.Abs(_thrustInput.x) > 0.1f;
+                Sub.O2.IsThrustingVertical = _thrustInput.y > 0.1f;
+            }
         }
 
         private void LateUpdate()
@@ -281,10 +292,10 @@ namespace Submachina.Core
          */
         private void ApplyPlayerThrust()
         {
-            Vector2 lateral = new Vector2(_thrustInput.x * lateralThrustForce, 0f);
+            Vector2 lateral = new Vector2(_thrustInput.x * LateralForceMod, 0f);
 
             float verticalInput = Mathf.Max(0f, _thrustInput.y);
-            Vector2 vertical = new Vector2(0f, verticalInput * counterThrustForce);
+            Vector2 vertical = new Vector2(0f, verticalInput * CounterForceMod);
 
             _rb.AddForce(lateral + vertical, ForceMode2D.Force);
         }

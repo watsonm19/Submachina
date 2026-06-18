@@ -54,9 +54,14 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float baseDecayRate = 3f;
 
         [FoldoutGroup("Decay")]
-        [Tooltip("Multiplier on decay when IsThrusting or IsMining is true. " +
-                 "Example: 3× → drains 3× faster under exertion (~11 seconds from full).")]
-        [SerializeField, Min(1f)] private float exertionDecayMultiplier = 3f;
+        [Tooltip("Multiplier on decay when lateral thrust is active. " +
+                 "Example: 3× → drains 3× faster during side-to-side movement.")]
+        [SerializeField, Min(1f)] private float lateralExertionMultiplier = 3f;
+
+        [FoldoutGroup("Decay")]
+        [Tooltip("Multiplier on decay when vertical (counter) thrust is active. " +
+                 "Example: 3× → drains 3× faster when fighting the current.")]
+        [SerializeField, Min(1f)] private float verticalExertionMultiplier = 3f;
 
         [FoldoutGroup("Decay")]
         [Tooltip("Extra flat air drained per second while mining, on top of exertion decay. " +
@@ -127,7 +132,7 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private float AirPercent => maxAirPressure > 0 ? (_currentAirPressure / maxAirPressure) * 100f : 0f;
+        private float AirPercent => MaxAirMod > 0 ? (_currentAirPressure / MaxAirMod) * 100f : 0f;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private bool IsBleeding => _isDepleted;
@@ -149,8 +154,11 @@ namespace Submachina.Core
         // Exertion Flags
         // =====================
 
-        /** Set true by SubmarinePhysicsController while thrust input is active. */
-        public bool IsThrusting { get; set; }
+        /** Set true by SubmarinePhysicsController while lateral thrust input is active. */
+        public bool IsThrustingLateral { get; set; }
+
+        /** Set true by SubmarinePhysicsController while vertical (counter) thrust input is active. */
+        public bool IsThrustingVertical { get; set; }
 
         /** Set true by MiningLaser while the laser is actively firing. */
         public bool IsMining { get; set; }
@@ -161,15 +169,40 @@ namespace Submachina.Core
 
         public float CurrentAirPressure => _currentAirPressure;
         public float MaxAir             => _currentMaxAir;
-        public float OriginalMaxAir     => maxAirPressure;
+        public float OriginalMaxAir     => MaxAirMod;
+
+        // =====================
+        // Upgrade Accessors
+        // =====================
+
+        private float MaxAirMod           => Sub?.Upgrades?.Stats.Resolve(SubStats.MaxAirPressure, maxAirPressure) ?? maxAirPressure;
+        private float BaseDecayMod        => Sub?.Upgrades?.Stats.Resolve(SubStats.BaseDecayRate, baseDecayRate) ?? baseDecayRate;
+        private float LateralExertionMod  => Sub?.Upgrades?.Stats.Resolve(SubStats.LateralExertionMultiplier, lateralExertionMultiplier) ?? lateralExertionMultiplier;
+        private float VerticalExertionMod => Sub?.Upgrades?.Stats.Resolve(SubStats.VerticalExertionMultiplier, verticalExertionMultiplier) ?? verticalExertionMultiplier;
+        private float BleedRateMod        => Sub?.Upgrades?.Stats.Resolve(SubStats.HealthBleedRate, healthBleedRate) ?? healthBleedRate;
 
         /**
          * Active decay rate accounting for exertion state — read by HUD and debug displays.
-         * Example: baseDecay=3, exertionMult=3, mining → 3×3 + 2 = 11/s
+         *
+         * Lateral and vertical exertion use separate multipliers so upgrades
+         * can reduce O2 cost of movement directions independently.
+         * The highest active multiplier wins (they don't stack additively).
+         *
+         * Example: baseDecay=3, lateralMult=3, verticalMult=3, mining → 3×3 + 2 = 11/s
          */
-        public float ActiveDecayRate =>
-            baseDecayRate * (IsMining || IsThrusting ? exertionDecayMultiplier : 1f)
-            + (IsMining ? miningExtraDecayRate : 0f);
+        public float ActiveDecayRate
+        {
+            get
+            {
+                // Pick the highest exertion multiplier among active sources
+                float exertionMult = 1f;
+                if (IsThrustingLateral)  exertionMult = Mathf.Max(exertionMult, LateralExertionMod);
+                if (IsThrustingVertical) exertionMult = Mathf.Max(exertionMult, VerticalExertionMod);
+                if (IsMining)            exertionMult = Mathf.Max(exertionMult, LateralExertionMod);
+
+                return BaseDecayMod * exertionMult + (IsMining ? miningExtraDecayRate : 0f);
+            }
+        }
 
         // =====================
         // Internal State
@@ -187,9 +220,21 @@ namespace Submachina.Core
         protected override void Awake()
         {
             base.Awake();
+            // Use raw base values in Awake — UpgradeManager may not be registered yet.
+            // Start() re-initializes with modifier-resolved values.
             _currentMaxAir      = maxAirPressure;
             _currentAirPressure = maxAirPressure;
             if (originalMaxAir != null) originalMaxAir.Value = maxAirPressure;
+            WriteAtom();
+        }
+
+        private void Start()
+        {
+            // Re-init with upgrade-resolved values now that all SubmarineComponents
+            // (including UpgradeManager) are guaranteed registered.
+            _currentMaxAir      = MaxAirMod;
+            _currentAirPressure = Mathf.Min(_currentAirPressure, _currentMaxAir);
+            if (originalMaxAir != null) originalMaxAir.Value = MaxAirMod;
             WriteAtom();
         }
 
@@ -257,7 +302,7 @@ namespace Submachina.Core
         {
             if (playerHealth == null || playerHealth.IsDead) return;
 
-            _pendingHealthDamage += healthBleedRate * Time.deltaTime;
+            _pendingHealthDamage += BleedRateMod * Time.deltaTime;
             int damage = Mathf.FloorToInt(_pendingHealthDamage);
             if (damage <= 0) return;
 
@@ -311,7 +356,7 @@ namespace Submachina.Core
          */
         public void RestoreCapacity(float amount)
         {
-            _currentMaxAir = Mathf.Min(maxAirPressure, _currentMaxAir + amount);
+            _currentMaxAir = Mathf.Min(MaxAirMod, _currentMaxAir + amount);
         }
 
         /** Instantly fills air to max. Useful for boss transitions or debug. */
@@ -373,7 +418,7 @@ namespace Submachina.Core
             // ── Air pressure bar (filled against the live max capacity) ──
             float pct = _currentMaxAir > 0f ? _currentAirPressure / _currentMaxAir : 0f;
             GUI.Label(new Rect(bx, y, bw, 16f),
-                $"Air:  {_currentAirPressure:F1} / {_currentMaxAir:F0}   (cap ceiling {maxAirPressure:F0})");
+                $"Air:  {_currentAirPressure:F1} / {_currentMaxAir:F0}   (cap ceiling {MaxAirMod:F0})");
             y += 17f;
 
             // Track
@@ -394,20 +439,25 @@ namespace Submachina.Core
             y += 17f;
 
             // ── Breakdown: base × exertion (+ mining extra) × depth ──
-            bool  exerting  = IsThrusting || IsMining;
-            float exertMult = exerting ? exertionDecayMultiplier : 1f;
+            float exertMult = 1f;
+            if (IsThrustingLateral)  exertMult = Mathf.Max(exertMult, LateralExertionMod);
+            if (IsThrustingVertical) exertMult = Mathf.Max(exertMult, VerticalExertionMod);
+            if (IsMining)            exertMult = Mathf.Max(exertMult, LateralExertionMod);
             string mineExtra = (IsMining && miningExtraDecayRate > 0f)
                 ? $" +{miningExtraDecayRate:F1} mine" : "";
 
             GUI.Label(new Rect(bx, y, bw, 16f),
-                $"base {baseDecayRate:F1} · exert ×{exertMult:F1}{mineExtra} · depth ×{DepthMultiplier:F2}");
+                $"base {BaseDecayMod:F1} · exert ×{exertMult:F1}{mineExtra} · depth ×{DepthMultiplier:F2}");
             y += 17f;
 
             // ── Live exertion flags — a rate stuck at base means neither is firing ──
-            GUI.color = IsThrusting ? Color.cyan : new Color(0.4f, 0.4f, 0.4f);
-            GUI.Label(new Rect(bx, y, bw * 0.5f, 16f), IsThrusting ? "▶ THRUST" : "· thrust");
+            float thirdW = bw / 3f;
+            GUI.color = IsThrustingLateral ? Color.cyan : new Color(0.4f, 0.4f, 0.4f);
+            GUI.Label(new Rect(bx, y, thirdW, 16f), IsThrustingLateral ? "▶ LAT" : "· lat");
+            GUI.color = IsThrustingVertical ? Color.cyan : new Color(0.4f, 0.4f, 0.4f);
+            GUI.Label(new Rect(bx + thirdW, y, thirdW, 16f), IsThrustingVertical ? "▶ VERT" : "· vert");
             GUI.color = IsMining ? Color.magenta : new Color(0.4f, 0.4f, 0.4f);
-            GUI.Label(new Rect(bx + bw * 0.5f, y, bw * 0.5f, 16f), IsMining ? "▶ MINING" : "· mining");
+            GUI.Label(new Rect(bx + thirdW * 2f, y, thirdW, 16f), IsMining ? "▶ MINE" : "· mine");
             GUI.color = Color.white;
         }
 

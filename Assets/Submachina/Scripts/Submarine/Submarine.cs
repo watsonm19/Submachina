@@ -68,6 +68,9 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public PickupRangeDetector PickupRange { get; private set; }
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        public UpgradeManager Upgrades { get; private set; }
+
         // =====================
         // Lifecycle
         // =====================
@@ -103,6 +106,7 @@ namespace Submachina.Core
                 case SubmarinePumpRouter pumps:         Pumps = pumps;  break;
                 case SubmarineAnchorRouter anchors:     Anchors = anchors;         break;
                 case PickupRangeDetector pickupRange:   PickupRange = pickupRange; break;
+                case UpgradeManager upgrades:           Upgrades = upgrades;     break;
             }
         }
 
@@ -124,6 +128,7 @@ namespace Submachina.Core
                 case SubmarinePumpRouter pumps when Pumps == pumps:                      Pumps = null;       break;
                 case SubmarineAnchorRouter anchors when Anchors == anchors:              Anchors = null;     break;
                 case PickupRangeDetector pr when PickupRange == pr:                      PickupRange = null; break;
+                case UpgradeManager u when Upgrades == u:                                Upgrades = null;    break;
             }
         }
 

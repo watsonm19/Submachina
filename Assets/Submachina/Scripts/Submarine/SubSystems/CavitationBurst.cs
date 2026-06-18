@@ -108,6 +108,18 @@ namespace Submachina.Core
         private float CooldownRemaining => Mathf.Max(0f, _cooldownEnd - Time.time);
 
         // =====================
+        // Upgrade Accessors
+        // =====================
+
+        private float AirCostMod  => Sub?.Upgrades?.Stats.Resolve(SubStats.DashAirCost, airCost) ?? airCost;
+        private float CooldownMod => Sub?.Upgrades?.Stats.Resolve(SubStats.DashCooldown, burstCooldown) ?? burstCooldown;
+        private float ImpulseMod  => Sub?.Upgrades?.Stats.Resolve(SubStats.DashImpulse, burstImpulse) ?? burstImpulse;
+
+        /** Optional cost override set by behavioral upgrades (e.g. "2nd dash free").
+         *  Receives the resolved air cost and returns the actual cost to apply. */
+        public System.Func<float, float> CostOverride { get; set; }
+
+        // =====================
         // State
         // =====================
 
@@ -169,7 +181,8 @@ namespace Submachina.Core
             Vector2 dir = GetBurstDirection();
             if (dir.sqrMagnitude < 0.001f) return;
 
-            Sub?.O2?.ConsumeAir(airCost);
+            float cost = CostOverride != null ? CostOverride(AirCostMod) : AirCostMod;
+            Sub?.O2?.ConsumeAir(cost);
             StartCoroutine(BurstRoutine(dir.normalized));
         }
 
@@ -219,7 +232,7 @@ namespace Submachina.Core
 
             // Phase 1 — burst
             _rb.linearDamping = burstDrag;
-            _rb.AddForce(direction * burstImpulse, ForceMode2D.Impulse);
+            _rb.AddForce(direction * ImpulseMod, ForceMode2D.Impulse);
 
             if (_spriteRenderer != null) _spriteRenderer.color = burstFlashColor;
             yield return new WaitForSeconds(flashDuration);
@@ -237,7 +250,7 @@ namespace Submachina.Core
             onBurstEnd?.Invoke();
 
             _isBursting = false;
-            _cooldownEnd = Time.time + burstCooldown;
+            _cooldownEnd = Time.time + CooldownMod;
             _rechargePending = true;
         }
 
