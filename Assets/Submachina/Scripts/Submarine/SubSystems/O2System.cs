@@ -68,6 +68,12 @@ namespace Submachina.Core
                  "Example: 2 → mining drains 2 additional units/s regardless of base rate.")]
         [SerializeField, Min(0f)] private float miningExtraDecayRate = 2f;
 
+        [FoldoutGroup("Decay")]
+        [Tooltip("How often (seconds) passive air loss is totalled up and reported via onAirDecayed. " +
+                 "Per-frame decay is too tiny to display, so it is summed and announced in chunks " +
+                 "(e.g. every 5s) for a low-frequency 'breathing' floating-text readout.")]
+        [SerializeField, Min(0.1f)] private float decayReportInterval = 5f;
+
         // =====================
         // Depth Scaling
         // =====================
@@ -126,6 +132,22 @@ namespace Submachina.Core
         [FoldoutGroup("Events")]
         [Tooltip("Fired when air is restored from zero back above zero.")]
         public UnityEvent onO2Restored;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired whenever air is added (O2 pickups, manual/intake pumps). " +
+                 "Passes the nominal amount requested. Wire to FloatingTextPool for '+air' popups.")]
+        public UnityEvent<float> onAirGained;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired whenever air is spent in one discrete chunk (e.g. Cavitation Burst cost). " +
+                 "Passes the nominal amount spent. Wire to FloatingTextPool for '-air' popups.")]
+        public UnityEvent<float> onAirSpent;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired every decayReportInterval seconds with the air lost to passive decay since " +
+                 "the last report. Lets the HUD show a periodic, low-key 'breathing loss' readout " +
+                 "distinct from the punchy one-off gain/spend popups.")]
+        public UnityEvent<float> onAirDecayed;
 
         // =====================
         // Debug
@@ -213,6 +235,11 @@ namespace Submachina.Core
         private bool  _isDepleted;
         private float _pendingHealthDamage;
 
+        // Passive-decay reporting: air drained per frame is summed here and flushed
+        // to onAirDecayed once _decayReportTimer reaches decayReportInterval.
+        private float _decayAccumulator;
+        private float _decayReportTimer;
+
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
@@ -242,6 +269,7 @@ namespace Submachina.Core
         {
             DecayMaxCapacity();
             DecayAirPressure();
+            ReportPassiveDecay();
             if (_isDepleted) BleedHealth();
         }
 
@@ -283,14 +311,38 @@ namespace Submachina.Core
 
             bool wasDepletedBefore = _isDepleted;
 
+            // Track the actual pressure lost this frame so passive decay can be
+            // totalled and reported periodically (see ReportPassiveDecay).
+            float before = _currentAirPressure;
             _currentAirPressure -= ActiveDecayRate * DepthMultiplier * Time.deltaTime;
             _currentAirPressure  = Mathf.Max(0f, _currentAirPressure);
+            _decayAccumulator   += before - _currentAirPressure;
             _isDepleted          = _currentAirPressure <= 0f;
 
             WriteAtom();
 
             if (!wasDepletedBefore && _isDepleted)
                 onO2Depleted?.Invoke();
+        }
+
+        /**
+         * Periodically announces how much air passive decay has eaten since the
+         * last report. Per-frame loss is far too small to show as floating text,
+         * so it is summed and flushed in chunks every decayReportInterval seconds.
+         *
+         * Only fires when something was actually lost, so a paused/full tank
+         * stays quiet instead of spamming "-0" popups.
+         */
+        private void ReportPassiveDecay()
+        {
+            _decayReportTimer += Time.deltaTime;
+            if (_decayReportTimer < decayReportInterval) return;
+
+            _decayReportTimer = 0f;
+            if (_decayAccumulator <= 0f) return;
+
+            onAirDecayed?.Invoke(_decayAccumulator);
+            _decayAccumulator = 0f;
         }
 
         /**
@@ -329,6 +381,9 @@ namespace Submachina.Core
 
             WriteAtom();
 
+            // Announce the nominal gain for floating-text / juice (skip no-op calls)
+            if (amount > 0f) onAirGained?.Invoke(amount);
+
             if (wasDepletedBefore && !_isDepleted)
                 onO2Restored?.Invoke();
         }
@@ -345,6 +400,9 @@ namespace Submachina.Core
             _isDepleted         = _currentAirPressure <= 0f;
 
             WriteAtom();
+
+            // Announce the nominal spend for floating-text / juice (skip no-op calls)
+            if (amount > 0f) onAirSpent?.Invoke(amount);
 
             if (!wasDepletedBefore && _isDepleted)
                 onO2Depleted?.Invoke();
