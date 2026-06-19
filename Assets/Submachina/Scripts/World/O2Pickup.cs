@@ -24,12 +24,8 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Settings")]
-        [Tooltip("How much current air pressure this bubble restores when collected.")]
+        [Tooltip("How much air pressure this bubble restores when collected.")]
         [SerializeField, Min(0f)] private float replenishAmount = 10f;
-
-        [FoldoutGroup("Settings")]
-        [Tooltip("How much max air capacity this bubble restores when collected.")]
-        [SerializeField, Min(0f)] private float capacityRestoreAmount = 10f;
 
         [FoldoutGroup("Settings")]
         [Tooltip("Smallest size value that can be passed to SetSize(). " +
@@ -63,9 +59,8 @@ namespace Submachina.Core
                     float size = Mathf.Lerp(sizeRangeMin, sizeRangeMax, i / 4f);
                     float mult = sizeRewardCurve.Evaluate(size);
                     float air = replenishAmount * mult;
-                    float cap = capacityRestoreAmount * mult;
                     if (i > 0) result += "\n";
-                    result += $"Size {size:F1}:  x{mult:F1} mult  ->  {air:F1} air, {cap:F1} cap";
+                    result += $"Size {size:F1}:  x{mult:F1} mult  ->  {air:F1} air";
                 }
                 return result;
             }
@@ -94,9 +89,6 @@ namespace Submachina.Core
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector, LabelText("Effective Air")]
         private float EffectiveAir => replenishAmount * _sizeMultiplier;
-
-        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector, LabelText("Effective Capacity")]
-        private float EffectiveCapacity => capacityRestoreAmount * _sizeMultiplier;
 
         // =====================
         // State
@@ -182,7 +174,6 @@ namespace Submachina.Core
 
             if (sub?.O2 != null)
             {
-                sub.O2.RestoreCapacity(capacityRestoreAmount * _sizeMultiplier);
                 airAmount = replenishAmount * _sizeMultiplier * airMultiplier;
                 sub.O2.AddAir(airAmount);
             }

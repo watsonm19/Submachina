@@ -24,16 +24,6 @@ namespace Submachina.Core
     public class O2Bar : SubmarineObserver
     {
         // =====================
-        // References
-        // =====================
-
-        [FoldoutGroup("References")]
-        [Tooltip("A second Filled Image (same rect as the main bar, placed behind it in the hierarchy) " +
-                 "whose fillAmount tracks the current max capacity. Give it a dim/semi-transparent color " +
-                 "so it peeks out beyond the main fill when capacity has degraded.")]
-        [SerializeField] private Image capacityBar;
-
-        // =====================
         // Colors
         // =====================
 
@@ -81,8 +71,7 @@ namespace Submachina.Core
 
         /**
          * Calculates the normalised fill (0-1) from the sub's air state, then
-         * updates both the fill amount and the tint color. The ghost capacity
-         * bar tracks the current (degraded) max against the original ceiling.
+         * updates the fill amount and tint color.
          *
          * Color transitions:
          *   fill > lowThreshold  → healthyColor
@@ -95,12 +84,10 @@ namespace Submachina.Core
             O2System o2 = Sub != null ? Sub.O2 : null;
             if (o2 == null) return;
 
-            float ceiling = o2.OriginalMaxAir;
+            float ceiling = o2.MaxAir;
             float fill    = ceiling > 0f ? o2.CurrentAirPressure / ceiling : 0f;
-            float maxFill = ceiling > 0f ? o2.MaxAir / ceiling : 0f;
 
             _barImage.fillAmount = fill;
-            if (capacityBar != null) capacityBar.fillAmount = maxFill;
 
             if (fill <= 0f)
                 _barImage.color = criticalColor;
