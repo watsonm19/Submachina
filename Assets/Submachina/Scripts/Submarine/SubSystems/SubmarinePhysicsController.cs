@@ -37,6 +37,17 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Thrust")]
+        [Tooltip("Allow downward thrust input (negative Y). Disable in current-driven mode where the current " +
+                 "already handles downward pull; enable in forced-scroll mode where the player navigates freely.")]
+        [SerializeField] private bool allowDownwardThrust = false;
+
+        [FoldoutGroup("Thrust")]
+        [Tooltip("Apply the downward current force from currentDescentSpeed each FixedUpdate. " +
+                 "Disable in forced-scroll mode (AutoScrollCamera) so the camera scroll defines the pace " +
+                 "without a competing physics force pushing the sub out of the viewport.")]
+        [SerializeField] private bool applyCurrentForce = true;
+
+        [FoldoutGroup("Thrust")]
         [Tooltip("Force applied laterally per physics tick. Higher = snappier side-to-side response.")]
         [SerializeField, Min(0f)] private float lateralThrustForce = 12f;
 
@@ -274,6 +285,7 @@ namespace Submachina.Core
          */
         private void ApplyCurrentForce()
         {
+            if (!applyCurrentForce) return;
             if (currentDescentSpeed == null) return;
 
             float magnitude = currentDescentSpeed.Value * currentForceMultiplier;
@@ -294,7 +306,8 @@ namespace Submachina.Core
         {
             Vector2 lateral = new Vector2(_thrustInput.x * LateralForceMod, 0f);
 
-            float verticalInput = Mathf.Max(0f, _thrustInput.y);
+            // In current-driven mode only counter-thrust (up) is allowed; in scroll mode full Y range is available
+            float verticalInput = allowDownwardThrust ? _thrustInput.y : Mathf.Max(0f, _thrustInput.y);
             Vector2 vertical = new Vector2(0f, verticalInput * CounterForceMod);
 
             _rb.AddForce(lateral + vertical, ForceMode2D.Force);
