@@ -18,13 +18,29 @@ namespace Submachina.Core
      * if the beam moves away before the rock breaks.
      *
      * Setup:
-     *   1. Add this component to the RockObstacle prefab.
-     *   2. Assign the rock's layer to the Obstacle layer.
-     *   3. Set that layer in MiningLaser's Obstacle Layer mask.
+     *   1. Add this component to the RockObstacle prefab (layer: Collision).
+     *   2. Set MiningLaser's Obstacle Layer mask to the Collision layer.
+     *   3. Set Break From Layers to the Submarine layer.
      *   4. Wire breakFeedbacks to particle/sound effects for destruction juice.
      */
+    [RequireComponent(typeof(Collider2D))]
     public class RockObstacle : MonoBehaviour
     {
+        // =====================
+        // Collision Breaking
+        // =====================
+
+        [FoldoutGroup("Collision")]
+        [Tooltip("Minimum impact speed (m/s) for a collision to break this rock. " +
+                 "Mirrors CollisionDamage's minImpactSpeed — set them to similar values so " +
+                 "impacts that hurt the sub also break the rock.")]
+        [SerializeField, Min(0f)] private float minBreakSpeed = 4f;
+
+        [FoldoutGroup("Collision")]
+        [Tooltip("Only break from collisions with objects on these layers. " +
+                 "Set to the Submarine layer so rocks don't break each other or from stray spawns.")]
+        [SerializeField] private LayerMask breakFromLayers = ~0;
+
         // =====================
         // Visual
         // =====================
@@ -62,6 +78,26 @@ namespace Submachina.Core
         {
             _sprite = GetComponent<SpriteRenderer>();
             if (_sprite != null) _originalColor = _sprite.color;
+        }
+
+        // -------------------------------------------------------
+        // Collision Breaking
+        // -------------------------------------------------------
+
+        /**
+         * Breaks the rock if the impact speed exceeds the threshold and the
+         * colliding object is on an allowed layer.
+         *
+         * Both this and CollisionDamage (on the submarine) fire independently
+         * on the same impact — the sub takes damage AND the rock breaks.
+         * Tuning tip: set minBreakSpeed close to CollisionDamage's minImpactSpeed
+         * so any hit that hurts the sub also clears the rock.
+         */
+        private void OnCollisionEnter2D(Collision2D collision)
+        {
+            if ((breakFromLayers & (1 << collision.gameObject.layer)) == 0) return;
+            if (collision.relativeVelocity.magnitude < minBreakSpeed) return;
+            Break();
         }
 
         // -------------------------------------------------------
