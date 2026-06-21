@@ -7,5 +7,6 @@ namespace Submachina.Core
 
         public static readonly FeedbackId MiningActive  = new(MiningCat, 0);
         public static readonly FeedbackId MiningCollect = new(MiningCat, 1);
+        public static readonly FeedbackId RockBreak     = new(MiningCat, 2);
     }
 }
