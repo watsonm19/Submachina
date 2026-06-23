@@ -80,6 +80,22 @@ namespace Submachina.Core
         [SerializeField] private bool freezeRotationWhileAlive = true;
 
         // =====================
+        // Targeting (multiplayer-aware)
+        // =====================
+
+        [FoldoutGroup("Targeting")]
+        [Tooltip("How often (seconds) the enemy re-evaluates which submarine to chase. Only matters with 2+ players — " +
+                 "a single-player sub is locked on with zero ongoing cost. Higher = cheaper but slower to notice a drop-in " +
+                 "or a now-closer player. Each enemy is given a random phase so they don't all recompute on the same frame.")]
+        [SerializeField, Min(0.05f)] private float retargetInterval = 0.5f;
+
+        [FoldoutGroup("Targeting")]
+        [Tooltip("A rival submarine must be this fraction of the current target's distance (or closer) before the enemy " +
+                 "switches to it. 1 = always chase whoever is nearest (can jitter when players are equidistant); " +
+                 "0.8 = must be 20% closer to steal aggro (stable).")]
+        [SerializeField, Range(0.1f, 1f)] private float retargetSwitchAdvantage = 0.8f;
+
+        // =====================
         // Debug (shared)
         // =====================
 
@@ -102,7 +118,7 @@ namespace Submachina.Core
         /** World position where this enemy spawned — used as a patrol / wander anchor. */
         protected Vector3 SpawnPosition { get; private set; }
 
-        /** The submarine this enemy targets (nearest at Start). */
+        /** The submarine this enemy targets. Nearest at Start, then re-evaluated periodically (see MaintainTarget). */
         protected Submarine TargetSub { get; private set; }
 
         /** Convenience shortcut to TargetSub's Transform. */
@@ -113,6 +129,9 @@ namespace Submachina.Core
 
         /** True after OnDeath fires — FixedUpdate stops calling UpdateAI. */
         protected bool IsDead { get; private set; }
+
+        /** Next time (Time.time) this enemy is allowed to re-scan for a target. Phase-staggered per instance. */
+        private float _nextRetargetTime;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -137,12 +156,10 @@ namespace Submachina.Core
         protected virtual void Start()
         {
             // Resolve nearest submarine — world objects self-target via the static list
-            TargetSub = Submarine.FindNearest(transform.position);
-            if (TargetSub != null)
-            {
-                Player = TargetSub.transform;
-                PlayerHealth = TargetSub.Health;
-            }
+            AcquireTarget(force: true);
+
+            // Stagger the first periodic re-scan so a wave of enemies doesn't all retarget on one frame
+            _nextRetargetTime = Time.time + UnityEngine.Random.value * RetargetInterval;
 
             Health health = GetComponent<Health>();
             if (health != null) health.onDeath.AddListener(OnDeath);
@@ -153,6 +170,7 @@ namespace Submachina.Core
         private void FixedUpdate()
         {
             if (IsDead) return;
+            MaintainTarget();
             UpdateAI();
             FlipSpriteToVelocity();
         }
@@ -194,6 +212,93 @@ namespace Submachina.Core
 
             SetIntentIndicator(false);
             SpawnDeathDrops();
+        }
+
+        // -------------------------------------------------------
+        // Targeting (multiplayer-aware)
+        // -------------------------------------------------------
+
+        /** Seconds between periodic target re-scans. Override to tune per enemy type; defaults to the serialized value. */
+        protected virtual float RetargetInterval => retargetInterval;
+
+        /**
+         * Whether the enemy is currently willing to switch targets. Default true.
+         * Override to return false while mid-commitment (e.g. during a lunge) so the
+         * enemy finishes its attack on the current target rather than swapping away.
+         * Note: an invalid target (dead / dropped out) is always re-acquired regardless.
+         */
+        protected virtual bool CanRetarget => true;
+
+        /** Hook fired whenever the target actually changes (including the initial acquire). No-op by default. */
+        protected virtual void OnTargetChanged(Submarine newTarget) { }
+
+        /**
+         * Keeps TargetSub current across drop-in / drop-out and shifting positions.
+         *
+         * Cost is deliberately bounded:
+         *   • A cheap per-frame validity check re-acquires immediately if the target
+         *     died, was destroyed, or dropped out (so we never chase a corpse).
+         *   • Otherwise we only re-scan on the staggered interval, and only when 2+
+         *     submarines exist — single-player locks on once and pays nothing after.
+         */
+        private void MaintainTarget()
+        {
+            // Target gone (destroyed, disabled by death, or dropped out of multiplayer)?
+            bool valid = TargetSub != null && TargetSub.isActiveAndEnabled;
+            if (!valid)
+            {
+                AcquireTarget(force: true);
+                _nextRetargetTime = Time.time + RetargetInterval;
+                return;
+            }
+
+            // Valid target: only re-evaluate on the interval, and skip entirely in single-player
+            if (Time.time < _nextRetargetTime) return;
+            _nextRetargetTime = Time.time + RetargetInterval;
+
+            if (CanRetarget && Submarine.All.Count > 1)
+                AcquireTarget(force: false);
+        }
+
+        /**
+         * Resolves the nearest submarine and adopts it as the target.
+         * When not forced, applies hysteresis: a rival is only stolen-to if it is
+         * meaningfully closer than the current target (retargetSwitchAdvantage), so
+         * the enemy doesn't flip-flop between two near-equidistant players.
+         */
+        private void AcquireTarget(bool force)
+        {
+            Submarine best = Submarine.FindNearest(transform.position);
+
+            // No submarines at all (e.g. everyone dropped out) — clear only on a forced pass
+            if (best == null)
+            {
+                if (force && TargetSub != null) SetTarget(null);
+                return;
+            }
+
+            // Forced acquire or first target — take it outright
+            if (force || TargetSub == null) { SetTarget(best); return; }
+
+            // Already nearest — nothing to do
+            if (best == TargetSub) return;
+
+            // Switch only if the candidate is closer by the required margin (compare squared distances)
+            Vector2 here = transform.position;
+            float currentSqr = ((Vector2)TargetSub.transform.position - here).sqrMagnitude;
+            float bestSqr = ((Vector2)best.transform.position - here).sqrMagnitude;
+            float advantageSqr = retargetSwitchAdvantage * retargetSwitchAdvantage;
+
+            if (bestSqr < currentSqr * advantageSqr) SetTarget(best);
+        }
+
+        /** Points the cached target fields at a submarine (or clears them) and fires OnTargetChanged. */
+        private void SetTarget(Submarine sub)
+        {
+            TargetSub = sub;
+            Player = sub != null ? sub.transform : null;
+            PlayerHealth = sub != null ? sub.Health : null;
+            OnTargetChanged(sub);
         }
 
         // -------------------------------------------------------

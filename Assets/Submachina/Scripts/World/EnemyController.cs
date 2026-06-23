@@ -116,6 +116,19 @@ namespace Submachina.Core
         }
 
         // -------------------------------------------------------
+        // Targeting
+        // -------------------------------------------------------
+
+        /**
+         * Commit to the telegraphed victim: once winding up or lunging, don't let a
+         * now-closer sub steal aggro mid-attack. Patrol / Chase / Cooldown stay free to
+         * re-evaluate. (EnemyBase still re-acquires immediately if the target dies or
+         * drops out, so a vanished victim is always handled.)
+         */
+        protected override bool CanRetarget =>
+            _state != AiState.WindUp && _state != AiState.Attacking;
+
+        // -------------------------------------------------------
         // AI (called each FixedUpdate by EnemyBase)
         // -------------------------------------------------------
 
@@ -262,6 +275,10 @@ namespace Submachina.Core
         /**
          * Deals damage on contact during the lunge. Fires only once per attack
          * cycle (_hasHitThisAttack) so sustained contact doesn't stack damage.
+         *
+         * Damages the submarine actually struck — resolved from the collision, not the
+         * cached target — so in co-op the enemy can't lunge at one sub and clip another
+         * but credit the damage to the wrong player.
          */
         private void OnCollisionEnter2D(Collision2D collision)
         {
@@ -269,7 +286,8 @@ namespace Submachina.Core
             if (_hasHitThisAttack) return;
             if (!collision.collider.CompareTag("Player")) return;
 
-            PlayerHealth?.TakeDamage(attackDamage);
+            var victim = collision.collider.GetComponentInParent<Submarine>();
+            victim?.Health?.TakeDamage(attackDamage);
             _hasHitThisAttack = true;
         }
 
