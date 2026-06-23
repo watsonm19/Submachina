@@ -11,8 +11,9 @@ namespace Submachina.Core
     /**
      * Drop-in / drop-out manager for local multiplayer.
      *
-     * Owns a fixed pool of pre-placed submarines (each with a SubmarineInputModule)
-     * and wires physical controllers to them on the fly:
+     * Owns a pool of pre-placed submarines (each with a SubmarineInputModule) and, once
+     * that pool is exhausted, can instantiate more from a player prefab up to a Max Players
+     * cap. Wires physical controllers to them on the fly:
      *
      *   • Detects when an *unassigned* device produces a button press
      *     (InputSystem.onAnyButtonPress) and, if a free slot exists, freezes the
@@ -47,6 +48,7 @@ namespace Submachina.Core
             // Runtime-only
             [NonSerialized] public SubmarineInputModule module;
             [NonSerialized] public bool active;
+            [NonSerialized] public bool spawned; // true when created at runtime from the player prefab (vs. pre-placed)
         }
 
         // =====================
@@ -65,6 +67,17 @@ namespace Submachina.Core
         [BoxGroup("Pool")]
         [Tooltip("Disable every slot's submarine on Awake so players must join in (recommended).")]
         [SerializeField] private bool disableSlotsOnAwake = true;
+
+        [BoxGroup("Pool")]
+        [AssetsOnly]
+        [Tooltip("Optional submarine prefab (must have a SubmarineInputModule). When the pre-placed pool is full, a fresh " +
+                 "instance is spawned for each new player up to Max Players. Leave empty to use only the pre-placed pool.")]
+        [SerializeField] private GameObject playerPrefab;
+
+        [BoxGroup("Pool")]
+        [MinValue(1)]
+        [Tooltip("Hard cap on simultaneously active players. Pre-placed slots are used first; prefab instances fill the rest.")]
+        [SerializeField] private int maxPlayers = 4;
 
         // =====================
         // References
@@ -90,6 +103,11 @@ namespace Submachina.Core
         [Tooltip("Horizontal distance from an existing player at which a drop-in appears (then clamped into the camera frame).")]
         [SerializeField] private float dropInOffset = 3f;
 
+        [BoxGroup("Behaviour")]
+        [Tooltip("When a prefab-spawned player drops out, destroy its submarine instead of keeping it disabled for reuse. " +
+                 "Off (recommended) pools spawned subs so a re-join reuses the same instance without re-instantiating.")]
+        [SerializeField] private bool destroySpawnedOnLeave = false;
+
         // =====================
         // Events (hook Feel/MMF here)
         // =====================
@@ -109,6 +127,7 @@ namespace Submachina.Core
 
         private readonly Dictionary<int, PlayerSlot> _deviceToSlot = new();
         private readonly List<InputDevice> _pendingDevices = new();
+        private List<PlayerJoinOverlay.SlotInfo> _offered = new(); // slot options shown in the current prompt (free pool + spawnable)
         private IDisposable _anyButtonSubscription;
         private bool _assigning;
         private float _prevTimeScale = 1f;
@@ -193,8 +212,8 @@ namespace Submachina.Core
             // Already-paired device → normal gameplay input, not a join
             if (_deviceToSlot.ContainsKey(device.deviceId)) return;
 
-            // No room left in the pool → ignore the press
-            if (FindFreeSlot() == null) return;
+            // No free slot and nothing left to spawn → ignore the press
+            if (!CanAcceptNewPlayer()) return;
 
             BeginJoin(device);
         }
@@ -223,9 +242,10 @@ namespace Submachina.Core
             _assigning = true;
 
             // Hand the free slots to the overlay and wait for the player's choice
-            var free = BuildFreeSlotInfos();
+            // (cached so OnJoinConfirmed can recover the picked label/colour for a spawn).
+            _offered = BuildFreeSlotInfos();
             if (joinOverlay != null)
-                joinOverlay.Open(free, _pendingDevices, OnJoinConfirmed, OnJoinCancelled);
+                joinOverlay.Open(_offered, _pendingDevices, OnJoinConfirmed, OnJoinCancelled);
             else
                 Debug.LogWarning("[LocalPlayerManager] No PlayerJoinOverlay assigned — cannot show join prompt.");
 
@@ -236,14 +256,65 @@ namespace Submachina.Core
         // Join resolution
         // -------------------------------------------------------
 
-        /** Overlay callback: the player picked a slot — activate it with the pending devices. */
+        /** Overlay callback: the player picked a slot — resolve it (spawning if needed) and activate. */
         private void OnJoinConfirmed(int slotIndex)
         {
-            if (slotIndex >= 0 && slotIndex < slots.Count)
-                ActivatePlayer(slots[slotIndex], _pendingDevices);
+            // A non-negative index is a real pool slot; a negative one means "spawn a new prefab"
+            PlayerSlot slot = ResolveConfirmedSlot(slotIndex);
+            if (slot != null) ActivatePlayer(slot, _pendingDevices);
 
             EndAssignment();
-            onPlayerJoined.Invoke(slotIndex);
+            onPlayerJoined.Invoke(slot != null ? slots.IndexOf(slot) : slotIndex);
+        }
+
+        /**
+         * Maps an overlay choice back to a concrete slot: a pre-placed/pooled slot for a
+         * non-negative index, or a freshly instantiated prefab slot for a spawn sentinel
+         * (negative index), recovering the label/colour the player picked from the offered list.
+         */
+        private PlayerSlot ResolveConfirmedSlot(int slotIndex)
+        {
+            // Existing pool slot chosen
+            if (slotIndex >= 0 && slotIndex < slots.Count) return slots[slotIndex];
+
+            // Spawn sentinel — find the matching offered entry and build a new slot from the prefab
+            for (int i = 0; i < _offered.Count; i++)
+                if (_offered[i].Index == slotIndex) return SpawnSlot(_offered[i]);
+            return null;
+        }
+
+        /**
+         * Instantiates the player prefab as a brand-new pool slot (a drop-in beyond the
+         * pre-placed roster). Created disabled so AutoAssignOnAwake is cleared before the
+         * sub's Awake runs — mirroring the pre-placed path — then ActivatePlayer positions,
+         * enables, and pairs it. The slot is added to the pool so a later re-join reuses it.
+         */
+        private PlayerSlot SpawnSlot(PlayerJoinOverlay.SlotInfo info)
+        {
+            if (playerPrefab == null) return null;
+
+            // Instantiate inactive so we can configure the module before any Awake/OnEnable fires
+            bool prefabActive = playerPrefab.activeSelf;
+            if (prefabActive) playerPrefab.SetActive(false);
+            GameObject go = Instantiate(playerPrefab);
+            if (prefabActive) playerPrefab.SetActive(true);
+
+            // Name and register it as a real slot so drop-out/re-join can pool the instance
+            go.name = string.IsNullOrEmpty(info.Label) ? $"Player {slots.Count + 1}" : info.Label;
+            var slot = new PlayerSlot
+            {
+                label = go.name,
+                color = info.Color,
+                root = go,
+                spawned = true
+            };
+
+            // The manager owns device pairing — stop the module self-assigning on enable
+            slot.module = go.GetComponent<SubmarineInputModule>();
+            if (slot.module != null) slot.module.AutoAssignOnAwake = false;
+
+            slots.Add(slot);
+            return slot;
         }
 
         /** Overlay callback: the player backed out — just unfreeze and close. */
@@ -342,6 +413,13 @@ namespace Submachina.Core
 
             slot.active = false;
             onPlayerLeft.Invoke(slots.IndexOf(slot));
+
+            // Spawned subs are pooled (disabled) for reuse by default; optionally tear them down entirely
+            if (slot.spawned && destroySpawnedOnLeave)
+            {
+                slots.Remove(slot);
+                if (slot.root != null) Destroy(slot.root);
+            }
         }
 
         // -------------------------------------------------------
@@ -356,10 +434,26 @@ namespace Submachina.Core
             return null;
         }
 
-        /** Builds the overlay's list of selectable free slots, tagged with their pool index. */
+        /**
+         * True when another player can join: under the Max Players cap and either a free
+         * pool slot exists or a prefab is available to spawn a fresh one.
+         */
+        private bool CanAcceptNewPlayer()
+        {
+            if (ActivePlayers >= maxPlayers) return false;
+            return FindFreeSlot() != null || playerPrefab != null;
+        }
+
+        /**
+         * Builds the overlay's selectable options: every free pool slot (tagged with its real
+         * pool index), then — if a prefab is set — extra "spawn a new sub" options filling the
+         * remaining capacity up to Max Players, each tagged with a negative sentinel index.
+         */
         private List<PlayerJoinOverlay.SlotInfo> BuildFreeSlotInfos()
         {
             var list = new List<PlayerJoinOverlay.SlotInfo>();
+
+            // Free pre-placed / previously-spawned pool slots, keyed by their real index
             for (int i = 0; i < slots.Count; i++)
             {
                 if (slots[i].active || slots[i].root == null) continue;
@@ -370,6 +464,23 @@ namespace Submachina.Core
                     Color = slots[i].color
                 });
             }
+
+            // Spawnable prefab options fill whatever capacity the free pool slots don't cover
+            if (playerPrefab != null)
+            {
+                int remaining = maxPlayers - ActivePlayers - list.Count;
+                for (int s = 0; s < remaining; s++)
+                {
+                    int ordinal = slots.Count + s; // colour/label continue past the existing roster
+                    list.Add(new PlayerJoinOverlay.SlotInfo
+                    {
+                        Index = -(s + 1),                              // negative ⇒ spawn a new prefab on confirm
+                        Label = $"Player {ordinal + 1}",
+                        Color = Color.HSVToRGB((ordinal * 0.18f) % 1f, 0.7f, 1f)
+                    });
+                }
+            }
+
             return list;
         }
 
