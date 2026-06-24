@@ -14,6 +14,8 @@ namespace Submachina.Core
      *   1. Stat modifiers — additive/multiplicative tweaks to numerical stats
      *   2. Behavioral add-ons — prefab instantiated alongside existing components
      *   3. Component swaps — prefab that replaces an existing SubmarineComponent
+     *   4. Hierarchy toggles — switch existing objects (tagged by UpgradeFeature)
+     *      on/off instead of spawning anything new
      *
      * Multi-level upgrades stack stat modifiers additively per level.
      * Prerequisites enable succession chains (e.g. DashV1 → DashV2).
@@ -91,6 +93,35 @@ namespace Submachina.Core
                  "deactivated (not destroyed) so it can be restored on removal or toggle. " +
                  "Stat modifiers carry over to the new component via shared StatId keys.")]
         public GameObject swapPrefab;
+
+        // =====================
+        // Hierarchy Toggles
+        // =====================
+
+        [FoldoutGroup("Hierarchy Toggles")]
+        [Tooltip("Switches existing objects already in the sub hierarchy on/off — no " +
+                 "prefab spawning. Each entry targets an UpgradeFeature: every " +
+                 "UpgradeToggleTarget tagged with that feature is set to the entry's " +
+                 "state while this upgrade is active, then restored when it is removed/disabled.")]
+        [ListDrawerSettings(ShowPaging = false)]
+        public UpgradeToggleEntry[] toggles;
+    }
+
+    /**
+     * A single hierarchy-toggle entry within an UpgradeDef.
+     * Drives every UpgradeToggleTarget tagged with `feature` to `setActive`
+     * while the owning upgrade is active.
+     */
+    [Serializable]
+    public struct UpgradeToggleEntry
+    {
+        [HorizontalGroup("Row"), LabelWidth(60)]
+        [Tooltip("The feature whose tagged objects this entry switches.")]
+        public UpgradeFeature feature;
+
+        [HorizontalGroup("Row", 90), LabelWidth(70)]
+        [Tooltip("Desired state for the tagged objects: on (true) or off (false).")]
+        public bool setActive;
     }
 
     /**

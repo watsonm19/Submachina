@@ -12,10 +12,11 @@ namespace Submachina.Core
      * their modified stat values. Provides the API for granting, removing,
      * and toggling upgrades at runtime.
      *
-     * Three upgrade types are supported:
+     * Four upgrade types are supported:
      *   1. Stat modifiers — pushed to the StatModifierTable
      *   2. Behavioral add-ons — prefab instantiated as a child of the sub
      *   3. Component swaps — deactivate the original, instantiate the variant
+     *   4. Hierarchy toggles — switch existing tagged objects on/off (reference-counted)
      *
      * Component swaps use deactivation rather than destruction so the
      * original can be restored on removal or toggle. The UpgradeManager
@@ -45,6 +46,19 @@ namespace Submachina.Core
         // =====================
 
         private readonly Dictionary<UpgradeDef, UpgradeInstance> _upgrades = new();
+
+        /** Per-feature reference counts of active upgrades wanting it on vs. off. */
+        private readonly Dictionary<UpgradeFeature, FeatureToggleState> _featureCounts = new();
+
+        /** Reusable buffer for hierarchy target lookups (avoids per-call allocation). */
+        private readonly List<UpgradeToggleTarget> _targetBuffer = new();
+
+        /** Tracks how many active upgrades request a feature on vs. off. */
+        private class FeatureToggleState
+        {
+            public int onCount;
+            public int offCount;
+        }
 
         /** The modifier table queried by all subsystem components. */
         public StatModifierTable Stats { get; } = new();
@@ -122,6 +136,9 @@ namespace Submachina.Core
                     behavior.OnUpgradeEnabled(Sub, instance.level);
             }
 
+            // Hierarchy toggles — switch existing tagged objects on/off
+            ApplyToggles(def);
+
             Sub?.Feedbacks?.Play(SubFeedbacks.UpgradeGranted, transform.position);
             if (instance.level >= def.maxLevel)
                 Sub?.Feedbacks?.Play(SubFeedbacks.UpgradeMaxed, transform.position);
@@ -149,6 +166,10 @@ namespace Submachina.Core
             // Revert component swap
             if (instance.swapInstance != null)
                 RevertComponentSwap(instance);
+
+            // Release hierarchy toggles (only if still applied — a disabled upgrade already released)
+            if (instance.enabled)
+                ReleaseToggles(def);
 
             // Remove all stacked stat modifiers
             RemoveStatModifiers(def, instance.level);
@@ -198,6 +219,9 @@ namespace Submachina.Core
                     var swapComp = instance.swapInstance.GetComponentInChildren<SubmarineComponent>();
                     if (swapComp != null) Sub?.Register(swapComp);
                 }
+
+                // Re-apply hierarchy toggles
+                ApplyToggles(def);
             }
             else
             {
@@ -226,6 +250,9 @@ namespace Submachina.Core
                         if (origComp != null) Sub?.Register(origComp);
                     }
                 }
+
+                // Release hierarchy toggles
+                ReleaseToggles(def);
             }
 
             onUpgradeToggled?.Invoke(def, enabled);
@@ -365,6 +392,98 @@ namespace Submachina.Core
                 UpgradeManager _       => Sub.Upgrades,
                 _ => null
             };
+        }
+
+        // -------------------------------------------------------
+        // Hierarchy Toggle Helpers
+        // -------------------------------------------------------
+
+        /**
+         * Adds this upgrade's toggle requests to the per-feature reference counts
+         * and re-resolves each affected feature's live state.
+         *
+         * Example: an upgrade with {AdvancedThruster: on, BasicThruster: off}
+         * bumps AdvancedThruster.onCount and BasicThruster.offCount, then drives
+         * every matching object to the resolved state.
+         */
+        private void ApplyToggles(UpgradeDef def)
+        {
+            if (def.toggles == null) return;
+
+            for (int i = 0; i < def.toggles.Length; i++)
+            {
+                var entry = def.toggles[i];
+                if (entry.feature == null) continue;
+
+                // Bump the on/off reference count for this feature
+                if (!_featureCounts.TryGetValue(entry.feature, out var counts))
+                {
+                    counts = new FeatureToggleState();
+                    _featureCounts[entry.feature] = counts;
+                }
+                if (entry.setActive) counts.onCount++;
+                else counts.offCount++;
+
+                ResolveFeature(entry.feature);
+            }
+        }
+
+        /**
+         * Removes this upgrade's toggle requests from the per-feature reference
+         * counts and re-resolves each affected feature. When a feature drops to
+         * zero requests its tagged objects are restored to their authored state.
+         */
+        private void ReleaseToggles(UpgradeDef def)
+        {
+            if (def.toggles == null) return;
+
+            for (int i = 0; i < def.toggles.Length; i++)
+            {
+                var entry = def.toggles[i];
+                if (entry.feature == null) continue;
+                if (!_featureCounts.TryGetValue(entry.feature, out var counts)) continue;
+
+                // Decrement the matching count, clamped at zero
+                if (entry.setActive) counts.onCount = Mathf.Max(0, counts.onCount - 1);
+                else counts.offCount = Mathf.Max(0, counts.offCount - 1);
+
+                // Drop the entry entirely once nothing references the feature
+                if (counts.onCount == 0 && counts.offCount == 0)
+                    _featureCounts.Remove(entry.feature);
+
+                ResolveFeature(entry.feature);
+            }
+        }
+
+        /**
+         * Drives every object tagged with the given feature to its resolved state:
+         *   - any active upgrade wants it on  → on   (ON wins ties over OFF)
+         *   - only off requests remain        → off
+         *   - no requests remain              → restore authored state
+         *
+         * Targets are re-discovered each call so objects added by other upgrades
+         * (e.g. behavior/swap prefabs) are picked up correctly.
+         */
+        private void ResolveFeature(UpgradeFeature feature)
+        {
+            if (Sub == null || feature == null) return;
+
+            _featureCounts.TryGetValue(feature, out var counts);
+            bool restore = counts == null || (counts.onCount == 0 && counts.offCount == 0);
+            bool desired = counts != null && counts.onCount > 0;
+
+            // Collect every matching marker in the hierarchy (including inactive)
+            Sub.GetComponentsInChildren(true, _targetBuffer);
+            for (int i = 0; i < _targetBuffer.Count; i++)
+            {
+                var target = _targetBuffer[i];
+                if (target.Feature != feature) continue;
+
+                // Capture authored state before the first override, then apply
+                target.EnsureOriginalCaptured();
+                if (restore) target.RestoreOriginal();
+                else target.SetActiveState(desired);
+            }
         }
 
         // -------------------------------------------------------
