@@ -506,6 +506,274 @@ namespace Submachina.Core
         }
 
         // -------------------------------------------------------
+        // Editor — Overview
+        // -------------------------------------------------------
+
+#if UNITY_EDITOR
+        /** True while in Play mode — gates the runtime-only overview tables. */
+        private bool IsPlaying => Application.isPlaying;
+
+        /**
+         * The hierarchy root used for edit-time discovery. At runtime the cached
+         * Sub reference is authoritative; in edit mode (Sub not yet populated) we
+         * walk up to the owning Submarine, falling back to the transform root.
+         */
+        private Transform DiscoveryRoot
+        {
+            get
+            {
+                if (Sub != null) return Sub.transform;
+                var sub = GetComponentInParent<Submarine>();
+                return sub != null ? sub.transform : transform.root;
+            }
+        }
+
+        /** Friendly label for a feature: its display name, else the asset name. */
+        private static string FeatureLabel(UpgradeFeature f)
+            => f == null ? "<none>" : (string.IsNullOrEmpty(f.displayName) ? f.name : f.displayName);
+
+        // ── Summary banner ──
+
+        /**
+         * One-line summary shown at the top of the Overview foldout. Reports live
+         * counts in Play mode and the static hierarchy "purview" in edit mode.
+         */
+        [FoldoutGroup("Overview", Order = -1), PropertyOrder(0)]
+        [ShowInInspector, HideLabel, DisplayAsString(false)]
+        [GUIColor(0.6f, 0.85f, 1f)]
+        private string Summary
+        {
+            get
+            {
+                var purview = FeaturePurview;
+                int targets = 0;
+                for (int i = 0; i < purview.Count; i++) targets += purview[i].Targets;
+
+                if (IsPlaying)
+                    return $"{_upgrades.Count} upgrade(s) granted   •   {Stats.TotalModifierCount} stat modifier(s) active   •   " +
+                           $"{_featureCounts.Count} feature(s) toggled   •   purview: {purview.Count} feature(s) / {targets} tagged object(s)";
+
+                return $"Edit mode  —  purview: {purview.Count} feature(s) / {targets} tagged object(s) in this submarine. " +
+                       "Granted upgrades and stat modifiers populate here during Play.";
+            }
+        }
+
+        // ── Granted upgrades ──
+
+        /** One row per granted upgrade in the runtime overview table. */
+        private struct GrantedUpgradeRow
+        {
+            [TableColumnWidth(170, false), DisplayAsString]
+            public string Upgrade;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public string Level;
+
+            [TableColumnWidth(70, false)]
+            public bool Enabled;
+
+            [DisplayAsString(false)]
+            public string Provides;
+        }
+
+        [FoldoutGroup("Overview"), PropertyOrder(1)]
+        [ShowInInspector, ShowIf(nameof(IsPlaying))]
+        [LabelText("Granted Upgrades")]
+        [TableList(IsReadOnly = true, AlwaysExpanded = true)]
+        private List<GrantedUpgradeRow> GrantedUpgradeRows
+        {
+            get
+            {
+                var rows = new List<GrantedUpgradeRow>(_upgrades.Count);
+
+                foreach (var kvp in _upgrades)
+                {
+                    var def = kvp.Key;
+                    var inst = kvp.Value;
+
+                    // Describe which upgrade mechanisms this entry actually drives
+                    var parts = new List<string>(4);
+                    if (def.statModifiers != null && def.statModifiers.Length > 0)
+                        parts.Add($"{def.statModifiers.Length} stat");
+                    if (inst.behaviorInstance != null) parts.Add("behavior");
+                    if (inst.swapInstance != null) parts.Add("swap");
+                    if (def.toggles != null && def.toggles.Length > 0)
+                        parts.Add($"{def.toggles.Length} toggle");
+
+                    rows.Add(new GrantedUpgradeRow
+                    {
+                        Upgrade = string.IsNullOrEmpty(def.upgradeName) ? def.name : def.upgradeName,
+                        Level = $"{inst.level}/{def.maxLevel}",
+                        Enabled = inst.enabled,
+                        Provides = parts.Count > 0 ? string.Join(", ", parts) : "—"
+                    });
+                }
+
+                return rows;
+            }
+        }
+
+        // ── Active stat modifiers ──
+
+        /** One row per modified stat in the runtime overview table. */
+        private struct StatModifierRow
+        {
+            [TableColumnWidth(190, false), DisplayAsString]
+            public string Stat;
+
+            [TableColumnWidth(90, false), DisplayAsString]
+            public string Additive;
+
+            [TableColumnWidth(110, false), DisplayAsString]
+            public string Multiplier;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public int Stacks;
+        }
+
+        [FoldoutGroup("Overview"), PropertyOrder(2)]
+        [ShowInInspector, ShowIf(nameof(IsPlaying))]
+        [LabelText("Active Stat Modifiers")]
+        [TableList(IsReadOnly = true, AlwaysExpanded = true)]
+        private List<StatModifierRow> StatModifierRows
+        {
+            get
+            {
+                var rows = new List<StatModifierRow>();
+
+                // Aggregate the live table into one row per affected stat
+                foreach (var s in Stats.EditorSnapshot())
+                {
+                    string mult = $"{(s.multiplier >= 0f ? "+" : "")}{s.multiplier * 100f:0.#}%";
+                    rows.Add(new StatModifierRow
+                    {
+                        Stat = s.stat.ToString(),
+                        Additive = s.additive.ToString("+0.##;-0.##;0"),
+                        Multiplier = mult,
+                        Stacks = s.count
+                    });
+                }
+
+                return rows;
+            }
+        }
+
+        // ── Feature toggle reference counts (runtime) ──
+
+        /** One row per actively-toggled feature, showing on/off request counts. */
+        private struct FeatureToggleRow
+        {
+            [TableColumnWidth(190, false), DisplayAsString]
+            public string Feature;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public int On;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public int Off;
+
+            [TableColumnWidth(90, false), DisplayAsString]
+            public string Resolved;
+        }
+
+        [FoldoutGroup("Overview"), PropertyOrder(3)]
+        [ShowInInspector, ShowIf(nameof(IsPlaying))]
+        [LabelText("Toggled Features (ref-counted)")]
+        [TableList(IsReadOnly = true, AlwaysExpanded = true)]
+        private List<FeatureToggleRow> FeatureToggleRows
+        {
+            get
+            {
+                var rows = new List<FeatureToggleRow>(_featureCounts.Count);
+
+                foreach (var kvp in _featureCounts)
+                {
+                    var counts = kvp.Value;
+                    // ON wins ties; only-off → OFF; nothing → restored
+                    string resolved = counts.onCount > 0 ? "ON"
+                                    : counts.offCount > 0 ? "OFF" : "restored";
+
+                    rows.Add(new FeatureToggleRow
+                    {
+                        Feature = FeatureLabel(kvp.Key),
+                        On = counts.onCount,
+                        Off = counts.offCount,
+                        Resolved = resolved
+                    });
+                }
+
+                return rows;
+            }
+        }
+
+        // ── Hierarchy purview (edit + runtime) ──
+
+        /** One row per feature discovered in the hierarchy, with its tagged objects. */
+        private struct FeaturePurviewRow
+        {
+            [TableColumnWidth(170, false), DisplayAsString]
+            public string Feature;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public int Targets;
+
+            [DisplayAsString(false)]
+            public string Objects;
+        }
+
+        [FoldoutGroup("Overview"), PropertyOrder(4)]
+        [ShowInInspector]
+        [LabelText("Feature Purview (hierarchy)")]
+        [InfoBox("No UpgradeToggleTarget components found under this submarine. " +
+                 "Add UpgradeToggleTarget markers to objects you want upgrades to switch on/off.",
+                 InfoMessageType.Info, VisibleIf = "@this.FeaturePurview.Count == 0")]
+        [TableList(IsReadOnly = true, AlwaysExpanded = true)]
+        private List<FeaturePurviewRow> FeaturePurview
+        {
+            get
+            {
+                var rows = new List<FeaturePurviewRow>();
+                var root = DiscoveryRoot;
+                if (root == null) return rows;
+
+                // Discover every toggle target in the sub hierarchy (including inactive)
+                var targets = root.GetComponentsInChildren<UpgradeToggleTarget>(true);
+
+                // Group the targets by the feature they are tagged with
+                var byFeature = new Dictionary<UpgradeFeature, List<UpgradeToggleTarget>>();
+                for (int i = 0; i < targets.Length; i++)
+                {
+                    var f = targets[i].Feature;
+                    if (f == null) continue;
+                    if (!byFeature.TryGetValue(f, out var list))
+                    {
+                        list = new List<UpgradeToggleTarget>();
+                        byFeature[f] = list;
+                    }
+                    list.Add(targets[i]);
+                }
+
+                // One row per feature, with a capped preview of the object names
+                foreach (var kvp in byFeature)
+                {
+                    var objs = kvp.Value;
+                    string names = string.Join(", ", objs.ConvertAll(o => o.name));
+                    if (names.Length > 80) names = names.Substring(0, 77) + "…";
+
+                    rows.Add(new FeaturePurviewRow
+                    {
+                        Feature = FeatureLabel(kvp.Key),
+                        Targets = objs.Count,
+                        Objects = names
+                    });
+                }
+
+                return rows;
+            }
+        }
+#endif
+
+        // -------------------------------------------------------
         // Editor Utilities
         // -------------------------------------------------------
 

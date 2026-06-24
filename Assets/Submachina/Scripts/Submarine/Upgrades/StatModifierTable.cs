@@ -113,5 +113,45 @@ namespace Submachina.Core
                 return count;
             }
         }
+
+#if UNITY_EDITOR
+        /** Read-only per-stat aggregate, used purely for inspector display. */
+        public readonly struct StatModifierSummary
+        {
+            public readonly StatId stat;     // which stat is modified
+            public readonly float additive;  // summed additive contributions
+            public readonly float multiplier;// summed multiplier deltas (offset from 1.0)
+            public readonly int count;       // how many individual modifiers stack here
+
+            public StatModifierSummary(StatId stat, float additive, float multiplier, int count)
+            {
+                this.stat = stat;
+                this.additive = additive;
+                this.multiplier = multiplier;
+                this.count = count;
+            }
+        }
+
+        /**
+         * Editor-only snapshot of the table aggregated per stat. Each entry collapses
+         * all stacked modifiers for a single StatId into summed additive/multiplier
+         * totals so the inspector can show one row per affected stat.
+         */
+        public IEnumerable<StatModifierSummary> EditorSnapshot()
+        {
+            foreach (var kvp in _mods)
+            {
+                // Sum every stacked contribution for this stat
+                float add = 0f, mult = 0f;
+                for (int i = 0; i < kvp.Value.Count; i++)
+                {
+                    add += kvp.Value[i].additive;
+                    mult += kvp.Value[i].multiplier;
+                }
+
+                yield return new StatModifierSummary(kvp.Key, add, mult, kvp.Value.Count);
+            }
+        }
+#endif
     }
 }
