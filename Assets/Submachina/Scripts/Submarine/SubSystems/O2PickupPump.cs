@@ -382,7 +382,7 @@ namespace Submachina.Core
 
             // Grade the reward by timing; Collect() routes the air into the tank
             bool inSweetSpot = _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax;
-            float airCollected = pickup.Collect(Sub, inSweetSpot ? SweetMultMod : WeakMultMod);
+            float airCollected = pickup.Collect(CollectTarget, inSweetSpot ? SweetMultMod : WeakMultMod);
 
             _chargeProgress = 0f;
             _state = PumpState.Idle;
@@ -493,6 +493,20 @@ namespace Submachina.Core
                     break;
             }
         }
+
+        // -------------------------------------------------------
+        // Collect Target Override
+        // -------------------------------------------------------
+
+        /**
+         * When set, collected O2 is routed to this submarine's O2System instead of Sub's.
+         * Companion subs set this to the player sub in Start so their O2 collection
+         * benefits the player rather than a tank the companion no longer owns.
+         */
+        public Submarine OverrideCollectTarget { get; set; }
+
+        // Resolve to the override if present; fall back to self
+        private Submarine CollectTarget => OverrideCollectTarget != null ? OverrideCollectTarget : Sub;
 
         // -------------------------------------------------------
         // AI Interface

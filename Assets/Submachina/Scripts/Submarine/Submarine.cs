@@ -74,6 +74,9 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public MiningLaser Mining { get; private set; }
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        public PlayerAttack Attack { get; private set; }
+
         // =====================
         // Lifecycle
         // =====================
@@ -111,6 +114,7 @@ namespace Submachina.Core
                 case PickupRangeDetector pickupRange:   PickupRange = pickupRange; break;
                 case UpgradeManager upgrades:           Upgrades = upgrades;     break;
                 case MiningLaser mining:                Mining = mining;         break;
+                case PlayerAttack attack:               Attack = attack;         break;
             }
         }
 
@@ -134,6 +138,7 @@ namespace Submachina.Core
                 case PickupRangeDetector pr when PickupRange == pr:                      PickupRange = null; break;
                 case UpgradeManager u when Upgrades == u:                                Upgrades = null;    break;
                 case MiningLaser m when Mining == m:                                     Mining = null;      break;
+                case PlayerAttack a when Attack == a:                                    Attack = null;      break;
             }
         }
 

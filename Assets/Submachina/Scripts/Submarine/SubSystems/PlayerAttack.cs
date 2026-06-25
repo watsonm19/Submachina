@@ -192,6 +192,13 @@ namespace Submachina.Core
             UpdateArcGeometry();
         }
 
+        /**
+         * Called by CompanionAI each frame while in Guard mode.
+         * TryAttack's cooldown guard means calling this every frame is safe —
+         * it only fires the swing when the cooldown has elapsed.
+         */
+        public void AIAttack() => TryAttack();
+
         private void Update()
         {
             if (PrimaryAction != null && PrimaryAction.WasPressedThisFrame())

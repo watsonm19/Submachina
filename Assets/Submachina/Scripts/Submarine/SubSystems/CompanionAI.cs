@@ -1,33 +1,36 @@
 using UnityEngine;
+using UnityEngine.Events;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
 {
+    /** Player-issued order that overrides the companion's default AI behaviour. */
+    public enum CompanionCommand { Mine, Guard, Collect }
+
     /**
      * AI driver for a companion submarine.
      *
      * Drives movement via SubmarinePhysicsController.SetAIThrust, turret aim via
-     * TurretAim.SetAIAimTarget, and mining via MiningLaser.SetAIMining — all using
-     * the same AI override pattern so the companion benefits from the same physics
-     * feel as the player without duplicating any movement code.
+     * TurretAim.SetAIAimTarget, and laser via MiningLaser.SetAIMining — all using
+     * the same AI override pattern so the companion uses the same physics feel as
+     * the player without duplicating movement code.
      *
-     * State machine (priority high → low):
-     *   SeekO2       — O2 below threshold and an O2 bubble is on-screen; navigate to it,
-     *                  let the pump auto-start, call AICollect() at the sweet spot.
-     *   MineResource — A MiningResource is visible on screen; navigate within laser range
-     *                  and hold the beam until collected.
-     *   Follow       — Default; fly to a position offset to one side of the player.
+     * Commands (issued by CompanionCommandSystem on the player sub):
+     *   Mine    — seeks and collects resources; shadows the player when none are available.
+     *   Guard   — interposes between player and nearest enemy; uses PlayerAttack to hit them.
+     *   Collect — navigates to O2 bubbles and collects them into the PLAYER's O2 tank.
      *
-     * Scan is viewport-filtered: only world objects within the camera view (plus padding)
-     * are considered as targets. This prevents the companion chasing already-scrolled-past
-     * objects above the screen in forced-scroll mode.
+     * The companion has no O2 system of its own — its only survivability concern is health,
+     * repaired via tether. Collected O2 is routed to playerSub via O2PickupPump.OverrideCollectTarget.
      *
      * Setup:
      *   1. Add to the companion submarine root alongside SubmarinePhysicsController,
-     *      TurretAim, MiningLaser, O2System, O2PickupPump, and PickupRangeDetector.
+     *      TurretAim, MiningLaser, O2PickupPump, and PickupRangeDetector.
+     *      Do NOT add O2System — the companion has no air tank.
      *   2. Optionally assign Player Sub — auto-found from Submarine.All at Start.
      *   3. Set Avoidance Layers to the Collision layer.
      *   4. Enable Allow Downward Thrust on the companion's SubmarinePhysicsController.
+     *   5. Add CompanionCommandSystem to the player sub and assign input actions.
      */
     public class CompanionAI : SubmarineComponent
     {
@@ -44,51 +47,44 @@ namespace Submachina.Core
         [SerializeField] private bool preferRightSide = true;
 
         [FoldoutGroup("Follow")]
-        [Tooltip("World-unit lateral offset from the player's position. " +
+        [Tooltip("World-unit lateral offset from the player in Mine/Collect mode. " +
                  "Example: 3 = flies 3 units to the right of the player.")]
         [SerializeField, Min(0f)] private float sideOffset = 3f;
 
         [FoldoutGroup("Follow")]
-        [Tooltip("Distance at which follow thrust reaches full magnitude. " +
-                 "Example: 4 = full thrust when 4+ units away, proportionally less when closer.")]
+        [Tooltip("Distance at which follow thrust reaches full magnitude.")]
         [SerializeField, Min(0.1f)] private float followSensitivity = 4f;
-
-        // =====================
-        // O2
-        // =====================
-
-        [FoldoutGroup("O2")]
-        [Tooltip("O2 fill fraction (0–1) below which SeekO2 takes priority over mining. " +
-                 "Example: 0.5 = seek a bubble when below 50% air.")]
-        [SerializeField, Range(0f, 1f)] private float o2SeekThreshold = 0.5f;
 
         // =====================
         // Mining
         // =====================
 
         [FoldoutGroup("Mining")]
-        [Tooltip("How often (seconds) to rescan for the nearest visible O2 bubble and mining " +
-                 "resource. Lower = more responsive. 1 second is a good default.")]
+        [Tooltip("How often (seconds) to rescan for visible targets.")]
         [SerializeField, Min(0.1f)] private float scanInterval = 1f;
 
         [FoldoutGroup("Mining")]
-        [Tooltip("Distance from a resource at which the companion stops approaching and holds " +
-                 "the beam. Should be less than MiningLaser's Max Range. " +
-                 "Example: 4 = hovers 4 units away and fires from there.")]
+        [Tooltip("Distance at which the companion holds position and fires the mining laser. " +
+                 "Should be less than MiningLaser's Max Range.")]
         [SerializeField, Min(0.5f)] private float miningEngageDistance = 4f;
 
         [FoldoutGroup("Mining")]
-        [Tooltip("Extra padding (in viewport fraction) beyond the screen edges to include when " +
-                 "scanning for targets. 0.1 = 10% of the screen width/height of extra tolerance.")]
+        [Tooltip("Viewport padding fraction for target scanning. 0.1 = 10% beyond screen edges.")]
         [SerializeField, Range(0f, 0.5f)] private float viewportScanPadding = 0.1f;
 
         [FoldoutGroup("Mining")]
         [Tooltip("Max world-unit height above the companion to consider a resource worth chasing. " +
-                 "Resources above this threshold are skipped during scans and cause the companion " +
-                 "to abandon the current target (unless already within mining range). " +
-                 "Prevents chasing nodes that will scroll off-screen before they can be reached. " +
-                 "Example: 4 = ignore anything more than 4 units above the companion's Y.")]
+                 "Prevents locking onto nodes that will scroll off before they can be reached.")]
         [SerializeField, Min(0f)] private float maxChaseHeight = 4f;
+
+        // =====================
+        // Guard
+        // =====================
+
+        [FoldoutGroup("Guard")]
+        [Tooltip("World units from the player the companion positions itself toward the threat. " +
+                 "Example: 3 = sits 3 units in front of the player in the enemy's direction.")]
+        [SerializeField, Min(0f)] private float guardInterposeDist = 3f;
 
         // =====================
         // Avoidance
@@ -107,12 +103,23 @@ namespace Submachina.Core
         [SerializeField] private LayerMask avoidanceLayers;
 
         [FoldoutGroup("Avoidance")]
-        [Tooltip("How strongly obstacle avoidance deflects the follow thrust.")]
+        [Tooltip("How strongly obstacle avoidance deflects the steering thrust.")]
         [SerializeField, Range(0f, 1f)] private float avoidanceStrength = 0.75f;
+
+        // =====================
+        // Events
+        // =====================
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired whenever the active command changes. Wire to HUD to display the current mode.")]
+        public UnityEvent<CompanionCommand> OnCommandChanged;
 
         // =====================
         // Debug
         // =====================
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        private string ActiveCommand => _command.ToString();
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private string CurrentState => _state.ToString();
@@ -121,29 +128,55 @@ namespace Submachina.Core
         private Vector2 LiveThrust => _currentThrust;
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
-        private string O2Target => _targetO2 != null ? _targetO2.name : "None";
+        private string O2Target => _targetO2 != null ? _targetO2.name : "None (Collect command only)";
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private string ResourceTarget => _targetResource != null ? _targetResource.name : "None";
 
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         private float ResourceDistance => _targetResource != null
-            ? Vector2.Distance(transform.position, _targetResource.transform.position)
-            : -1f;
+            ? Vector2.Distance(transform.position, _targetResource.transform.position) : -1f;
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        private string EnemyTarget => _nearestEnemy != null ? _nearestEnemy.name : "None";
 
         // =====================
         // State
         // =====================
 
-        private enum AIState { Follow, SeekO2, MineResource }
+        private enum AIState { Follow, SeekO2, MineResource, Guard }
         private AIState _state = AIState.Follow;
+
+        private CompanionCommand _command = CompanionCommand.Mine;
+
+        /** Read by CompanionCommandSystem to display the active mode in debug. */
+        public CompanionCommand CurrentCommand => _command;
 
         private Vector2 _currentThrust;
         private float _scanTimer;
         private O2Pickup _targetO2;
         private MiningResource _targetResource;
+        private EnemyBase _nearestEnemy;
         private O2PickupPump _pump;
         private Camera _cam;
+
+        // -------------------------------------------------------
+        // Public API
+        // -------------------------------------------------------
+
+        /**
+         * Issues a new command to the companion. Called by CompanionCommandSystem
+         * on the player sub. Triggers an immediate world rescan so the new behaviour
+         * takes effect within the same frame rather than waiting for the scan timer.
+         */
+        public void SetCommand(CompanionCommand command)
+        {
+            if (_command == command) return;
+            _command = command;
+            ScanWorld();
+            _scanTimer = scanInterval;
+            OnCommandChanged?.Invoke(_command);
+        }
 
         // -------------------------------------------------------
         // Lifecycle
@@ -153,36 +186,35 @@ namespace Submachina.Core
         {
             _cam = Camera.main;
 
-            // Auto-find the player sub if not manually assigned
             if (playerSub == null)
                 foreach (Submarine sub in Submarine.All)
                     if (sub != Sub) { playerSub = sub; break; }
 
-            // Cache the pump — not in the Submarine facade, so get it from the sub root
             _pump = Sub != null
                 ? Sub.GetComponentInChildren<O2PickupPump>()
                 : GetComponentInChildren<O2PickupPump>();
 
+            // Route collected O2 to the player's tank — companion has no O2System of its own
+            if (_pump != null && playerSub != null)
+                _pump.OverrideCollectTarget = playerSub;
+
             if (playerSub == null)
                 Debug.LogWarning("[CompanionAI] No player submarine found in Submarine.All.", this);
             if (Sub?.Mining == null)
-                Debug.LogWarning("[CompanionAI] MiningLaser not found on this sub — mining will not work.", this);
+                Debug.LogWarning("[CompanionAI] MiningLaser not found — mining will not work.", this);
             if (_pump == null)
-                Debug.LogWarning("[CompanionAI] O2PickupPump not found — AI O2 collection will not work.", this);
+                Debug.LogWarning("[CompanionAI] O2PickupPump not found — Collect command will not work.", this);
         }
 
         private void Update()
         {
             if (Sub?.Physics == null) return;
 
-            // Periodic rescan for visible world objects
+            // Periodic world scan
             _scanTimer -= Time.deltaTime;
             if (_scanTimer <= 0f) { ScanWorld(); _scanTimer = scanInterval; }
 
-            // Rescan immediately when the active resource is gone or no longer worth chasing.
-            // "Gone" = collected/destroyed. "Not worth chasing" = scrolled too far above the
-            // companion while still outside mining range (it'll leave the screen before we
-            // can reach it, and better options are appearing below).
+            // Immediate rescan when active resource is gone or no longer reachable
             if (_state == AIState.MineResource && ShouldAbandonResource())
             {
                 _targetResource = null;
@@ -193,9 +225,8 @@ namespace Submachina.Core
             UpdateState();
             _currentThrust = ComputeThrust();
             Sub.Physics.SetAIThrust(_currentThrust);
-            UpdateMining();
+            UpdateWeapons();
 
-            // While seeking O2, try to collect at the sweet spot each frame
             if (_state == AIState.SeekO2) _pump?.AICollect();
         }
 
@@ -212,19 +243,18 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Refreshes nearest visible O2 bubble and mining resource references.
-         * Only considers objects inside the camera viewport (plus viewportScanPadding),
-         * preventing the companion from chasing targets that have already scrolled off-screen.
+         * Refreshes nearest visible O2 bubble, mining resource, and enemy.
+         * All results are viewport-filtered to avoid targeting already-scrolled-past objects.
          */
         private void ScanWorld()
         {
             Vector2 pos = transform.position;
 
             _targetO2 = FindNearestInView<O2Pickup>(pos);
+            _nearestEnemy = FindNearestInView<EnemyBase>(pos);
 
-            // Keep the current resource until it's collected (destroyed/disabled).
-            // Don't drop it based on viewport — it may scroll toward the edge mid-mine
-            // and the companion still needs to track it to stay within laser range.
+            // Keep the current resource until it's destroyed — don't drop based on viewport
+            // so mid-mine tracking continues even as the node drifts toward the screen edge
             if (_targetResource == null || !_targetResource.gameObject.activeInHierarchy)
                 _targetResource = FindNearestInView<MiningResource>(pos);
         }
@@ -234,21 +264,32 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Evaluates state transitions each frame.
+         * Resolves the active AI state from the current command and world conditions.
          *
-         * SeekO2 triggers when air is critically low (below o2SeekThreshold) and a
-         * visible bubble exists. MineResource activates whenever a resource target
-         * is valid. Follow is the idle/default fallback.
+         * The companion has no O2 system — there is no survival O2 override.
+         *
+         * Command → state mapping:
+         *   Guard   → Guard
+         *   Collect → SeekO2 if a bubble is visible; routes air to playerSub on collect
+         *   Mine    → MineResource if a target is valid, else Follow
          */
         private void UpdateState()
         {
-            bool o2Low = Sub?.O2 != null
-                && Sub.O2.MaxAir > 0f
-                && Sub.O2.CurrentAirPressure / Sub.O2.MaxAir < o2SeekThreshold;
+            switch (_command)
+            {
+                case CompanionCommand.Guard:
+                    _state = AIState.Guard;
+                    return;
 
-            if (o2Low && _targetO2 != null)  { _state = AIState.SeekO2;       return; }
-            if (_targetResource != null)      { _state = AIState.MineResource; return; }
-            _state = AIState.Follow;
+                case CompanionCommand.Collect:
+                    _state = _targetO2 != null ? AIState.SeekO2 : AIState.Follow;
+                    return;
+
+                case CompanionCommand.Mine:
+                default:
+                    _state = _targetResource != null ? AIState.MineResource : AIState.Follow;
+                    return;
+            }
         }
 
         // -------------------------------------------------------
@@ -256,12 +297,8 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * Blends the state-dependent navigation target with obstacle avoidance.
-         * Uses a P-controller: thrust scales proportionally with distance up to
-         * followSensitivity, then clamps at 1.
-         *
-         * Example: 6 units from target (sensitivity=4) → strength = 1.0 (full thrust).
-         *          1 unit from target (sensitivity=4) → strength = 0.25 (gentle approach).
+         * Blends state-dependent navigation toward a target with obstacle avoidance.
+         * P-controller: thrust scales with distance up to followSensitivity, then clamps at 1.
          */
         private Vector2 ComputeThrust()
         {
@@ -284,16 +321,16 @@ namespace Submachina.Core
         }
 
         /**
-         * Returns the world position this AI should navigate toward in the current state.
+         * Returns the world position to navigate toward for the current state.
          *
-         * MineResource: always targets a point inside miningEngageDistance rather than
-         * holding position. In forced-scroll mode the camera drifts the companion away
-         * from world-space resources over time, so continuous thrust is needed to maintain
-         * laser range even while the beam is active.
+         * MineResource: steers to 70% of engage distance from the resource so continuous
+         * thrust counteracts forced-scroll drift.
          *
-         * Example: resource at (10, -5), engageDistance=4, holdFraction=0.7 →
-         *   companion always steers toward (10-dir*2.8, -5), staying ~2.8 units from resource.
-         *   P-controller damps the approach naturally as it gets close.
+         * Guard: interposes between player and nearest enemy at guardInterposeDist.
+         * If no enemy is visible, shadows the player at a tighter offset.
+         *
+         * Example (Guard): player at (0,0), enemy at (10,0), guardInterposeDist=3
+         *   → companion targets (3, 0), blocking the enemy's approach vector.
          */
         private Vector2 GetNavigationTarget(Vector2 myPos)
         {
@@ -307,10 +344,11 @@ namespace Submachina.Core
                 case AIState.MineResource when _targetResource != null:
                     Vector2 toResource = (Vector2)_targetResource.transform.position - myPos;
                     if (toResource.sqrMagnitude < 0.01f) return myPos;
-                    // Target 70% of engage distance from the resource — keeps the companion
-                    // continuously thrusting to hold position against scroll drift
                     return (Vector2)_targetResource.transform.position
                            - toResource.normalized * (miningEngageDistance * 0.7f);
+
+                case AIState.Guard:
+                    return GetGuardTarget();
 
                 default:
                     return GetFollowTarget();
@@ -324,16 +362,44 @@ namespace Submachina.Core
             return (Vector2)playerSub.transform.position + Vector2.right * (sideOffset * xSign);
         }
 
+        /**
+         * Guard navigation target: a point between the player and the nearest enemy.
+         * Positions the companion as a physical shield at guardInterposeDist from the player.
+         * Falls back to a tighter follow offset when no enemy is in range.
+         */
+        private Vector2 GetGuardTarget()
+        {
+            if (playerSub == null) return transform.position;
+
+            Vector2 playerPos = playerSub.transform.position;
+
+            if (_nearestEnemy == null)
+            {
+                // No threat — shadow the player more closely than default follow
+                float xSign = preferRightSide ? 1f : -1f;
+                return playerPos + Vector2.right * (sideOffset * 0.5f * xSign);
+            }
+
+            // Interpose: step guardInterposeDist units from the player toward the enemy
+            Vector2 toEnemy = ((Vector2)_nearestEnemy.transform.position - playerPos).normalized;
+            return playerPos + toEnemy * guardInterposeDist;
+        }
+
         // -------------------------------------------------------
-        // Mining Control
+        // Laser Control
         // -------------------------------------------------------
 
         /**
-         * When in MineResource state and within engage range, aims the turret at the
-         * resource and activates the laser. Clears both overrides otherwise.
+         * Controls the active weapon each frame based on the current AI state.
+         *
+         * MineResource: aims turret at resource, fires mining laser when within engage range.
+         * Guard:        aims turret at nearest enemy, calls PlayerAttack.AIAttack() each frame
+         *               (the attack's internal cooldown controls the actual swing rate).
+         * All others:   clears all overrides so weapons are idle.
          */
-        private void UpdateMining()
+        private void UpdateWeapons()
         {
+            // Mining
             if (_state == AIState.MineResource && _targetResource != null)
             {
                 float dist = Vector2.Distance(transform.position, _targetResource.transform.position);
@@ -344,9 +410,17 @@ namespace Submachina.Core
                     return;
                 }
             }
+            Sub.Mining?.SetAIMining(false);
+
+            // Guard attack — PlayerAttack.AIAttack respects its own cooldown internally
+            if (_state == AIState.Guard && _nearestEnemy != null)
+            {
+                Sub.Turret?.SetAIAimTarget(_nearestEnemy.transform);
+                Sub.Attack?.AIAttack();
+                return;
+            }
 
             Sub.Turret?.ClearAIAimTarget();
-            Sub.Mining?.SetAIMining(false);
         }
 
         // -------------------------------------------------------
@@ -356,9 +430,6 @@ namespace Submachina.Core
         /**
          * Casts three rays (center, left-spread, right-spread) in the movement direction.
          * Returns a lateral correction vector pushing away from detected obstacles.
-         *
-         * Example: left ray hits, right is clear → return +lateral (push right).
-         *          all clear → return zero.
          */
         private Vector2 ComputeAvoidance(Vector2 moveDir)
         {
@@ -374,7 +445,6 @@ namespace Submachina.Core
             if (!hitCenter && !hitLeft && !hitRight) return Vector2.zero;
 
             Vector2 lateral = new Vector2(moveDir.y, -moveDir.x);
-
             if (hitLeft  && !hitRight) return  lateral;
             if (hitRight && !hitLeft)  return -lateral;
             return lateral * (preferRightSide ? 1f : -1f);
@@ -385,36 +455,25 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
-         * True when the active resource target should be dropped so a better one can be found.
-         *
-         * A target is stale when:
-         *   - It was collected (destroyed/deactivated), OR
-         *   - It has scrolled above the companion by more than maxChaseHeight while still
-         *     outside mining range — meaning it will leave the screen before we reach it
-         *     and resources appearing below are better options.
-         *
-         * The mining-range guard prevents abandoning a node mid-beam just because the
-         * scroll has drifted it slightly upward.
+         * True when the active mining target should be abandoned.
+         * Drops destroyed/collected nodes immediately, and drops nodes that have scrolled
+         * above maxChaseHeight while still outside laser range (unreachable before off-screen).
          */
         private bool ShouldAbandonResource()
         {
             if (_targetResource == null || !_targetResource.gameObject.activeInHierarchy)
                 return true;
 
-            // Never abandon while the beam is actually on it
             float dist = Vector2.Distance(transform.position, _targetResource.transform.position);
             if (dist <= miningEngageDistance) return false;
 
-            // Abandon if it has scrolled too far above to be worth chasing
             float heightAbove = _targetResource.transform.position.y - transform.position.y;
             return heightAbove > maxChaseHeight;
         }
 
         /**
-         * Returns the nearest MonoBehaviour of type T that is currently inside the
-         * camera viewport (with viewportScanPadding) AND is not more than maxChaseHeight
-         * world units above the companion. Resources above that threshold will scroll
-         * off-screen before they can be reached in forced-scroll mode.
+         * Finds the nearest MonoBehaviour of type T within the camera viewport
+         * (plus viewportScanPadding) and not more than maxChaseHeight above the companion.
          */
         private T FindNearestInView<T>(Vector2 from) where T : MonoBehaviour
         {
@@ -426,10 +485,7 @@ namespace Submachina.Core
             {
                 Vector2 pos = item.transform.position;
                 if (!IsInViewport(pos)) continue;
-
-                // Skip resources scrolling upward faster than the companion can reach them
-                float heightAbove = pos.y - from.y;
-                if (heightAbove > maxChaseHeight) continue;
+                if (pos.y - from.y > maxChaseHeight) continue;
 
                 float sqrDist = (pos - from).sqrMagnitude;
                 if (sqrDist < bestSqrDist) { bestSqrDist = sqrDist; nearest = item; }
@@ -438,10 +494,9 @@ namespace Submachina.Core
             return nearest;
         }
 
-        /** Returns true if worldPos falls within the camera viewport plus viewportScanPadding. */
         private bool IsInViewport(Vector2 worldPos)
         {
-            if (_cam == null) return true; // fallback: no camera, accept everything
+            if (_cam == null) return true;
             Vector3 vp = _cam.WorldToViewportPoint(worldPos);
             float p = viewportScanPadding;
             return vp.x >= -p && vp.x <= 1f + p && vp.y >= -p && vp.y <= 1f + p;
@@ -463,17 +518,26 @@ namespace Submachina.Core
         {
             Vector2 pos = transform.position;
 
-            // Navigation target — cyan line + sphere
+            // Navigation target — cyan
             Vector2 navTarget = GetNavigationTarget(pos);
             Gizmos.color = new Color(0.2f, 0.9f, 1f, 0.8f);
             Gizmos.DrawLine(pos, navTarget);
             Gizmos.DrawWireSphere(navTarget, 0.3f);
 
-            // Mining engage radius — yellow ring around the resource
+            // Mining engage radius — yellow
             if (_state == AIState.MineResource && _targetResource != null)
             {
                 Gizmos.color = new Color(1f, 0.85f, 0.1f, 0.6f);
                 Gizmos.DrawWireSphere(_targetResource.transform.position, miningEngageDistance);
+            }
+
+            // Guard: show the interpose target and a line to the threat
+            if (_state == AIState.Guard && _nearestEnemy != null)
+            {
+                Gizmos.color = new Color(1f, 0.5f, 0f, 0.8f);
+                Gizmos.DrawWireSphere(GetGuardTarget(), 0.4f);
+                Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.4f);
+                Gizmos.DrawLine(transform.position, _nearestEnemy.transform.position);
             }
 
             // Avoidance rays — green (clear) or red (hit)
