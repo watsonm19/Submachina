@@ -82,6 +82,14 @@ namespace Submachina.Core
                  "scanning for targets. 0.1 = 10% of the screen width/height of extra tolerance.")]
         [SerializeField, Range(0f, 0.5f)] private float viewportScanPadding = 0.1f;
 
+        [FoldoutGroup("Mining")]
+        [Tooltip("Max world-unit height above the companion to consider a resource worth chasing. " +
+                 "Resources above this threshold are skipped during scans and cause the companion " +
+                 "to abandon the current target (unless already within mining range). " +
+                 "Prevents chasing nodes that will scroll off-screen before they can be reached. " +
+                 "Example: 4 = ignore anything more than 4 units above the companion's Y.")]
+        [SerializeField, Min(0f)] private float maxChaseHeight = 4f;
+
         // =====================
         // Avoidance
         // =====================
@@ -170,6 +178,17 @@ namespace Submachina.Core
             // Periodic rescan for visible world objects
             _scanTimer -= Time.deltaTime;
             if (_scanTimer <= 0f) { ScanWorld(); _scanTimer = scanInterval; }
+
+            // Rescan immediately when the active resource is gone or no longer worth chasing.
+            // "Gone" = collected/destroyed. "Not worth chasing" = scrolled too far above the
+            // companion while still outside mining range (it'll leave the screen before we
+            // can reach it, and better options are appearing below).
+            if (_state == AIState.MineResource && ShouldAbandonResource())
+            {
+                _targetResource = null;
+                ScanWorld();
+                _scanTimer = scanInterval;
+            }
 
             UpdateState();
             _currentThrust = ComputeThrust();
@@ -366,9 +385,36 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
+         * True when the active resource target should be dropped so a better one can be found.
+         *
+         * A target is stale when:
+         *   - It was collected (destroyed/deactivated), OR
+         *   - It has scrolled above the companion by more than maxChaseHeight while still
+         *     outside mining range — meaning it will leave the screen before we reach it
+         *     and resources appearing below are better options.
+         *
+         * The mining-range guard prevents abandoning a node mid-beam just because the
+         * scroll has drifted it slightly upward.
+         */
+        private bool ShouldAbandonResource()
+        {
+            if (_targetResource == null || !_targetResource.gameObject.activeInHierarchy)
+                return true;
+
+            // Never abandon while the beam is actually on it
+            float dist = Vector2.Distance(transform.position, _targetResource.transform.position);
+            if (dist <= miningEngageDistance) return false;
+
+            // Abandon if it has scrolled too far above to be worth chasing
+            float heightAbove = _targetResource.transform.position.y - transform.position.y;
+            return heightAbove > maxChaseHeight;
+        }
+
+        /**
          * Returns the nearest MonoBehaviour of type T that is currently inside the
-         * camera viewport (with viewportScanPadding), or null if none qualify.
-         * Ignores objects that have already scrolled off-screen.
+         * camera viewport (with viewportScanPadding) AND is not more than maxChaseHeight
+         * world units above the companion. Resources above that threshold will scroll
+         * off-screen before they can be reached in forced-scroll mode.
          */
         private T FindNearestInView<T>(Vector2 from) where T : MonoBehaviour
         {
@@ -380,6 +426,10 @@ namespace Submachina.Core
             {
                 Vector2 pos = item.transform.position;
                 if (!IsInViewport(pos)) continue;
+
+                // Skip resources scrolling upward faster than the companion can reach them
+                float heightAbove = pos.y - from.y;
+                if (heightAbove > maxChaseHeight) continue;
 
                 float sqrDist = (pos - from).sqrMagnitude;
                 if (sqrDist < bestSqrDist) { bestSqrDist = sqrDist; nearest = item; }
