@@ -27,20 +27,20 @@ Every subsystem extends **SubmarineComponent**, which auto-discovers its parent 
 **SubmarineInputModule** (`SubmarineInputModule.cs`) — MonoBehaviour on the submarine root, alongside `Submarine`. Provides per-player input isolation by cloning the shared `InputActionAsset` at runtime and restricting it to specific devices via `InputActionAsset.devices`. Runs at `[DefaultExecutionOrder(-100)]` so the clone is ready before any subsystem resolves actions.
 
 **How it works:**
-1. On Awake, clones the shared `PlayerControls` asset and restricts it to one `DeviceMode`: keyboard+mouse, gamepad 1, or gamepad 2.
+1. On Awake, clones the shared `PlayerControls` asset. If `AutoAssignOnAwake` is true (single-player / quick setup) it grabs devices matching one `DeviceMode`: keyboard+mouse, gamepad 1, or gamepad 2. The drop-in manager sets `AutoAssignOnAwake` false and assigns device **instances** explicitly instead.
 2. Subsystems call `SubmarineComponent.ResolveAction(InputActionReference)` — when a module is present, this delegates to `SubmarineInputModule.FindAction(name)` which returns the per-player action from the clone. Without the module, the shared action is used directly (single-player, backward-compatible).
 3. Each input component registers its action(s) via `InputSubmarineComponent.RegisterAction`, which handles enable/disable lifecycle automatically.
 
-**Runtime hot-swap:** `Reassign(DeviceMode newMode)` destroys the old clone, creates a fresh one with new device restriction, and calls `RebindActions()` on all child `InputSubmarineComponent`s. The inspector dropdown uses Odin's `[OnValueChanged]` so changing the device mode at runtime triggers reassignment immediately.
+**Device-instance pairing (preferred):** `AssignDevices(IReadOnlyList<InputDevice>)` restricts the clone to exactly those devices, enables it, and re-resolves all child `InputSubmarineComponent`s — surviving gamepad reordering and supporting any number of pads. `Unassign()` releases the devices and disables input (drop-out). `OwnsDevice(device/id)` and `AssignedDevices` let the manager route gameplay vs. join presses. `HasMouse` checks the paired device set. `Reassign(DeviceMode)` remains for the enum path.
+
+**Drop-in / drop-out system:** the runtime join flow (controller detection, slot assignment UI, shared framing camera) lives in `../Multiplayer/` — see that folder's `context.md`. `SubmarineInputModule` is the per-player input primitive it drives.
 
 **Scene setup for local multiplayer:**
-- Place two submarine prefab instances in the scene.
-- Add `SubmarineInputModule` to each submarine root.
-- Assign the shared `PlayerControls` InputActionAsset.
-- Set Player 1 to `Keyboard + Mouse`, Player 2 to `Gamepad 1` (or both to gamepads).
+- Place the player submarine instances in the scene, each with `SubmarineInputModule` + the shared `PlayerControls` asset.
+- For managed drop-in/out, add a `LocalPlayerManager` (`../Multiplayer/`) — it disables the subs and assigns devices on join. For a fixed 2-player setup, leave `AutoAssignOnAwake` on and set the `DeviceMode` per sub instead.
 - No `PlayerInput` component, no control schemes, no `PlayerInputManager` needed.
 
-**Limitations:** Mouse aiming is exclusive to the keyboard+mouse player (`HasMouseInput` gates `TurretAim`'s mouse path). Camera and UI are not yet per-player.
+**Limitations:** Mouse aiming is exclusive to the player that owns the mouse (`HasMouseInput` gates `TurretAim`'s mouse path); one keyboard = one player. The camera is a single shared frame-all view (`../Multiplayer/MultiTargetCamera2D`), not splitscreen. UI is not yet per-player.
 
 ## Semantic feedback system
 

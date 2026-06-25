@@ -13,10 +13,11 @@ namespace Submachina.Core
      * Runs in LateUpdate after physics have settled, then corrects position and velocity.
      *
      * Setup:
-     *   - Attach to the submarine root (alongside its Rigidbody2D).
-     *   - Assign the AutoScrollCamera; falls back to Camera.main if unset.
+     *   - Place on the submarine root, or as a child prefab nested under it — the
+     *     Rigidbody2D is resolved from the first parent that has one.
+     *   - Assign the AutoScrollCamera, or let it auto-find the first one in the
+     *     scene (default); falls back to Camera.main if none is found.
      */
-    [RequireComponent(typeof(Rigidbody2D))]
     public class ViewportClamp : MonoBehaviour
     {
         // =====================
@@ -26,6 +27,10 @@ namespace Submachina.Core
         [FoldoutGroup("Camera")]
         [Tooltip("The AutoScrollCamera providing viewport bounds. If unset, Camera.main is used with no padding.")]
         [SerializeField] private AutoScrollCamera scrollCamera;
+
+        [FoldoutGroup("Camera")]
+        [Tooltip("When no AutoScrollCamera is assigned, automatically grab the first one found in the scene at startup.")]
+        [SerializeField] private bool autoFindScrollCamera = true;
 
         [FoldoutGroup("Camera")]
         [Tooltip("Fallback used when AutoScrollCamera is not assigned.")]
@@ -63,7 +68,13 @@ namespace Submachina.Core
 
         private void Awake()
         {
-            _rb = GetComponent<Rigidbody2D>();
+            // Resolve the Rigidbody2D from this object or the first parent that has one (supports being a child prefab).
+            _rb = GetComponentInParent<Rigidbody2D>();
+
+            // Try to auto-discover an AutoScrollCamera in the scene when none was wired up in the inspector.
+            if (scrollCamera == null && autoFindScrollCamera)
+                scrollCamera = FindFirstObjectByType<AutoScrollCamera>();
+
             if (fallbackCamera == null) fallbackCamera = Camera.main;
         }
 

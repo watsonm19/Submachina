@@ -12,10 +12,11 @@ namespace Submachina.Core
      * their modified stat values. Provides the API for granting, removing,
      * and toggling upgrades at runtime.
      *
-     * Three upgrade types are supported:
+     * Four upgrade types are supported:
      *   1. Stat modifiers — pushed to the StatModifierTable
      *   2. Behavioral add-ons — prefab instantiated as a child of the sub
      *   3. Component swaps — deactivate the original, instantiate the variant
+     *   4. Hierarchy toggles — switch existing tagged objects on/off (reference-counted)
      *
      * Component swaps use deactivation rather than destruction so the
      * original can be restored on removal or toggle. The UpgradeManager
@@ -45,6 +46,19 @@ namespace Submachina.Core
         // =====================
 
         private readonly Dictionary<UpgradeDef, UpgradeInstance> _upgrades = new();
+
+        /** Per-feature reference counts of active upgrades wanting it on vs. off. */
+        private readonly Dictionary<UpgradeFeature, FeatureToggleState> _featureCounts = new();
+
+        /** Reusable buffer for hierarchy target lookups (avoids per-call allocation). */
+        private readonly List<UpgradeToggleTarget> _targetBuffer = new();
+
+        /** Tracks how many active upgrades request a feature on vs. off. */
+        private class FeatureToggleState
+        {
+            public int onCount;
+            public int offCount;
+        }
 
         /** The modifier table queried by all subsystem components. */
         public StatModifierTable Stats { get; } = new();
@@ -122,6 +136,9 @@ namespace Submachina.Core
                     behavior.OnUpgradeEnabled(Sub, instance.level);
             }
 
+            // Hierarchy toggles — switch existing tagged objects on/off
+            ApplyToggles(def);
+
             Sub?.Feedbacks?.Play(SubFeedbacks.UpgradeGranted, transform.position);
             if (instance.level >= def.maxLevel)
                 Sub?.Feedbacks?.Play(SubFeedbacks.UpgradeMaxed, transform.position);
@@ -149,6 +166,10 @@ namespace Submachina.Core
             // Revert component swap
             if (instance.swapInstance != null)
                 RevertComponentSwap(instance);
+
+            // Release hierarchy toggles (only if still applied — a disabled upgrade already released)
+            if (instance.enabled)
+                ReleaseToggles(def);
 
             // Remove all stacked stat modifiers
             RemoveStatModifiers(def, instance.level);
@@ -198,6 +219,9 @@ namespace Submachina.Core
                     var swapComp = instance.swapInstance.GetComponentInChildren<SubmarineComponent>();
                     if (swapComp != null) Sub?.Register(swapComp);
                 }
+
+                // Re-apply hierarchy toggles
+                ApplyToggles(def);
             }
             else
             {
@@ -226,6 +250,9 @@ namespace Submachina.Core
                         if (origComp != null) Sub?.Register(origComp);
                     }
                 }
+
+                // Release hierarchy toggles
+                ReleaseToggles(def);
             }
 
             onUpgradeToggled?.Invoke(def, enabled);
@@ -368,6 +395,98 @@ namespace Submachina.Core
         }
 
         // -------------------------------------------------------
+        // Hierarchy Toggle Helpers
+        // -------------------------------------------------------
+
+        /**
+         * Adds this upgrade's toggle requests to the per-feature reference counts
+         * and re-resolves each affected feature's live state.
+         *
+         * Example: an upgrade with {AdvancedThruster: on, BasicThruster: off}
+         * bumps AdvancedThruster.onCount and BasicThruster.offCount, then drives
+         * every matching object to the resolved state.
+         */
+        private void ApplyToggles(UpgradeDef def)
+        {
+            if (def.toggles == null) return;
+
+            for (int i = 0; i < def.toggles.Length; i++)
+            {
+                var entry = def.toggles[i];
+                if (entry.feature == null) continue;
+
+                // Bump the on/off reference count for this feature
+                if (!_featureCounts.TryGetValue(entry.feature, out var counts))
+                {
+                    counts = new FeatureToggleState();
+                    _featureCounts[entry.feature] = counts;
+                }
+                if (entry.setActive) counts.onCount++;
+                else counts.offCount++;
+
+                ResolveFeature(entry.feature);
+            }
+        }
+
+        /**
+         * Removes this upgrade's toggle requests from the per-feature reference
+         * counts and re-resolves each affected feature. When a feature drops to
+         * zero requests its tagged objects are restored to their authored state.
+         */
+        private void ReleaseToggles(UpgradeDef def)
+        {
+            if (def.toggles == null) return;
+
+            for (int i = 0; i < def.toggles.Length; i++)
+            {
+                var entry = def.toggles[i];
+                if (entry.feature == null) continue;
+                if (!_featureCounts.TryGetValue(entry.feature, out var counts)) continue;
+
+                // Decrement the matching count, clamped at zero
+                if (entry.setActive) counts.onCount = Mathf.Max(0, counts.onCount - 1);
+                else counts.offCount = Mathf.Max(0, counts.offCount - 1);
+
+                // Drop the entry entirely once nothing references the feature
+                if (counts.onCount == 0 && counts.offCount == 0)
+                    _featureCounts.Remove(entry.feature);
+
+                ResolveFeature(entry.feature);
+            }
+        }
+
+        /**
+         * Drives every object tagged with the given feature to its resolved state:
+         *   - any active upgrade wants it on  → on   (ON wins ties over OFF)
+         *   - only off requests remain        → off
+         *   - no requests remain              → restore authored state
+         *
+         * Targets are re-discovered each call so objects added by other upgrades
+         * (e.g. behavior/swap prefabs) are picked up correctly.
+         */
+        private void ResolveFeature(UpgradeFeature feature)
+        {
+            if (Sub == null || feature == null) return;
+
+            _featureCounts.TryGetValue(feature, out var counts);
+            bool restore = counts == null || (counts.onCount == 0 && counts.offCount == 0);
+            bool desired = counts != null && counts.onCount > 0;
+
+            // Collect every matching marker in the hierarchy (including inactive)
+            Sub.GetComponentsInChildren(true, _targetBuffer);
+            for (int i = 0; i < _targetBuffer.Count; i++)
+            {
+                var target = _targetBuffer[i];
+                if (target.Feature != feature) continue;
+
+                // Capture authored state before the first override, then apply
+                target.EnsureOriginalCaptured();
+                if (restore) target.RestoreOriginal();
+                else target.SetActiveState(desired);
+            }
+        }
+
+        // -------------------------------------------------------
         // Cleanup
         // -------------------------------------------------------
 
@@ -385,6 +504,274 @@ namespace Submachina.Core
 
             base.OnDestroy();
         }
+
+        // -------------------------------------------------------
+        // Editor — Overview
+        // -------------------------------------------------------
+
+#if UNITY_EDITOR
+        /** True while in Play mode — gates the runtime-only overview tables. */
+        private bool IsPlaying => Application.isPlaying;
+
+        /**
+         * The hierarchy root used for edit-time discovery. At runtime the cached
+         * Sub reference is authoritative; in edit mode (Sub not yet populated) we
+         * walk up to the owning Submarine, falling back to the transform root.
+         */
+        private Transform DiscoveryRoot
+        {
+            get
+            {
+                if (Sub != null) return Sub.transform;
+                var sub = GetComponentInParent<Submarine>();
+                return sub != null ? sub.transform : transform.root;
+            }
+        }
+
+        /** Friendly label for a feature: its display name, else the asset name. */
+        private static string FeatureLabel(UpgradeFeature f)
+            => f == null ? "<none>" : (string.IsNullOrEmpty(f.displayName) ? f.name : f.displayName);
+
+        // ── Summary banner ──
+
+        /**
+         * One-line summary shown at the top of the Overview foldout. Reports live
+         * counts in Play mode and the static hierarchy "purview" in edit mode.
+         */
+        [FoldoutGroup("Overview", Order = -1), PropertyOrder(0)]
+        [ShowInInspector, HideLabel, DisplayAsString(false)]
+        [GUIColor(0.6f, 0.85f, 1f)]
+        private string Summary
+        {
+            get
+            {
+                var purview = FeaturePurview;
+                int targets = 0;
+                for (int i = 0; i < purview.Count; i++) targets += purview[i].Targets;
+
+                if (IsPlaying)
+                    return $"{_upgrades.Count} upgrade(s) granted   •   {Stats.TotalModifierCount} stat modifier(s) active   •   " +
+                           $"{_featureCounts.Count} feature(s) toggled   •   purview: {purview.Count} feature(s) / {targets} tagged object(s)";
+
+                return $"Edit mode  —  purview: {purview.Count} feature(s) / {targets} tagged object(s) in this submarine. " +
+                       "Granted upgrades and stat modifiers populate here during Play.";
+            }
+        }
+
+        // ── Granted upgrades ──
+
+        /** One row per granted upgrade in the runtime overview table. */
+        private struct GrantedUpgradeRow
+        {
+            [TableColumnWidth(170, false), DisplayAsString]
+            public string Upgrade;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public string Level;
+
+            [TableColumnWidth(70, false)]
+            public bool Enabled;
+
+            [DisplayAsString(false)]
+            public string Provides;
+        }
+
+        [FoldoutGroup("Overview"), PropertyOrder(1)]
+        [ShowInInspector, ShowIf(nameof(IsPlaying))]
+        [LabelText("Granted Upgrades")]
+        [TableList(IsReadOnly = true, AlwaysExpanded = true)]
+        private List<GrantedUpgradeRow> GrantedUpgradeRows
+        {
+            get
+            {
+                var rows = new List<GrantedUpgradeRow>(_upgrades.Count);
+
+                foreach (var kvp in _upgrades)
+                {
+                    var def = kvp.Key;
+                    var inst = kvp.Value;
+
+                    // Describe which upgrade mechanisms this entry actually drives
+                    var parts = new List<string>(4);
+                    if (def.statModifiers != null && def.statModifiers.Length > 0)
+                        parts.Add($"{def.statModifiers.Length} stat");
+                    if (inst.behaviorInstance != null) parts.Add("behavior");
+                    if (inst.swapInstance != null) parts.Add("swap");
+                    if (def.toggles != null && def.toggles.Length > 0)
+                        parts.Add($"{def.toggles.Length} toggle");
+
+                    rows.Add(new GrantedUpgradeRow
+                    {
+                        Upgrade = string.IsNullOrEmpty(def.upgradeName) ? def.name : def.upgradeName,
+                        Level = $"{inst.level}/{def.maxLevel}",
+                        Enabled = inst.enabled,
+                        Provides = parts.Count > 0 ? string.Join(", ", parts) : "—"
+                    });
+                }
+
+                return rows;
+            }
+        }
+
+        // ── Active stat modifiers ──
+
+        /** One row per modified stat in the runtime overview table. */
+        private struct StatModifierRow
+        {
+            [TableColumnWidth(190, false), DisplayAsString]
+            public string Stat;
+
+            [TableColumnWidth(90, false), DisplayAsString]
+            public string Additive;
+
+            [TableColumnWidth(110, false), DisplayAsString]
+            public string Multiplier;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public int Stacks;
+        }
+
+        [FoldoutGroup("Overview"), PropertyOrder(2)]
+        [ShowInInspector, ShowIf(nameof(IsPlaying))]
+        [LabelText("Active Stat Modifiers")]
+        [TableList(IsReadOnly = true, AlwaysExpanded = true)]
+        private List<StatModifierRow> StatModifierRows
+        {
+            get
+            {
+                var rows = new List<StatModifierRow>();
+
+                // Aggregate the live table into one row per affected stat
+                foreach (var s in Stats.EditorSnapshot())
+                {
+                    string mult = $"{(s.multiplier >= 0f ? "+" : "")}{s.multiplier * 100f:0.#}%";
+                    rows.Add(new StatModifierRow
+                    {
+                        Stat = s.stat.ToString(),
+                        Additive = s.additive.ToString("+0.##;-0.##;0"),
+                        Multiplier = mult,
+                        Stacks = s.count
+                    });
+                }
+
+                return rows;
+            }
+        }
+
+        // ── Feature toggle reference counts (runtime) ──
+
+        /** One row per actively-toggled feature, showing on/off request counts. */
+        private struct FeatureToggleRow
+        {
+            [TableColumnWidth(190, false), DisplayAsString]
+            public string Feature;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public int On;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public int Off;
+
+            [TableColumnWidth(90, false), DisplayAsString]
+            public string Resolved;
+        }
+
+        [FoldoutGroup("Overview"), PropertyOrder(3)]
+        [ShowInInspector, ShowIf(nameof(IsPlaying))]
+        [LabelText("Toggled Features (ref-counted)")]
+        [TableList(IsReadOnly = true, AlwaysExpanded = true)]
+        private List<FeatureToggleRow> FeatureToggleRows
+        {
+            get
+            {
+                var rows = new List<FeatureToggleRow>(_featureCounts.Count);
+
+                foreach (var kvp in _featureCounts)
+                {
+                    var counts = kvp.Value;
+                    // ON wins ties; only-off → OFF; nothing → restored
+                    string resolved = counts.onCount > 0 ? "ON"
+                                    : counts.offCount > 0 ? "OFF" : "restored";
+
+                    rows.Add(new FeatureToggleRow
+                    {
+                        Feature = FeatureLabel(kvp.Key),
+                        On = counts.onCount,
+                        Off = counts.offCount,
+                        Resolved = resolved
+                    });
+                }
+
+                return rows;
+            }
+        }
+
+        // ── Hierarchy purview (edit + runtime) ──
+
+        /** One row per feature discovered in the hierarchy, with its tagged objects. */
+        private struct FeaturePurviewRow
+        {
+            [TableColumnWidth(170, false), DisplayAsString]
+            public string Feature;
+
+            [TableColumnWidth(60, false), DisplayAsString]
+            public int Targets;
+
+            [DisplayAsString(false)]
+            public string Objects;
+        }
+
+        [FoldoutGroup("Overview"), PropertyOrder(4)]
+        [ShowInInspector]
+        [LabelText("Feature Purview (hierarchy)")]
+        [InfoBox("No UpgradeToggleTarget components found under this submarine. " +
+                 "Add UpgradeToggleTarget markers to objects you want upgrades to switch on/off.",
+                 InfoMessageType.Info, VisibleIf = "@this.FeaturePurview.Count == 0")]
+        [TableList(IsReadOnly = true, AlwaysExpanded = true)]
+        private List<FeaturePurviewRow> FeaturePurview
+        {
+            get
+            {
+                var rows = new List<FeaturePurviewRow>();
+                var root = DiscoveryRoot;
+                if (root == null) return rows;
+
+                // Discover every toggle target in the sub hierarchy (including inactive)
+                var targets = root.GetComponentsInChildren<UpgradeToggleTarget>(true);
+
+                // Group the targets by the feature they are tagged with
+                var byFeature = new Dictionary<UpgradeFeature, List<UpgradeToggleTarget>>();
+                for (int i = 0; i < targets.Length; i++)
+                {
+                    var f = targets[i].Feature;
+                    if (f == null) continue;
+                    if (!byFeature.TryGetValue(f, out var list))
+                    {
+                        list = new List<UpgradeToggleTarget>();
+                        byFeature[f] = list;
+                    }
+                    list.Add(targets[i]);
+                }
+
+                // One row per feature, with a capped preview of the object names
+                foreach (var kvp in byFeature)
+                {
+                    var objs = kvp.Value;
+                    string names = string.Join(", ", objs.ConvertAll(o => o.name));
+                    if (names.Length > 80) names = names.Substring(0, 77) + "…";
+
+                    rows.Add(new FeaturePurviewRow
+                    {
+                        Feature = FeatureLabel(kvp.Key),
+                        Targets = objs.Count,
+                        Objects = names
+                    });
+                }
+
+                return rows;
+            }
+        }
+#endif
 
         // -------------------------------------------------------
         // Editor Utilities

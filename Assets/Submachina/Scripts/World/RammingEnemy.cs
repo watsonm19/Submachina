@@ -178,6 +178,19 @@ namespace Submachina.Core
         }
 
         // -------------------------------------------------------
+        // Targeting
+        // -------------------------------------------------------
+
+        /**
+         * Commit to the telegraphed victim: once winding up or charging, don't let a
+         * now-closer sub steal aggro mid-charge. Patrol / Stunned stay free to
+         * re-evaluate. (EnemyBase still re-acquires immediately if the target dies or
+         * drops out, so a vanished victim is always handled.)
+         */
+        protected override bool CanRetarget =>
+            _state != AiState.WindUp && _state != AiState.Charging;
+
+        // -------------------------------------------------------
         // AI
         // -------------------------------------------------------
 
@@ -336,6 +349,9 @@ namespace Submachina.Core
          * Deals heavy damage on contact during the charge.
          * One hit per charge cycle (_hasHitThisCharge) — sustained contact
          * during the slide doesn't stack damage.
+         *
+         * Damages the submarine actually struck — resolved from the collision, not the
+         * cached target — so in co-op the charge credits damage to whichever sub it hits.
          */
         private void OnCollisionEnter2D(Collision2D collision)
         {
@@ -343,7 +359,8 @@ namespace Submachina.Core
             if (_hasHitThisCharge) return;
             if (!collision.collider.CompareTag("Player")) return;
 
-            PlayerHealth?.TakeDamage(chargeDamage);
+            var victim = collision.collider.GetComponentInParent<Submarine>();
+            victim?.Health?.TakeDamage(chargeDamage);
             _hasHitThisCharge = true;
         }
 
