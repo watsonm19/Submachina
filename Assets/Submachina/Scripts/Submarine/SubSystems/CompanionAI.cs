@@ -203,14 +203,11 @@ namespace Submachina.Core
 
             _targetO2 = FindNearestInView<O2Pickup>(pos);
 
-            // Keep the current resource if it still exists and is still on screen;
-            // only re-query when it's gone or has left the viewport
-            if (_targetResource == null
-                || !_targetResource.gameObject.activeInHierarchy
-                || !IsInViewport(_targetResource.transform.position))
-            {
+            // Keep the current resource until it's collected (destroyed/disabled).
+            // Don't drop it based on viewport — it may scroll toward the edge mid-mine
+            // and the companion still needs to track it to stay within laser range.
+            if (_targetResource == null || !_targetResource.gameObject.activeInHierarchy)
                 _targetResource = FindNearestInView<MiningResource>(pos);
-            }
         }
 
         // -------------------------------------------------------
@@ -270,9 +267,14 @@ namespace Submachina.Core
         /**
          * Returns the world position this AI should navigate toward in the current state.
          *
-         * MineResource: targets a point miningEngageDistance units short of the resource
-         * so the laser can reach it without driving into the collider.
-         * Example: resource at (10, -5), companion at (0, -5), engageDistance=4 → target=(6, -5).
+         * MineResource: always targets a point inside miningEngageDistance rather than
+         * holding position. In forced-scroll mode the camera drifts the companion away
+         * from world-space resources over time, so continuous thrust is needed to maintain
+         * laser range even while the beam is active.
+         *
+         * Example: resource at (10, -5), engageDistance=4, holdFraction=0.7 →
+         *   companion always steers toward (10-dir*2.8, -5), staying ~2.8 units from resource.
+         *   P-controller damps the approach naturally as it gets close.
          */
         private Vector2 GetNavigationTarget(Vector2 myPos)
         {
@@ -285,12 +287,11 @@ namespace Submachina.Core
 
                 case AIState.MineResource when _targetResource != null:
                     Vector2 toResource = (Vector2)_targetResource.transform.position - myPos;
-                    float dist = toResource.magnitude;
-                    // Already in range — hold current position so the beam can dwell on the target
-                    if (dist <= miningEngageDistance) return myPos;
-                    // Navigate to just within laser range
+                    if (toResource.sqrMagnitude < 0.01f) return myPos;
+                    // Target 70% of engage distance from the resource — keeps the companion
+                    // continuously thrusting to hold position against scroll drift
                     return (Vector2)_targetResource.transform.position
-                           - toResource.normalized * miningEngageDistance;
+                           - toResource.normalized * (miningEngageDistance * 0.7f);
 
                 default:
                     return GetFollowTarget();
