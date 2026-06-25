@@ -495,6 +495,24 @@ namespace Submachina.Core
         }
 
         // -------------------------------------------------------
+        // AI Interface
+        // -------------------------------------------------------
+
+        /**
+         * For AI companions: fires TryCollect() when the pump is looping, a pickup
+         * is in range, and the charge is inside the sweet spot. Call each frame while
+         * the companion is targeting an O2 bubble — the pump handles timing naturally.
+         *
+         * Does nothing in all other states to avoid triggering AirLock penalties.
+         */
+        public void AICollect()
+        {
+            if (_state != PumpState.Looping) return;
+            if (!IsPickupInRange) return;
+            if (IsInSweetSpot) TryCollect();
+        }
+
+        // -------------------------------------------------------
         // Editor Utilities
         // -------------------------------------------------------
 

@@ -53,11 +53,20 @@ namespace Submachina.Core
         /** World-space normalized direction this turret is currently aiming. */
         public Vector2 AimDirection { get; private set; } = Vector2.right;
 
+        /**
+         * When set, overrides player input: the turret aims at this world-space target
+         * instead of reading from stick or mouse. CompanionAI sets this to the current
+         * mining target. Clear to null to restore player control.
+         */
+        public void SetAIAimTarget(Transform target) => _aiAimTarget = target;
+        public void ClearAIAimTarget()               => _aiAimTarget = null;
+
         // =====================
         // State
         // =====================
 
         private Camera _camera;
+        private Transform _aiAimTarget;
         // True = gamepad is the active device; turret holds last stick direction when idle.
         // False = mouse is active; turret always follows the cursor.
         private bool _gamepadMode;
@@ -79,7 +88,8 @@ namespace Submachina.Core
 
         private void Update()
         {
-            UpdateActiveDevice();
+            // Skip device tracking when AI has control — no player input to monitor
+            if (_aiAimTarget == null) UpdateActiveDevice();
             ApplyAim();
         }
 
@@ -122,9 +132,12 @@ namespace Submachina.Core
          */
         private void ApplyAim()
         {
-            Vector2 dir = _gamepadMode ? GetStickDirection() : GetMouseDirection();
+            // AI target takes precedence: point directly from turret to the target transform
+            Vector2 dir = _aiAimTarget != null
+                ? ((Vector2)_aiAimTarget.position - (Vector2)transform.position)
+                : (_gamepadMode ? GetStickDirection() : GetMouseDirection());
 
-            // Zero means no input or no device — hold last direction
+            // Zero means no input, no device, or target on top of us — hold last direction
             if (dir.sqrMagnitude < 0.001f) return;
 
             AimDirection = dir.normalized;

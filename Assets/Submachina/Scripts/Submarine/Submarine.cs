@@ -71,6 +71,9 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public UpgradeManager Upgrades { get; private set; }
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        public MiningLaser Mining { get; private set; }
+
         // =====================
         // Lifecycle
         // =====================
@@ -107,6 +110,7 @@ namespace Submachina.Core
                 case SubmarineAnchorRouter anchors:     Anchors = anchors;         break;
                 case PickupRangeDetector pickupRange:   PickupRange = pickupRange; break;
                 case UpgradeManager upgrades:           Upgrades = upgrades;     break;
+                case MiningLaser mining:                Mining = mining;         break;
             }
         }
 
@@ -129,6 +133,7 @@ namespace Submachina.Core
                 case SubmarineAnchorRouter anchors when Anchors == anchors:              Anchors = null;     break;
                 case PickupRangeDetector pr when PickupRange == pr:                      PickupRange = null; break;
                 case UpgradeManager u when Upgrades == u:                                Upgrades = null;    break;
+                case MiningLaser m when Mining == m:                                     Mining = null;      break;
             }
         }
 

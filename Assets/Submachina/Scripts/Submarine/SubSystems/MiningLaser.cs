@@ -104,6 +104,17 @@ namespace Submachina.Core
 
         private bool _miningFeedbacksPlaying;
 
+        // AI override: null = use player input; true/false = AI controls firing
+        private bool? _aiMining;
+
+        /**
+         * When set, overrides player input to fire (true) or suppress (false) the laser.
+         * CompanionAI sets this when it is close enough to a resource and ready to mine.
+         * Clear to null to restore player control.
+         */
+        public void SetAIMining(bool active) => _aiMining = active;
+        public void ClearAIMining()          => _aiMining = null;
+
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
@@ -123,9 +134,12 @@ namespace Submachina.Core
 
         private void Update()
         {
-            if (PrimaryAction == null || Sub?.Turret == null || beamVFX == null) return;
+            // Allow AI-controlled firing even when no player action is wired up
+            if (Sub?.Turret == null || beamVFX == null) return;
 
-            bool firing = PrimaryAction.IsPressed();
+            bool firing = _aiMining.HasValue
+                ? _aiMining.Value
+                : (PrimaryAction != null && PrimaryAction.IsPressed());
 
             if (firing)
                 FireLaser();

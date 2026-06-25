@@ -199,6 +199,13 @@ namespace Submachina.Core
          */
         public bool IsDashing { get; set; }
 
+        /**
+         * When set, overrides player input with an AI-supplied thrust vector (-1..1 per axis).
+         * CompanionAI calls this each frame. Clear to null to restore player control.
+         */
+        public void SetAIThrust(Vector2 thrust) => _aiThrust = thrust;
+        public void ClearAIThrust()             => _aiThrust = null;
+
         /** +1 when facing right, -1 when facing left — useful for aiming/spawning effects. */
         public float FacingSign => _facingSign;
 
@@ -215,6 +222,7 @@ namespace Submachina.Core
 
         private Rigidbody2D _rb;
         private Vector2 _thrustInput;
+        private Vector2? _aiThrust;
         private float _facingSign = 1f;
         private float _flipAngle;          // current flip rotation: 0 = right, 180 = left
         private float _pitchAngle;         // current smoothed tilt in degrees (+ = nose up)
@@ -245,10 +253,10 @@ namespace Submachina.Core
 
         private void Update()
         {
-            // Cache input each frame; physics application deferred to FixedUpdate
-            _thrustInput = PrimaryAction != null
-                ? PrimaryAction.ReadValue<Vector2>()
-                : Vector2.zero;
+            // AI override takes precedence over player input; falls back to player when null
+            _thrustInput = _aiThrust.HasValue
+                ? _aiThrust.Value
+                : (PrimaryAction != null ? PrimaryAction.ReadValue<Vector2>() : Vector2.zero);
 
             if (Sub?.O2 != null)
             {
