@@ -270,6 +270,21 @@ namespace Submachina.Core
             return def != null && _upgrades.TryGetValue(def, out var instance) && instance.enabled;
         }
 
+        /**
+         * True if any active upgrade currently drives the given feature ON.
+         *
+         * Reads the same reference-counted toggle state the manager maintains for
+         * hierarchy toggles, so a feature reads as active exactly when at least one
+         * granted+enabled upgrade requests it on (ON wins ties over OFF). Lets systems
+         * gate behaviour on an UpgradeFeature directly without needing a marker object
+         * in the hierarchy — e.g. the sonar tiers query their tier features here.
+         */
+        public bool IsFeatureActive(UpgradeFeature feature)
+        {
+            if (feature == null) return false;
+            return _featureCounts.TryGetValue(feature, out var counts) && counts.onCount > 0;
+        }
+
         /** Checks whether all prerequisites for an upgrade are met. */
         public bool MeetsPrerequisites(UpgradeDef def)
         {

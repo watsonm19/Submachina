@@ -55,6 +55,12 @@ namespace Gameplay
             // Fire the ripple at our position with the configured wave shape.
             DistortionRippleBus.Emit(transform.position, strength, frequency, waveSpeed, lifetime);
         }
+        
+        
+        public void EmitWithStrength(float strength)
+        {
+            DistortionRippleBus.Emit(transform.position, strength, frequency, waveSpeed, lifetime);
+        }
 
         /**
          * Emit a ripple at an explicit world position (still using this emitter's

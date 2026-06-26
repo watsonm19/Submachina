@@ -15,7 +15,7 @@ Per-submarine upgrade system supporting four upgrade types:
 - **SubStats** — Partial class registry of all stat keys, organized by category
 - **StatModifierTable** — Stores stacked modifiers. Formula: `(base + additives) * (1 + multiplierDeltas)`
 - **UpgradeDef** — ScriptableObject defining a single upgrade (stat mods, behavior prefab, swap prefab, hierarchy toggles, prerequisites)
-- **UpgradeManager** — `SubmarineComponent` on each sub. Owns the `StatModifierTable`. API: `Grant`, `Remove`, `SetEnabled`, `GetLevel`, `IsActive`. Hierarchy toggles are **reference-counted** per feature (`_featureCounts`): an object stays on while any active upgrade wants it on (ON wins ties over OFF), and reverts to its authored state only when no upgrade references the feature
+- **UpgradeManager** — `SubmarineComponent` on each sub. Owns the `StatModifierTable`. API: `Grant`, `Remove`, `SetEnabled`, `GetLevel`, `IsActive`, `IsFeatureActive`. Hierarchy toggles are **reference-counted** per feature (`_featureCounts`): an object stays on while any active upgrade wants it on (ON wins ties over OFF), and reverts to its authored state only when no upgrade references the feature. `IsFeatureActive(feature)` exposes that same reference-counted state so a system can gate on an `UpgradeFeature` directly (no marker object needed) — used by `SonarSystem` to resolve its current tier
 - **UpgradeFeature** — Identity-only ScriptableObject (`Submachina/Upgrade Feature`). One asset per toggleable feature; the asset *is* the ID, matched by reference
 - **UpgradeToggleTarget** — Marker `MonoBehaviour` on any hierarchy object, tagging it with one `UpgradeFeature`. Captures its authored active state on demand (works on objects that start disabled, which never run `Awake`) and exposes `onActivated`/`onDeactivated` UnityEvents
 - **UpgradeInstance** — Runtime state per granted upgrade (level, enabled, spawned GO refs)
@@ -37,4 +37,5 @@ The serialized field stays as the designer-tuned base value; the accessor resolv
 - **ResourceManager** — `onLevelUp` triggers the draft UI to present upgrade choices
 - **Submarine Facade** — `Upgrades` slot registered via standard `SubmarineComponent` pattern
 - **SubFeedbacks** — Category 6 (Upgrades): `UpgradeGranted`, `UpgradeMaxed`
+- **SonarSystem** — Sonar progression: four tier `UpgradeFeature`s (`Data/UpgradeFeatureIds/SonarTier1..4`) unlocked by a prerequisite-chained upgrade ladder (`Data/Upgrades/UnlockSonarPresence` → `UpgradeSonarIdentification`); `SonarSystem.CurrentTier` reads them via `IsFeatureActive`. Stat category 8 (Sonar): `SonarRange`, `SonarCooldown`, `SonarPingSpeed`
 - **All subsystem components** — Query `Sub.Upgrades.Stats` for modified stat values

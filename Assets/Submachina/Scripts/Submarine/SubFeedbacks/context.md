@@ -12,6 +12,8 @@ This folder defines the **feedback key types and registry** used by the submarin
   - `SubFeedbacks.Scrap.cs` (cat 3) — ScrapAdded, ScrapFull, ScrapUsed, NoScrap, FullHealth
   - `SubFeedbacks.Resources.cs` (cat 4) — ResourcesAdded, LevelUp
   - `SubFeedbacks.Pumps.cs` (cat 5) — PumpPerfect, PumpWeak, PumpCharge, AirLock
+  - `SubFeedbacks.Upgrades.cs` (cat 6) — UpgradeGranted, UpgradeMaxed
+  - `SubFeedbacks.Sonar.cs` (cat 7) — SonarPingEmit, SonarReturn
 
 - **UsesFeedbacksAttribute** (`UsesFeedbacksAttribute.cs`) — `[UsesFeedbacks(nameof(SubFeedbacks.X), ...)]` class-level attribute declaring which keys a `SubmarineComponent` fires. `nameof` gives compile-time validation. Read by the `SubmarineComponent` inspector banner to render colored chips. Pure metadata.
 

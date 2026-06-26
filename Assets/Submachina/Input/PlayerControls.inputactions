@@ -68,6 +68,15 @@
                     "processors": "",
                     "interactions": "",
                     "initialStateCheck": false
+                },
+                {
+                    "name": "Sonar",
+                    "type": "Button",
+                    "id": "d5cb6f58-3ba2-4db9-9626-7545c8d567a2",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
                 }
             ],
             "bindings": [
@@ -75,7 +84,7 @@
                     "name": "2D Vector",
                     "id": "f5e69d17-afd7-4c3c-a579-18e757541be9",
                     "path": "2DVector",
-                    "interactions": "",
+                    "interactions": "Tap",
                     "processors": "",
                     "groups": "",
                     "action": "Thrust",
@@ -299,6 +308,28 @@
                     "processors": "",
                     "groups": "",
                     "action": "Repair Hull",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "9a91eb51-e0e5-4c98-afb7-bae631c93cf0",
+                    "path": "<Gamepad>/buttonWest",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Sonar",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "c1f4944c-635e-4ff2-b912-b5f2599a5dec",
+                    "path": "<Keyboard>/q",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Sonar",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

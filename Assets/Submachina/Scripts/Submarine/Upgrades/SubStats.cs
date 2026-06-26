@@ -29,6 +29,7 @@ namespace Submachina.Core
             { 5, "Movement" },
             { 6, "Defense" },
             { 7, "Mining" },
+            { 8, "Sonar" },
         };
     }
 }
