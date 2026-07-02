@@ -135,6 +135,12 @@ Shader "Submachina/2D/SpriteLitSpecular"
             float4 _SpecLightA[MAX_SPEC_LIGHTS]; // xy = world pos, z = outer radius, w = strength
             float4 _SpecLightB[MAX_SPEC_LIGHTS]; // xy = aim dir (world, normalized), z = cos(outerHalf), w = cos(innerHalf)
 
+            // Per-light distance-falloff LUT (one ROW per light slot), baked by SpecularLight2DManager.
+            // u = normalized distance (0 at the light, 1 at the reach); each row is that light's curve
+            // (or a plain linear ramp when it uses the default). Sampling is branchless and coherent.
+            TEXTURE2D(_SpecFalloffLUT);
+            SAMPLER(sampler_SpecFalloffLUT);
+
             // Inline normal-map override (bound per-instance via MaterialPropertyBlock), so a sprite
             // can supply a normal without wiring it up as a Secondary Texture in its import settings.
             TEXTURE2D(_NormalTex);
@@ -266,8 +272,12 @@ Shader "Submachina/2D/SpriteLitSpecular"
                     cone = cone * cone * (3.0h - 2.0h * cone); // smoothstep shaping
                     if (cone <= 0.0h) continue;
 
-                    // Linear distance falloff toward the outer radius.
-                    half falloff = saturate(1.0h - dist / range);
+                    // Distance falloff from this light's LUT row (linear ramp by default, or a
+                    // manual curve authored on the SpecularLight2D). No mips → sample LOD 0 so the
+                    // loop's control flow can't upset derivative-based mip selection.
+                    half u = saturate(dist / range);
+                    float v = ((float)i + 0.5) / MAX_SPEC_LIGHTS;
+                    half falloff = SAMPLE_TEXTURE2D_LOD(_SpecFalloffLUT, sampler_SpecFalloffLUT, float2(u, v), 0).r;
 
                     // Blinn-Phong against the real light: L points from surface back to light,
                     // biased toward the viewer on Z so grazing beams still pop a highlight.

@@ -51,10 +51,42 @@ namespace Submachina.Core
         [Tooltip("Fudge factor on the Light2D's inner/outer angles if the numeric cone doesn't match the visible beam. 1 = use the light's angles as-is.")]
         [SerializeField, Range(0.1f, 2f)] private float coneScale = 1f;
 
+        // =====================
+        // Falloff (how the glint fades from the light to its reach)
+        // =====================
+
+        [BoxGroup("Falloff")]
+        [Tooltip("Shape the glint's distance falloff with a manual curve instead of the default linear ramp. " +
+                 "Baked once to a LUT row by the manager — no per-frame cost.")]
+        [SerializeField] private bool useFalloffCurve = false;
+
+        [BoxGroup("Falloff"), ShowIf(nameof(useFalloffCurve))]
+        [Tooltip("Glint falloff over normalized distance: X = 0 at the light … 1 at the reach, Y = glint strength " +
+                 "(Y may exceed 1 for a bright ring). The default (Linear 1→0) matches the old behaviour.")]
+        [SerializeField] private AnimationCurve falloffCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
+
         private Light2D _light;
+
+        // Bumped whenever the falloff settings change so the manager knows to rebake this light's LUT row.
+        private int _falloffVersion;
+        public int FalloffVersion => _falloffVersion;
 
         /** Cache the light and hook this driver into the global manager. */
         private void Awake() => _light = GetComponent<Light2D>();
+
+        /**
+         * Falloff value at a normalized distance t (0 at the light, 1 at the reach). Uses the manual
+         * curve when enabled, otherwise the default linear ramp (1 → 0). Called by the manager ONLY
+         * when baking this light's LUT row (first use or after an edit) — never per frame.
+         */
+        public float SampleFalloff(float t)
+        {
+            t = Mathf.Clamp01(t);
+            return useFalloffCurve ? Mathf.Max(0f, falloffCurve.Evaluate(t)) : 1f - t;
+        }
+
+        /** Bump the falloff version so the manager rebakes this light's LUT row after an inspector edit. */
+        private void OnValidate() => _falloffVersion++;
 
         private void OnEnable() => SpecularLight2DManager.Register(this);
         private void OnDisable() => SpecularLight2DManager.Unregister(this);
