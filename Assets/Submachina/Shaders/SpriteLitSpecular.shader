@@ -23,6 +23,9 @@
 // Notes:
 //  - The normal comes from the sprite's "_NormalMap" Secondary Texture (same one the
 //    lighting uses), so it lines up with the surface relief and glints on facets.
+//  - An optional "_SpecMask" Secondary Texture (R channel) multiplies ALL specular
+//    (baseline + boost + light-driven) per pixel, so one sprite can mix shiny areas
+//    (baked crystals ~1) with dull rock (~0.2). Defaults to white = unchanged.
 //  - All three passes must share an identical UnityPerMaterial CBUFFER layout or the
 //    SRP Batcher breaks — the spec properties are declared in every pass.
 Shader "Submachina/2D/SpriteLitSpecular"
@@ -32,6 +35,9 @@ Shader "Submachina/2D/SpriteLitSpecular"
         _MainTex("Diffuse", 2D) = "white" {}
         _MaskTex("Mask", 2D) = "white" {}
         _NormalMap("Normal Map", 2D) = "bump" {}
+        // Per-pixel specular gate (R multiplies all specular). Bound automatically when a
+        // sprite carries a "_SpecMask" Secondary Texture; white default leaves sprites unchanged.
+        _SpecMask("Specular Mask (R)", 2D) = "white" {}
         [MaterialToggle] _ZWrite("ZWrite", Float) = 0
 
         [Header(Metallic Specular)]
@@ -145,6 +151,11 @@ Shader "Submachina/2D/SpriteLitSpecular"
             // can supply a normal without wiring it up as a Secondary Texture in its import settings.
             TEXTURE2D(_NormalTex);
             SAMPLER(sampler_NormalTex);
+
+            // Per-pixel specular mask (Secondary Texture "_SpecMask", R channel). Textures live
+            // outside UnityPerMaterial, so the SRP Batcher is unaffected.
+            TEXTURE2D(_SpecMask);
+            SAMPLER(sampler_SpecMask);
 
             // Cheap 2D hash for the Facets pattern (a random value per cell).
             float2 Hash22(float2 p)
@@ -288,6 +299,10 @@ Shader "Submachina/2D/SpriteLitSpecular"
                     lightSpec += s * strength * falloff * cone;
                 }
                 spec += lightSpec * _LightResponse;
+
+                // Per-pixel specular mask (R): baked crystals ~1, dull rock ~0.2, so one sprite
+                // mixes shiny and matte areas. White default leaves unmasked sprites unchanged.
+                spec *= (half)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, input.uv).r;
 
                 // Add as HDR emission, masked by the sprite's coverage so it stays on the rock.
                 c.rgb += _SpecColor.rgb * (spec * c.a);
