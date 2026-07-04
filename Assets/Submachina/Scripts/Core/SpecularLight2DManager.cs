@@ -73,21 +73,32 @@ namespace Submachina.Core
             if (Lights.Count == 0) Shader.SetGlobalFloat(CountID, 0f);
         }
 
-        /** Lazily spawn a hidden, scene-persistent manager on first registration. */
+        /**
+         * Lazily spawn a scene-persistent manager on first registration. Deliberately a PLAIN
+         * object (no HideAndDontSave): it must die when play mode ends. HideAndDontSave managers
+         * leaked into the editor, and on the next session their non-serialized _lut was gone
+         * while Awake never re-ran — every LateUpdate then threw UnassignedReferenceException.
+         */
         private static void EnsureInstance()
         {
             if (_instance != null) return;
-            var go = new GameObject("SpecularLight2DManager") { hideFlags = HideFlags.HideAndDontSave };
+            var go = new GameObject("SpecularLight2DManager");
             DontDestroyOnLoad(go);
             _instance = go.AddComponent<SpecularLight2DManager>();
         }
 
+        /** Bind the LUT before the first render (and again after domain reloads, which re-run OnEnable). */
+        private void OnEnable() => EnsureLut();
+
         /**
-         * Build the shared falloff LUT (one row per light slot) and bind it globally. Rows are
-         * filled lazily in LateUpdate; created here so it's bound before the first render.
+         * Build + globally bind the shared falloff LUT (one row per light slot) if it's missing —
+         * on first enable, after a mid-play domain reload wiped the non-serialized field, or if
+         * the texture was destroyed externally. Rows are (re)filled lazily in LateUpdate.
          */
-        private void Awake()
+        private void EnsureLut()
         {
+            if (_lut != null) return; // Unity's lifetime-aware null check: destroyed counts as missing
+
             _lut = new Texture2D(LutWidth, MaxLights, TextureFormat.RHalf, false, true)
             {
                 name = "SpecFalloffLUT",
@@ -96,6 +107,16 @@ namespace Submachina.Core
                 hideFlags = HideFlags.HideAndDontSave
             };
             Shader.SetGlobalTexture(FalloffLUTID, _lut);
+
+            // The new texture is blank — forget row occupants so LateUpdate rebakes every slot
+            for (int i = 0; i < MaxLights; i++) _rowLight[i] = null;
+        }
+
+        /** Release the LUT with the manager and clear the singleton slot. */
+        private void OnDestroy()
+        {
+            if (_lut != null) DestroyImmediate(_lut);
+            if (_instance == this) _instance = null;
         }
 
         /**
@@ -120,6 +141,11 @@ namespace Submachina.Core
          */
         private void LateUpdate()
         {
+            // Stale/duplicate managers (e.g. ones leaked across play sessions by the old
+            // HideAndDontSave setup) retire themselves instead of fighting over the globals.
+            if (_instance != this) { Destroy(gameObject); return; }
+            EnsureLut();
+
             int written = 0;
             bool lutDirty = false;
             for (int i = 0; i < Lights.Count && written < MaxLights; i++)

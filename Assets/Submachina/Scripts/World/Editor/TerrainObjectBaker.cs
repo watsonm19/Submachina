@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
@@ -18,9 +19,11 @@ namespace Submachina.Core.EditorTools
      *      and mineral specks → shaded albedo + a height field for the normal map.
      *   3. Paint layers — noise-masked overlays (external PNGs or flat tints), optionally
      *      biased into crevices (sediment) or onto ridges (dust).
-     *   4. Crystals — prismatic spikes and/or druse patches rasterized as analytic height
+     *   4. Decals — stamped one-off features (protrusions, overhangs, fossils, coral) with
+     *      explicit placement/scale/rotation, a blend mode, and raised/carved/embossed relief.
+     *   5. Crystals — prismatic spikes and/or druse patches rasterized as analytic height
      *      fields (a cheap "3D baked to 2D" look), composited over (or beside) the rock.
-     *   5. Normals — Sobel-style central differences on the final height field.
+     *   6. Normals — Sobel-style central differences on the final height field.
      */
     public static class TerrainObjectBaker
     {
@@ -28,11 +31,12 @@ namespace Submachina.Core.EditorTools
         public class BakeResult
         {
             public int resolution;
-            public Color[] albedo;         // RGB shaded colour, A = silhouette (incl. protruding crystals)
-            public Color[] normal;         // straight-RGB tangent normal (matches UnpackNormalRGBNoScale)
-            public Color[] specMask;       // R = per-pixel specular multiplier; null when not baked
-            public Color[] crystalAlbedo;  // separate crystal overlay sprite (own alpha); null when combined
+            public Color[] albedo;          // RGB shaded colour, A = silhouette (incl. protruding crystals)
+            public Color[] normal;          // straight-RGB tangent normal (matches UnpackNormalRGBNoScale)
+            public Color[] specMask;        // R = per-pixel specular multiplier; null when not baked
+            public Color[] crystalAlbedo;   // separate crystal overlay sprite (own alpha); null when combined
             public Color[] crystalNormal;
+            public Color[] crystalSpecMask; // the overlay sprite's own spec mask; null when combined or mask baking is off
         }
 
         // -------------------------------------------------------
@@ -59,7 +63,7 @@ namespace Submachina.Core.EditorTools
             var relief = new float[n];   // 0..1 local relief (cracks low, bumps high) for layer height-bias
             var shade = new float[n];    // rock shading factor, reused so paint layers inherit AO/cracks
             var albedo = new Color[n];
-            var spec = new float[n];
+            var spec = new Color[n]; // per-pixel specular tint × strength (RGB of the baked mask)
 
             // Strata band axis (bands run along the angle; the banding coordinate is the perpendicular)
             float strataRad = s.strataAngle * Mathf.Deg2Rad;
@@ -89,20 +93,28 @@ namespace Submachina.Core.EditorTools
                     float cell = Worley(u * s.crackFrequency + crackOx, w * s.crackFrequency + crackOy);
                     float crack = Smooth01(0f, 0.18f, cell);
 
-                    // Optional sedimentary strata: sine bands across a rotated axis, bent by noise
-                    float strata01 = 0.5f;
+                    // Optional sedimentary strata: sine bands across a rotated axis, bent by noise.
+                    // Strength ≤1 = broad soft bands; beyond 1 the profile sharpens so the darkening
+                    // concentrates into narrow near-black grooves between still-bright layers
+                    // (instead of dimming the whole surface).
+                    float strataShade = 1f, strataBump = 0f;
                     if (s.strataStrength > 0f)
                     {
                         float band = -cx * strataSin + cy * strataCos;
                         float wob = (Fbm(u * 2.5f + strataOx, w * 2.5f + strataOy, 2) - 0.5f) * s.strataWarp;
-                        strata01 = Mathf.Sin((band + wob) * s.strataFrequency * Mathf.PI) * 0.5f + 0.5f;
+                        float strata01 = Mathf.Sin((band + wob) * s.strataFrequency * Mathf.PI) * 0.5f + 0.5f;
+
+                        float depth = Mathf.Clamp01(s.strataStrength * 0.35f);
+                        float grooveW = Mathf.Clamp(0.9f / (1f + Mathf.Max(s.strataStrength - 1f, 0f)), 0.15f, 0.9f);
+                        float bandShade = Smooth01(0f, grooveW, strata01); // 1 on layers, 0 in grooves
+                        strataShade = Mathf.Lerp(1f - depth, 1f, bandShade);
+                        strataBump = s.strataStrength * 0.12f * (bandShade - 0.5f);
                     }
 
-                    // Height = shaped mass + smooth facets + faint crag detail + strata steps
+                    // Height = shaped mass + smooth facets + faint crag detail + strata grooves
                     float dome = s.domeStrength * Mathf.Pow(insideT, Mathf.Max(s.domeProfile, 0.05f));
                     float facet = s.facetStrength * (Fbm(u * s.facetFrequency + ox, w * s.facetFrequency + oy, 2) - 0.5f);
                     float detail = s.detailStrength * (surf - 0.5f) - (1f - crack) * s.detailStrength * 0.5f;
-                    float strataBump = s.strataStrength * 0.12f * (strata01 - 0.5f);
                     height[i] = dome + facet + detail + strataBump;
                     relief[i] = Mathf.Clamp01(surf * 0.65f + crack * 0.35f);
 
@@ -110,7 +122,7 @@ namespace Submachina.Core.EditorTools
                     float sh = 1f + s.surfaceContrast * (surf - 0.5f) * 1.2f;
                     sh *= Mathf.Lerp(1f - s.crackStrength, 1f, crack);
                     sh *= Mathf.Lerp(1f - s.aoStrength, 1f, Mathf.Pow(insideT, 0.6f));
-                    if (s.strataStrength > 0f) sh *= Mathf.Lerp(1f - s.strataStrength * 0.35f, 1f, strata01);
+                    sh *= strataShade;
                     shade[i] = sh;
 
                     // Albedo = base colour * shading, plus sparse bright mineral specks
@@ -122,7 +134,8 @@ namespace Submachina.Core.EditorTools
                         if (s.specksAreShiny) sp = Mathf.Max(sp, 0.9f);
                     }
                     albedo[i] = new Color(Mathf.Clamp01(col.r), Mathf.Clamp01(col.g), Mathf.Clamp01(col.b), a);
-                    spec[i] = sp;
+                    // Spec = strength × glint colour (the mask's RGB tints the specular per pixel)
+                    spec[i] = new Color(s.rockSpecColor.r * sp, s.rockSpecColor.g * sp, s.rockSpecColor.b * sp, 1f);
                 }
             }
 
@@ -171,14 +184,18 @@ namespace Submachina.Core.EditorTools
                 }
             }
 
-            // --- Pass 3: crystals (prism spikes and/or druse patches) ---
+            // --- Pass 3: decals (stamped one-off features — protrusions, fossils, coral…) ---
+            if (s.decalLayers != null && s.decalLayers.Count > 0)
+                StampDecals(s, variantIndex, sil, res, albedo, height, alpha, spec);
+
+            // --- Pass 4: crystals (prism spikes and/or druse patches) ---
             bool wantCrystals = s.crystals != null && s.crystals.style != CrystalStyle.None;
-            float[] cAlpha = null, cHeight = null, cSpec = null;
-            Color[] cColor = null;
+            float[] cAlpha = null, cHeight = null;
+            Color[] cColor = null, cSpec = null;
             if (wantCrystals)
                 RasterizeCrystals(s, rng, sil, res, height, alpha, out cAlpha, out cColor, out cHeight, out cSpec);
 
-            Color[] crystalAlbedoOut = null, crystalNormalOut = null;
+            Color[] crystalAlbedoOut = null, crystalNormalOut = null, crystalSpecMaskOut = null;
             if (wantCrystals && s.separateCrystalLayer)
             {
                 // Crystals become their own overlay sprite: rock buffers stay untouched
@@ -191,6 +208,14 @@ namespace Submachina.Core.EditorTools
                     ch[i] = ca > 0.003f ? cHeight[i] : 0f;
                 }
                 crystalNormalOut = DeriveNormals(ch, cAlpha, res, s.normalStrength * 1.2f);
+
+                // The overlay gets its own spec mask (white outside the crystals — alpha hides it anyway)
+                if (s.bakeSpecMask)
+                {
+                    crystalSpecMaskOut = new Color[n];
+                    for (int i = 0; i < n; i++)
+                        crystalSpecMaskOut[i] = cAlpha[i] > 0.003f ? ClampSpec(cSpec[i]) : Color.white;
+                }
             }
             else if (wantCrystals)
             {
@@ -207,22 +232,34 @@ namespace Submachina.Core.EditorTools
                         Mathf.Max(rc.a, ca));
                     height[i] = Mathf.Lerp(height[i], cHeight[i], ca);
                     alpha[i] = Mathf.Max(alpha[i], ca);
-                    spec[i] = Mathf.Lerp(spec[i], cSpec[i], ca);
+                    spec[i] = Color.Lerp(spec[i], cSpec[i], ca);
                 }
             }
 
-            // --- Pass 4: derive normals + pack the spec mask ---
+            // --- Pass 5: optional baked tint (rock + combined crystals; a separate overlay stays untinted) ---
+            if (s.bakeTint && s.tintColor.a > 0f)
+            {
+                // The tint's alpha is its opacity: lerp each pixel from untinted → fully tinted
+                float ta = Mathf.Clamp01(s.tintColor.a);
+                for (int i = 0; i < n; i++)
+                {
+                    var c = albedo[i];
+                    albedo[i] = new Color(
+                        Mathf.Lerp(c.r, c.r * s.tintColor.r, ta),
+                        Mathf.Lerp(c.g, c.g * s.tintColor.g, ta),
+                        Mathf.Lerp(c.b, c.b * s.tintColor.b, ta),
+                        c.a);
+                }
+            }
+
+            // --- Pass 6: derive normals + pack the spec mask ---
             var normal = DeriveNormals(height, alpha, res, s.normalStrength);
 
             Color[] specMask = null;
             if (s.bakeSpecMask)
             {
                 specMask = new Color[n];
-                for (int i = 0; i < n; i++)
-                {
-                    float v = Mathf.Clamp01(spec[i]);
-                    specMask[i] = new Color(v, v, v, 1f);
-                }
+                for (int i = 0; i < n; i++) specMask[i] = ClampSpec(spec[i]);
             }
 
             return new BakeResult
@@ -232,7 +269,8 @@ namespace Submachina.Core.EditorTools
                 normal = normal,
                 specMask = specMask,
                 crystalAlbedo = crystalAlbedoOut,
-                crystalNormal = crystalNormalOut
+                crystalNormal = crystalNormalOut,
+                crystalSpecMask = crystalSpecMaskOut
             };
         }
 
@@ -428,14 +466,14 @@ namespace Submachina.Core.EditorTools
          */
         private static void RasterizeCrystals(TerrainObjectSettings s, System.Random rng, Silhouette sil, int res,
             float[] rockHeight, float[] rockAlpha,
-            out float[] cAlpha, out Color[] cColor, out float[] cHeight, out float[] cSpec)
+            out float[] cAlpha, out Color[] cColor, out float[] cHeight, out Color[] cSpec)
         {
             var cs = s.crystals;
             int n = res * res;
             cAlpha = new float[n];
             cColor = new Color[n];
             cHeight = new float[n];
-            cSpec = new float[n];
+            cSpec = new Color[n];
             for (int i = 0; i < n; i++) cHeight[i] = float.NegativeInfinity;
 
             bool prisms = cs.style == CrystalStyle.Prisms || cs.style == CrystalStyle.PrismsAndDruse;
@@ -447,36 +485,61 @@ namespace Submachina.Core.EditorTools
 
         /** Grows prism clusters (quartz-point bundles), each crystal an elongated tapered ridge. */
         private static void RasterizePrisms(TerrainObjectSettings s, System.Random rng, Silhouette sil, int res,
-            float[] rockHeight, float[] cAlpha, Color[] cColor, float[] cHeight, float[] cSpec)
+            float[] rockHeight, float[] cAlpha, Color[] cColor, float[] cHeight, Color[] cSpec)
         {
             var cs = s.crystals;
             float feather = 4f / res;
 
+            // Best-of-N candidate placement: each cluster tries several spots and keeps the one
+            // farthest from the clusters already placed, so bundles spread around the rock
+            // instead of stacking. clusterSeparation 0 → 1 candidate = the old fully-random roll.
+            var placedClusters = new List<Vector2>();
+            int candidateCount = 1 + Mathf.RoundToInt(cs.clusterSeparation * 7f);
+
             for (int c = 0; c < cs.clusterCount; c++)
             {
-                // Cluster root: near the rim pointing outward (spikes sticking out), or anywhere
-                Vector2 basePt, mainDir;
+                // Cluster root: along the rim at a sampled inset, pointing outward — the inset
+                // distribution curve can tier clusters into distinct rings (outer rim + inner rim)
+                Vector2 basePt = Vector2.zero, mainDir = Vector2.up;
+                float bestScore = float.NegativeInfinity;
                 if (cs.growFromRim)
                 {
-                    float ang = (float)rng.NextDouble() * Mathf.PI * 2f;
-                    mainDir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
-                    basePt = mainDir * sil.FindRim(ang) * 0.85f;
+                    // Inset sampled ONCE per cluster (not per candidate) so ring distributions stay
+                    // exact — candidates only compete on where around the rim they land
+                    float inset = Mathf.Clamp01(SampleRange(cs.rimInsetRange, cs.rimInsetCurve, rng));
+                    for (int cand = 0; cand < candidateCount; cand++)
+                    {
+                        float ang = (float)rng.NextDouble() * Mathf.PI * 2f;
+                        var dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
+                        var pt = dir * sil.FindRim(ang) * (1f - inset);
+                        float score = MinSqrDistance(placedClusters, pt);
+                        if (score > bestScore) { bestScore = score; basePt = pt; mainDir = dir; }
+                    }
                 }
                 else
                 {
-                    basePt = sil.RandomInside(rng, s.baseRadius * 0.15f);
+                    for (int cand = 0; cand < candidateCount; cand++)
+                    {
+                        var pt = sil.RandomInside(rng, s.baseRadius * 0.15f);
+                        float score = MinSqrDistance(placedClusters, pt);
+                        if (score > bestScore) { bestScore = score; basePt = pt; }
+                    }
                     float ang = (float)rng.NextDouble() * Mathf.PI * 2f;
                     mainDir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
                 }
+                placedClusters.Add(basePt);
 
-                for (int k = 0; k < cs.crystalsPerCluster; k++)
+                // Cluster size sampled from its range so bundles vary naturally
+                int count = Mathf.Max(1, Mathf.RoundToInt(SampleRange(cs.crystalsPerCluster, cs.crystalsPerClusterCurve, rng)));
+                for (int k = 0; k < count; k++)
                 {
-                    // Fan each crystal off the cluster axis with jittered root, size and colour
+                    // Fan each crystal off the cluster axis with jittered root, size, height and colour
                     float spreadAng = ((float)rng.NextDouble() - 0.5f) * cs.spread * 2.4f;
                     Vector2 dir = Rotate(mainDir, spreadAng);
                     Vector2 perp = new Vector2(-dir.y, dir.x);
-                    float len = Mathf.Lerp(cs.lengthRange.x, cs.lengthRange.y, (float)rng.NextDouble());
-                    float halfW = Mathf.Lerp(cs.widthRange.x, cs.widthRange.y, (float)rng.NextDouble()) * 0.5f;
+                    float len = SampleRange(cs.lengthRange, cs.lengthCurve, rng);
+                    float halfW = SampleRange(cs.widthRange, cs.widthCurve, rng) * 0.5f;
+                    float heightScale = SampleRange(cs.heightScaleRange, cs.heightScaleCurve, rng);
                     Vector2 root = basePt
                                    + perp * (((float)rng.NextDouble() - 0.5f) * halfW * 4f)
                                    - dir * ((float)rng.NextDouble() * len * 0.25f);
@@ -487,7 +550,7 @@ namespace Submachina.Core.EditorTools
                     // Root the crystal on the local rock height so it stands proud of the surface
                     float hBase = SampleField(rockHeight, res, root) + lift;
 
-                    RasterizePrism(res, feather, root, dir, perp, len, halfW, cs, tint, hBase, streakSeed,
+                    RasterizePrism(res, feather, root, dir, perp, len, halfW, heightScale, cs, tint, hBase, streakSeed,
                                    rockHeight, cAlpha, cColor, cHeight, cSpec);
                 }
             }
@@ -495,9 +558,11 @@ namespace Submachina.Core.EditorTools
 
         /** Rasterizes one prism: tapered quad in (t = along, s = across) space with a ridged height profile. */
         private static void RasterizePrism(int res, float feather, Vector2 root, Vector2 dir, Vector2 perp,
-            float len, float halfW, CrystalSettings cs, Color tint, float hBase, float streakSeed,
-            float[] rockHeight, float[] cAlpha, Color[] cColor, float[] cHeight, float[] cSpec)
+            float len, float halfW, float heightScale, CrystalSettings cs, Color tint, float hBase, float streakSeed,
+            float[] rockHeight, float[] cAlpha, Color[] cColor, float[] cHeight, Color[] cSpec)
         {
+            // Glint colour for this crystal: its own (jittered) body colour or the flat override
+            Color specTint = SpecTint(cs, tint);
             // Bounding box in pixel space (root..tip expanded by width + feather)
             Vector2 tip = root + dir * len;
             float pad = halfW + feather * 2f;
@@ -531,10 +596,19 @@ namespace Submachina.Core.EditorTools
                     float cov = Smooth01(0f, feather, edge);
                     if (cov <= 0.003f) continue;
 
-                    // Height: rooted on the rock, rising toward the tip, ridged across the width
+                    // Root blend: fade coverage in over the first rootBlend of the length so the
+                    // crystal emerges from the rock instead of meeting it at a hard edge
+                    float rootT = Smooth01(0f, Mathf.Max(cs.rootBlend, 1e-3f), tt);
+                    cov *= rootT;
+                    if (cov <= 0.003f) continue;
+
+                    // Height: rooted on the rock, rising toward the tip, ridged across the width.
+                    // Blended from the LOCAL rock height over the root zone so the normal map has
+                    // no step (the old hard max() drew a shadow line at the base).
                     float ridge = 1f - Mathf.Clamp01(Mathf.Abs(sDist) / Mathf.Max(wLocal, 1e-4f));
-                    float h = hBase + tt * halfW * 2f + ridge * halfW * cs.heightScale * 5f;
-                    h = Mathf.Max(h, rockHeight[i] + 0.04f);
+                    float hFull = hBase + tt * halfW * 2f + ridge * halfW * heightScale * 5f;
+                    hFull = Mathf.Max(hFull, rockHeight[i] + 0.04f);
+                    float h = Mathf.Lerp(rockHeight[i], hFull, rootT);
                     if (h <= cHeight[i]) continue; // painter's algorithm by height
 
                     // Facets: two side planes split at the ridge line, brighter toward the tip,
@@ -551,21 +625,35 @@ namespace Submachina.Core.EditorTools
                     cColor[i] = new Color(Mathf.Clamp01(tint.r * sh), Mathf.Clamp01(tint.g * sh), Mathf.Clamp01(tint.b * sh), 1f);
                     cHeight[i] = h;
                     cAlpha[i] = Mathf.Max(cAlpha[i], cov);
-                    cSpec[i] = cs.specMaskValue;
+                    cSpec[i] = specTint * cs.specMaskValue;
                 }
             }
         }
 
         /** Grows druse patches: noisy-edged discs filled with Voronoi cells shaded as faceted terminations. */
         private static void RasterizeDruse(TerrainObjectSettings s, System.Random rng, Silhouette sil, int res,
-            float[] rockHeight, float[] rockAlpha, float[] cAlpha, Color[] cColor, float[] cHeight, float[] cSpec)
+            float[] rockHeight, float[] rockAlpha, float[] cAlpha, Color[] cColor, float[] cHeight, Color[] cSpec)
         {
             var cs = s.crystals;
 
+            // Same best-of-N spreading as prism clusters (see RasterizePrisms)
+            var placedPatches = new List<Vector2>();
+            int candidateCount = 1 + Mathf.RoundToInt(cs.clusterSeparation * 7f);
+
             for (int c = 0; c < cs.drusePatchCount; c++)
             {
-                Vector2 center = sil.RandomInside(rng, s.baseRadius * 0.2f);
-                float radius = Mathf.Lerp(cs.drusePatchRadius.x, cs.drusePatchRadius.y, (float)rng.NextDouble());
+                Vector2 center = Vector2.zero;
+                float bestScore = float.NegativeInfinity;
+                for (int cand = 0; cand < candidateCount; cand++)
+                {
+                    var pt = sil.RandomInside(rng, s.baseRadius * 0.2f);
+                    float score = MinSqrDistance(placedPatches, pt);
+                    if (score > bestScore) { bestScore = score; center = pt; }
+                }
+                placedPatches.Add(center);
+
+                float radius = SampleRange(cs.drusePatchRadius, cs.drusePatchRadiusCurve, rng);
+                float heightScale = SampleRange(cs.heightScaleRange, cs.heightScaleCurve, rng);
                 float nOx = Rand1k(rng), nOy = Rand1k(rng);
                 float cellOx = Rand1k(rng), cellOy = Rand1k(rng);
 
@@ -610,16 +698,215 @@ namespace Submachina.Core.EditorTools
                         // Cell-stable colour jitter so each termination reads as its own crystal
                         Color tint = JitterColorHash(cs.color, cs.colorVariation, ws.cell);
 
-                        float h = rockHeight[i] + mask * (0.05f + pyramid * 0.28f * cs.heightScale);
+                        float h = rockHeight[i] + mask * (0.05f + pyramid * 0.28f * heightScale);
                         if (h <= cHeight[i]) continue;
 
                         cColor[i] = new Color(Mathf.Clamp01(tint.r * sh), Mathf.Clamp01(tint.g * sh), Mathf.Clamp01(tint.b * sh), 1f);
                         cHeight[i] = h;
                         cAlpha[i] = Mathf.Max(cAlpha[i], mask);
-                        cSpec[i] = cs.specMaskValue;
+                        // Cell-stable glint colour so each termination flashes its own hue
+                        cSpec[i] = SpecTint(cs, tint) * cs.specMaskValue;
                     }
                 }
             }
+        }
+
+        // -------------------------------------------------------
+        // Decals (stamped one-off features)
+        // -------------------------------------------------------
+
+        /**
+         * Stamps every decal layer onto the rock buffers. For each layer it builds the instance
+         * list from the placement mode (one explicit stamp, N scattered on the face, or N rooted
+         * around the rim), then rasterizes each instance with its own scale/rotation. Uses a
+         * per-layer deterministic RNG so decals stay stable regardless of the other features.
+         */
+        private static void StampDecals(TerrainObjectSettings s, int variantIndex, Silhouette sil, int res,
+            Color[] albedo, float[] height, float[] alpha, Color[] spec)
+        {
+            for (int li = 0; li < s.decalLayers.Count; li++)
+            {
+                var d = s.decalLayers[li];
+                if (d == null || !d.enabled || d.texture == null || d.opacity <= 0f) continue;
+
+                // Dedicated stream per layer (seedOffset lets two similar layers diverge)
+                var rng = new System.Random(s.seed + variantIndex * 7919 + 4441 + li * 131 + d.seedOffset * 17);
+
+                // Read the decal image (with its alpha silhouette) once
+                var tpx = ReadTexturePixels(d.texture, out int tw, out int th);
+
+                // Best-of-N spreading, same idea as crystal clusters
+                int instances = d.placement == DecalPlacement.Explicit ? 1 : Mathf.Max(1, d.count);
+                int candidates = 1 + Mathf.RoundToInt(d.separation * 7f);
+                var placed = new List<Vector2>();
+
+                for (int k = 0; k < instances; k++)
+                {
+                    // Per-instance size + rotation
+                    float scale = Mathf.Max(0.02f, SampleRange(d.scaleRange, d.scaleCurve, rng));
+                    float rotDeg = SampleRangeF(d.rotationRange, rng);
+
+                    // Placement → a centre (and, for the rim, an outward angle to align to)
+                    Vector2 center;
+                    if (d.placement == DecalPlacement.Explicit)
+                    {
+                        center = d.position;
+                    }
+                    else if (d.placement == DecalPlacement.AroundRim)
+                    {
+                        float inset = SampleRangeF(d.rimInsetRange, rng);
+                        float best = float.NegativeInfinity; center = Vector2.zero; float chosenAng = 0f;
+                        for (int c = 0; c < candidates; c++)
+                        {
+                            float ang = (float)rng.NextDouble() * Mathf.PI * 2f;
+                            var dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
+                            var pt = dir * sil.FindRim(ang) * (1f - inset);
+                            float score = MinSqrDistance(placed, pt);
+                            if (score > best) { best = score; center = pt; chosenAng = ang; }
+                        }
+                        // Rotate the stamp so its +Y faces outward from the centre
+                        if (d.alignToRim) rotDeg += chosenAng * Mathf.Rad2Deg - 90f;
+                    }
+                    else // ScatterOnRock
+                    {
+                        float best = float.NegativeInfinity; center = Vector2.zero;
+                        for (int c = 0; c < candidates; c++)
+                        {
+                            var pt = sil.RandomInside(rng, s.baseRadius * 0.1f);
+                            float score = MinSqrDistance(placed, pt);
+                            if (score > best) { best = score; center = pt; }
+                        }
+                    }
+                    placed.Add(center);
+
+                    StampOne(res, s, d, tpx, tw, th, center, scale, rotDeg, albedo, height, alpha, spec);
+                }
+            }
+        }
+
+        /**
+         * Rasterizes one decal instance. Maps each covered pixel back into the decal's local UV
+         * (inverse rotate + scale), samples the image, shapes the alpha with cutoff/softness,
+         * blends the colour by the chosen mode, optionally extends/clips to the silhouette, and
+         * pushes the height field so the decal reads as raised/carved/embossed relief.
+         */
+        private static void StampOne(int res, TerrainObjectSettings s, DecalLayer d, Color[] tpx, int tw, int th,
+            Vector2 center, float scale, float rotDeg, Color[] albedo, float[] height, float[] alpha, Color[] spec)
+        {
+            // Decal covers a square of half-extent 'half' in centered coords (scale 1 = object width)
+            float half = Mathf.Max(scale * s.baseRadius, 1e-4f);
+            float rot = rotDeg * Mathf.Deg2Rad;
+            float cosr = Mathf.Cos(-rot), sinr = Mathf.Sin(-rot); // inverse rotation for sampling
+
+            // Pixel bounding box (padded by the rotated square's corner reach)
+            float pad = half * 1.4143f + 2f / res;
+            int x0 = Mathf.Clamp(Mathf.FloorToInt(((center.x - pad) * 0.5f + 0.5f) * res), 0, res - 1);
+            int x1 = Mathf.Clamp(Mathf.CeilToInt(((center.x + pad) * 0.5f + 0.5f) * res), 0, res - 1);
+            int y0 = Mathf.Clamp(Mathf.FloorToInt(((center.y - pad) * 0.5f + 0.5f) * res), 0, res - 1);
+            int y1 = Mathf.Clamp(Mathf.CeilToInt(((center.y + pad) * 0.5f + 0.5f) * res), 0, res - 1);
+
+            for (int y = y0; y <= y1; y++)
+            {
+                for (int x = x0; x <= x1; x++)
+                {
+                    int i = y * res + x;
+                    float cx = ((x + 0.5f) / res - 0.5f) * 2f;
+                    float cy = ((y + 0.5f) / res - 0.5f) * 2f;
+
+                    // World → decal-local UV
+                    float rx = cx - center.x, ry = cy - center.y;
+                    float lx = rx * cosr - ry * sinr;
+                    float ly = rx * sinr + ry * cosr;
+                    float uu = lx / (2f * half) + 0.5f;
+                    float vv = ly / (2f * half) + 0.5f;
+                    if (uu < 0f || uu > 1f || vv < 0f || vv > 1f) continue;
+
+                    // Sample + shape the stamp alpha (cutoff/softness cleans faint chroma-key halo)
+                    Color dc = SampleBilinearClamp(tpx, tw, th, uu, vv);
+                    float shape = Smooth01(d.alphaCutoff - d.alphaSoftness, d.alphaCutoff + d.alphaSoftness, dc.a);
+                    if (shape <= 0.002f) continue;
+                    float cover = shape * d.opacity;
+
+                    // Silhouette handling: clip to the rock, extend past it, or just require rock underneath
+                    float rockA = alpha[i];
+                    if (d.clipToSilhouette)
+                    {
+                        cover *= rockA;
+                        if (cover <= 0.002f) continue;
+                    }
+                    else if (d.extendSilhouette)
+                    {
+                        alpha[i] = Mathf.Max(rockA, cover);
+                    }
+                    else if (rockA <= 0.01f) continue;
+
+                    // Colour blend (tinted decal over the current albedo)
+                    Color baseC = albedo[i];
+                    Color dRGB = new Color(dc.r * d.tint.r, dc.g * d.tint.g, dc.b * d.tint.b, 1f);
+                    Color outC = BlendDecal(baseC, dRGB, d.blendMode, cover);
+                    outC.a = alpha[i];
+                    albedo[i] = outC;
+
+                    // Relief → height field (so the torch lights the decal as real geometry)
+                    if (d.reliefMode != DecalReliefMode.None && d.reliefStrength > 0f)
+                    {
+                        float sig;
+                        switch (d.reliefMode)
+                        {
+                            case DecalReliefMode.Raise: sig = shape; break;
+                            case DecalReliefMode.Carve: sig = -shape; break;
+                            default: // Emboss: the decal's own brightness becomes height
+                                float lum = dRGB.r * 0.3f + dRGB.g * 0.59f + dRGB.b * 0.11f;
+                                sig = (lum - 0.5f) * 2f; break;
+                        }
+                        height[i] += sig * d.reliefStrength * cover;
+                    }
+
+                    // Optional per-decal spec mask (wet coral glints, dull fossil doesn't),
+                    // tinted so the decal can glow its own colour
+                    if (d.applySpec) spec[i] = Color.Lerp(spec[i], d.specColor * d.specValue, cover);
+                }
+            }
+        }
+
+        /** Combines a decal colour with the rock colour under the chosen blend mode, lerped by coverage. */
+        private static Color BlendDecal(Color b, Color d, DecalBlend mode, float t)
+        {
+            // Additive adds light scaled directly by coverage (not a lerp toward the decal)
+            if (mode == DecalBlend.Additive)
+                return new Color(Mathf.Clamp01(b.r + d.r * t), Mathf.Clamp01(b.g + d.g * t), Mathf.Clamp01(b.b + d.b * t), b.a);
+
+            Color blended;
+            switch (mode)
+            {
+                default:
+                case DecalBlend.Normal:   blended = d; break;
+                case DecalBlend.Multiply: blended = new Color(b.r * d.r, b.g * d.g, b.b * d.b); break;
+                case DecalBlend.Screen:   blended = new Color(1f - (1f - b.r) * (1f - d.r), 1f - (1f - b.g) * (1f - d.g), 1f - (1f - b.b) * (1f - d.b)); break;
+                case DecalBlend.Overlay:  blended = new Color(OverlayCh(b.r, d.r), OverlayCh(b.g, d.g), OverlayCh(b.b, d.b)); break;
+                case DecalBlend.SoftLight: blended = new Color(SoftLightCh(b.r, d.r), SoftLightCh(b.g, d.g), SoftLightCh(b.b, d.b)); break;
+            }
+            return new Color(Mathf.Lerp(b.r, blended.r, t), Mathf.Lerp(b.g, blended.g, t), Mathf.Lerp(b.b, blended.b, t), b.a);
+        }
+
+        private static float OverlayCh(float a, float b) => a < 0.5f ? 2f * a * b : 1f - 2f * (1f - a) * (1f - b);
+        private static float SoftLightCh(float a, float b) => (1f - 2f * b) * a * a + 2f * b * a; // Pegtop soft-light
+
+        /** Uniform sample of a min/max range (no distribution curve) — for rotation / rim inset. */
+        private static float SampleRangeF(Vector2 range, System.Random rng) =>
+            Mathf.Lerp(range.x, range.y, (float)rng.NextDouble());
+
+        /** Bilinear sample with clamped UVs (decals don't tile — they're stamped once). */
+        private static Color SampleBilinearClamp(Color[] px, int w, int h, float u, float v)
+        {
+            float fx = Mathf.Clamp01(u) * (w - 1);
+            float fy = Mathf.Clamp01(v) * (h - 1);
+            int x0 = Mathf.FloorToInt(fx), y0 = Mathf.FloorToInt(fy);
+            int x1 = Mathf.Min(x0 + 1, w - 1), y1 = Mathf.Min(y0 + 1, h - 1);
+            float tx = fx - x0, ty = fy - y0;
+            Color a = Color.Lerp(px[y0 * w + x0], px[y0 * w + x1], tx);
+            Color bb = Color.Lerp(px[y1 * w + x0], px[y1 * w + x1], tx);
+            return Color.Lerp(a, bb, ty);
         }
 
         // -------------------------------------------------------
@@ -710,6 +997,35 @@ namespace Submachina.Core.EditorTools
         // -------------------------------------------------------
 
         private static float Rand1k(System.Random rng) => (float)rng.NextDouble() * 1000f;
+
+        /** Glint colour for a crystal: its own (jittered) body colour or the settings' flat override. */
+        private static Color SpecTint(CrystalSettings cs, Color crystalTint) =>
+            cs.specUseCrystalColor ? crystalTint : cs.specColor;
+
+        /** Clamps a spec tint × strength value into the 0..1 PNG range (alpha forced opaque). */
+        private static Color ClampSpec(Color c) =>
+            new Color(Mathf.Clamp01(c.r), Mathf.Clamp01(c.g), Mathf.Clamp01(c.b), 1f);
+
+        /** Smallest squared distance from p to any placed point (max value when none placed yet). */
+        private static float MinSqrDistance(List<Vector2> points, Vector2 p)
+        {
+            float best = float.MaxValue;
+            for (int i = 0; i < points.Count; i++) best = Mathf.Min(best, (points[i] - p).sqrMagnitude);
+            return best;
+        }
+
+        /**
+         * Samples a value from a min/max range through a distribution curve: X = a uniform
+         * roll (0..1), Y = the position within the range (0 = min, 1 = max). A linear curve
+         * is a uniform spread; e.g. a curve that stays near 0 until X=0.9 makes 90% of the
+         * samples land near the minimum with rare large ones.
+         */
+        private static float SampleRange(Vector2 range, AnimationCurve curve, System.Random rng)
+        {
+            float t = (float)rng.NextDouble();
+            if (curve != null && curve.length >= 2) t = Mathf.Clamp01(curve.Evaluate(t));
+            return Mathf.Lerp(range.x, range.y, t);
+        }
 
         private static Vector2 Rotate(Vector2 v, float radians)
         {

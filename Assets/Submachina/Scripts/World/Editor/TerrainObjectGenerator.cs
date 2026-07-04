@@ -23,11 +23,11 @@ namespace Submachina.Core.EditorTools
      *  - each map is attached to the albedo sprite as a Secondary Texture ("_NormalMap",
      *    "_SpecMask") so every sprite shares one material.
      *
-     * Usage: Submachina > Terrain Object Generator.
+     * Usage: Tools > Submachina > Terrain Object Generator.
      */
     public class TerrainObjectGenerator : OdinEditorWindow
     {
-        [MenuItem("Submachina/Terrain Object Generator")]
+        [MenuItem("Tools/Submachina/Terrain Object Generator")]
         private static void Open() => GetWindow<TerrainObjectGenerator>("Terrain Object Generator");
 
         // =====================
@@ -89,10 +89,12 @@ namespace Submachina.Core.EditorTools
         [BoxGroup("Preview"), PropertyOrder(80), PropertyRange(0f, 360f), Tooltip("Direction the simulated torch light comes from in the Lit preview.")]
         public float previewLightAngle = 125f;
 
-        [BoxGroup("Preview"), PropertyOrder(80), Tooltip("Multiply the Lit preview by a scene-style tint (how RockObstacle tints ore in the water).")]
+        [BoxGroup("Preview"), PropertyOrder(80), Tooltip("Multiply the Lit preview by a scene-style tint (how RockObstacle tints ore in the water). " +
+                                                         "Ignored while Output > Bake Tint is on — the tint is already in the albedo then.")]
         public bool applySceneTint = true;
 
         [BoxGroup("Preview"), PropertyOrder(80), ShowIf(nameof(applySceneTint))]
+        [Tooltip("Scene-style tint for the Lit preview. Its ALPHA is the tint opacity (same convention as Output > Bake Tint).")]
         public Color sceneTint = new Color(0.42f, 0.52f, 0.78f);
 
         [BoxGroup("Preview"), PropertyOrder(80), Button(ButtonSizes.Medium)]
@@ -101,6 +103,9 @@ namespace Submachina.Core.EditorTools
         [System.NonSerialized] private Texture2D _prevAlbedo, _prevNormal, _prevLit;
         [System.NonSerialized] private bool _previewDirty;
         [System.NonSerialized] private double _previewDirtyAt;
+        [System.NonSerialized] private double _lastPollAt;
+        [System.NonSerialized] private int _lastSettingsHash;
+        [System.NonSerialized] private Vector2 _settingsScroll;
 
         // =====================
         // Generate
@@ -143,17 +148,21 @@ namespace Submachina.Core.EditorTools
                     if (r.specMask != null) ConfigureLinearImporter(maskPath);
                     ConfigureSpriteImporter(albedoPath, normalPath, r.specMask != null ? maskPath : null);
 
-                    // --- Optional separate crystal overlay sprite ---
+                    // --- Optional separate crystal overlay sprite (with its own spec mask) ---
                     if (r.crystalAlbedo != null)
                     {
                         string cAlbedoPath = $"{s.outputFolder}/{baseName}_{v}_crystal_albedo.png";
                         string cNormalPath = $"{s.outputFolder}/{baseName}_{v}_crystal_normal.png";
+                        string cMaskPath = $"{s.outputFolder}/{baseName}_{v}_crystal_mask.png";
                         TerrainObjectBaker.WritePng(r.crystalAlbedo, r.resolution, cAlbedoPath);
                         TerrainObjectBaker.WritePng(r.crystalNormal, r.resolution, cNormalPath);
+                        if (r.crystalSpecMask != null) TerrainObjectBaker.WritePng(r.crystalSpecMask, r.resolution, cMaskPath);
                         AssetDatabase.ImportAsset(cNormalPath);
+                        if (r.crystalSpecMask != null) AssetDatabase.ImportAsset(cMaskPath);
                         AssetDatabase.ImportAsset(cAlbedoPath);
                         ConfigureLinearImporter(cNormalPath);
-                        ConfigureSpriteImporter(cAlbedoPath, cNormalPath, null);
+                        if (r.crystalSpecMask != null) ConfigureLinearImporter(cMaskPath);
+                        ConfigureSpriteImporter(cAlbedoPath, cNormalPath, r.crystalSpecMask != null ? cMaskPath : null);
                     }
                 }
             }
@@ -313,16 +322,21 @@ namespace Submachina.Core.EditorTools
             Color water = new Color(0.06f, 0.1f, 0.18f, 1f);
             Color specCol = new Color(1f, 1.03f, 1.12f);
 
+            // Skip the preview-side tint when the settings already bake it into the albedo
+            bool tintInPreview = applySceneTint && !s.bakeTint;
+
             for (int i = 0; i < px.Length; i++)
             {
                 // Rock (or combined) pass
                 Color a = r.albedo[i];
                 Vector3 nv = DecodeNormal(r.normal[i]);
-                Color baseCol = applySceneTint ? a * sceneTint : a;
+                // The tint's alpha is its opacity: lerp from untinted → fully tinted
+                Color baseCol = tintInPreview ? Color.Lerp(a, a * sceneTint, sceneTint.a) : a;
                 float diff = Mathf.Max(0f, Vector3.Dot(nv, L));
-                float mask = r.specMask != null ? r.specMask[i].r : 1f;
-                float sp = Mathf.Pow(Mathf.Max(0f, Vector3.Dot(nv, H)), 48f) * mask * 1.4f;
-                Color lit = baseCol * (0.35f + 0.75f * diff) + specCol * sp;
+                // The mask's RGB tints the glint per pixel (matches the shader's specMask multiply)
+                Color mask = r.specMask != null ? r.specMask[i] : Color.white;
+                float sp = Mathf.Pow(Mathf.Max(0f, Vector3.Dot(nv, H)), 48f) * 1.4f;
+                Color lit = baseCol * (0.35f + 0.75f * diff) + specCol * mask * sp;
                 Color outc = Color.Lerp(water, lit, a.a);
 
                 // Separate crystal overlay: lit the same way but never scene-tinted
@@ -331,8 +345,11 @@ namespace Submachina.Core.EditorTools
                     Color ca = r.crystalAlbedo[i];
                     Vector3 cn = DecodeNormal(r.crystalNormal[i]);
                     float cd = Mathf.Max(0f, Vector3.Dot(cn, L));
-                    float csp = Mathf.Pow(Mathf.Max(0f, Vector3.Dot(cn, H)), 48f) * s.crystals.specMaskValue * 1.4f;
-                    Color clit = ca * (0.35f + 0.75f * cd) + specCol * csp;
+                    Color cMask = r.crystalSpecMask != null
+                        ? r.crystalSpecMask[i]
+                        : Color.white * s.crystals.specMaskValue;
+                    float csp = Mathf.Pow(Mathf.Max(0f, Vector3.Dot(cn, H)), 48f) * 1.4f;
+                    Color clit = ca * (0.35f + 0.75f * cd) + specCol * cMask * csp;
                     outc = Color.Lerp(outc, clit, ca.a);
                 }
 
@@ -365,10 +382,38 @@ namespace Submachina.Core.EditorTools
         // Preview drawing + auto-preview pump
         // -------------------------------------------------------
 
-        /** Draws the three preview panes (Albedo / Normal / Lit) under the Preview box. */
-        [OnInspectorGUI, PropertyOrder(90)]
-        private void DrawPreviews()
+        /**
+         * Splits the window: the settings (Odin's property tree) scroll in the top region while
+         * the preview panes stay PINNED to the bottom edge, always visible while tweaking.
+         * Odin's own scroll view is disabled in OnEnable so this one owns the scrolling.
+         */
+        protected override void OnImGUI()
         {
+            float previewH = PreviewAreaHeight();
+            float scrollH = Mathf.Max(position.height - previewH, 80f);
+
+            _settingsScroll = EditorGUILayout.BeginScrollView(_settingsScroll, GUILayout.Height(scrollH));
+            base.OnImGUI();
+            EditorGUILayout.EndScrollView();
+
+            DrawPinnedPreviews();
+        }
+
+        /** Height the pinned preview strip needs (separator + label row + square panes + padding). */
+        private float PreviewAreaHeight()
+        {
+            if (_prevAlbedo == null) return 30f;
+            float size = Mathf.Min((position.width - 48f) / 3f, 230f);
+            return size + 16f + 14f;
+        }
+
+        /** Draws the three preview panes (Albedo / Normal / Lit) pinned below the settings scroll. */
+        private void DrawPinnedPreviews()
+        {
+            // Thin separator so the pinned strip reads as its own region
+            Rect line = GUILayoutUtility.GetRect(1f, 1f, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(line, new Color(0f, 0f, 0f, 0.35f));
+
             if (_prevAlbedo == null)
             {
                 EditorGUILayout.LabelField("Press Preview (or enable Auto Preview) to see the current settings.", EditorStyles.miniLabel);
@@ -376,11 +421,13 @@ namespace Submachina.Core.EditorTools
             }
 
             GUILayout.Space(4);
-            float size = Mathf.Min((EditorGUIUtility.currentViewWidth - 48f) / 3f, 230f);
+            float size = Mathf.Min((position.width - 48f) / 3f, 230f);
             EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
             DrawPreviewPane("Albedo", _prevAlbedo, size, transparent: true);
             DrawPreviewPane("Normal", _prevNormal, size, transparent: false);
             DrawPreviewPane("Lit", _prevLit, size, transparent: false);
+            GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(4);
         }
@@ -398,26 +445,15 @@ namespace Submachina.Core.EditorTools
             EditorGUILayout.EndVertical();
         }
 
-        // Change detection around Odin's GUI so autoPreview re-bakes after edits (debounced)
-        private void BeginChangeWatch() => EditorGUI.BeginChangeCheck();
-
-        private void EndChangeWatch()
-        {
-            if (EditorGUI.EndChangeCheck() && autoPreview) RequestPreview();
-        }
-
         protected override void OnEnable()
         {
             base.OnEnable();
-            OnBeginGUI += BeginChangeWatch;
-            OnEndGUI += EndChangeWatch;
+            UseScrollView = false; // OnImGUI owns the scrolling so the preview strip can stay pinned
             EditorApplication.update += OnEditorUpdate;
         }
 
         protected override void OnDestroy()
         {
-            OnBeginGUI -= BeginChangeWatch;
-            OnEndGUI -= EndChangeWatch;
             EditorApplication.update -= OnEditorUpdate;
             if (_prevAlbedo != null) DestroyImmediate(_prevAlbedo);
             if (_prevNormal != null) DestroyImmediate(_prevNormal);
@@ -425,13 +461,36 @@ namespace Submachina.Core.EditorTools
             base.OnDestroy();
         }
 
-        /** Debounced auto-preview: re-bake ~0.35s after the last edit so slider drags stay smooth. */
+        /**
+         * Auto-preview pump. Change detection polls a hash of the serialized settings (~4x/s)
+         * rather than wrapping Odin's GUI in a change scope — the scope missed edits applied
+         * outside the draw pass (e.g. fields inside paint-layer list items, like texture
+         * tiling). The regenerate itself is debounced ~0.35s so slider drags stay smooth.
+         */
         private void OnEditorUpdate()
         {
+            if (autoPreview && EditorApplication.timeSinceStartup - _lastPollAt > 0.25)
+            {
+                _lastPollAt = EditorApplication.timeSinceStartup;
+                int hash = ComputeSettingsHash();
+                if (hash != _lastSettingsHash)
+                {
+                    _lastSettingsHash = hash;
+                    RequestPreview();
+                }
+            }
+
             if (!_previewDirty) return;
             if (EditorApplication.timeSinceStartup - _previewDirtyAt < 0.35) return;
             _previewDirty = false;
             RegeneratePreview();
+        }
+
+        /** Hash of everything that affects the preview (settings JSON + the preview controls). */
+        private int ComputeSettingsHash()
+        {
+            string json = EditorJsonUtility.ToJson(settings);
+            return (json, previewVariant, previewLightAngle, applySceneTint, sceneTint).GetHashCode();
         }
 
         // -------------------------------------------------------
