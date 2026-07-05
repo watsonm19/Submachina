@@ -1,0 +1,38 @@
+{
+  "style": "",
+  "resolution": 1024,
+  "materials": {
+    "RockBare": "Bare underwater seabed rock face, tight even granite-like grain, subtle mineral speckle.",
+    "RockCracked": "Fractured underwater stone with a fine network of dark hairline cracks between flat plates.",
+    "RockFacet": "Angular basalt-like rock broken into broad chiselled flat facets of varying tilt.",
+    "SandRipple": "Fine current-swept seabed sand with gentle regular parallel ripples, small grain.",
+    "Gravel": "Packed seabed gravel of small rounded pebbles with dark grit seams between them.",
+    "SiltSmooth": "Soft smooth deep-sea silt and ooze, very low relief, faint gentle undulations.",
+    "MudCracks": "Dried cracked sediment plates split by a network of wide dark shrinkage cracks.",
+    "Cobble": "Rounded seabed cobblestones packed together with deep dark crevices between the stones.",
+    "Strata": "Fine horizontal sedimentary rock strata, many thin parallel layered bands of stone.",
+    "MossAlgae": "Soft patchy marine algae and moss over rock, muted desaturated green, speckled edges.",
+    "CoralCrust": "Knobbly encrusting brain-coral over rock, rounded bumpy lobes with fine pores, faint warm tone.",
+    "Barnacles": "Dense crust of small conical barnacles on rock, raised rings with dark central apertures.",
+    "TubeWorms": "Bed of small marine tube-worm and polyp openings, raised pale rims around dark holes.",
+    "RustStain": "Iron-oxide rust staining mottled over submerged metal-bearing rock, warm blotches, pitting.",
+    "FossilBed": "Scattered shell and ammonite fossil impressions in pale sedimentary stone, concentric ridges."
+  },
+  "decals": {
+    "Protrusion": "A single chunky rounded rock protrusion knob outcrop lump, greyish stone.",
+    "Overhang": "A single jutting rock ledge shelf overhang slab of grey stone, wider at the outer edge.",
+    "BoulderLump": "A single rounded mossy boulder lump of grey rock.",
+    "FossilAmmonite": "A single spiral ammonite fossil shell pressed into grey stone, ridged coil.",
+    "FossilBone": "A single fossilized bone / vertebra fragment embedded in pale stone.",
+    "ShellCluster": "A small tight cluster of clam and scallop shells on the seabed.",
+    "CoralBranch": "A single branching staghorn coral clump, pale tan branches.",
+    "CoralBrain": "A single round brain coral head with maze-like grooves.",
+    "CoralFan": "A single flat sea fan gorgonian coral, lacy branching mesh.",
+    "Anemone": "A single sea anemone with a ring of soft tentacles, muted colour.",
+    "BarnacleClump": "A small clustered clump of conical barnacles.",
+    "TubeWormTuft": "A small bundle of feather-duster tube worms with soft crowns.",
+    "SpongeBarrel": "A single barrel sponge, rough porous cylinder, muted colour.",
+    "Vent": "A single hydrothermal vent chimney opening in dark rock, crusted rim, dark hole.",
+    "Crack": "A single deep jagged crack fissure crevice in grey rock, dark interior."
+  }
+}

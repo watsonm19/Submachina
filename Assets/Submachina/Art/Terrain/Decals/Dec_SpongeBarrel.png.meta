@@ -1,10 +1,7 @@
 fileFormatVersion: 2
-guid: 66ab6ac54e84a4449a6d69cc277ded8e
+guid: 5e427fb1e4296a1419076a80d387c847
 TextureImporter:
-  internalIDToNameTable:
-  - first:
-      213: -8240768864919669028
-    second: Dec_SpongeBarrel_0
+  internalIDToNameTable: []
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -98,29 +95,7 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites:
-    - serializedVersion: 2
-      name: Dec_SpongeBarrel_0
-      rect:
-        serializedVersion: 2
-        x: 278
-        y: 152
-        width: 477
-        height: 713
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: cd63d5af068e2ad80800000000000000
-      internalID: -8240768864919669028
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
+    sprites: []
     outline: []
     customData: 
     physicsShape: []
@@ -134,8 +109,7 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable:
-      Dec_SpongeBarrel_0: -8240768864919669028
+    nameFileIdTable: {}
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

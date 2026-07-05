@@ -199,3 +199,7 @@ AssetInventory.meta
 
 # Synaptic AI Pro MCP Server
 Assets/Synaptic AI Pro/MCPServer/node_modules/
+
+# Terrain art generator — never commit the local API key or run logs
+Tools/TextureGen/gemini_key.local.txt
+Tools/TextureGen/gen_progress.log

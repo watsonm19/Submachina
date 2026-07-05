@@ -1,10 +1,7 @@
 fileFormatVersion: 2
-guid: 941b27f318a600044a34a4ce7889b3df
+guid: 3ec4ebd2b4c5b8a4d8715a11db113542
 TextureImporter:
-  internalIDToNameTable:
-  - first:
-      213: 318606473992669577
-    second: Dec_FossilAmmonite_0
+  internalIDToNameTable: []
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -98,29 +95,7 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites:
-    - serializedVersion: 2
-      name: Dec_FossilAmmonite_0
-      rect:
-        serializedVersion: 2
-        x: 126
-        y: 126
-        width: 774
-        height: 772
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 989097966eaeb6400800000000000000
-      internalID: 318606473992669577
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
+    sprites: []
     outline: []
     customData: 
     physicsShape: []
@@ -134,8 +109,7 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable:
-      Dec_FossilAmmonite_0: 318606473992669577
+    nameFileIdTable: {}
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

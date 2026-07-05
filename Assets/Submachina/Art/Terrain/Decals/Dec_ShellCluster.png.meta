@@ -1,10 +1,7 @@
 fileFormatVersion: 2
-guid: ee3e08708b2aa814ab4d4246427bc76a
+guid: 50711aaf1d6e9cb43901f46967b2ae25
 TextureImporter:
-  internalIDToNameTable:
-  - first:
-      213: 7018515046991023350
-    second: Dec_ShellCluster_0
+  internalIDToNameTable: []
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -98,29 +95,7 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites:
-    - serializedVersion: 2
-      name: Dec_ShellCluster_0
-      rect:
-        serializedVersion: 2
-        x: 209
-        y: 203
-        width: 610
-        height: 600
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 6fc42a2ef36c66160800000000000000
-      internalID: 7018515046991023350
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
+    sprites: []
     outline: []
     customData: 
     physicsShape: []
@@ -134,8 +109,7 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable:
-      Dec_ShellCluster_0: 7018515046991023350
+    nameFileIdTable: {}
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

@@ -1,10 +1,7 @@
 fileFormatVersion: 2
-guid: 9c324f2b6fc056a48b2587aadf5e3b03
+guid: 35e7672fe50b3ae4eb84d635fda24230
 TextureImporter:
-  internalIDToNameTable:
-  - first:
-      213: 81202569121224518
-    second: Dec_BarnacleClump_0
+  internalIDToNameTable: []
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -98,29 +95,7 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites:
-    - serializedVersion: 2
-      name: Dec_BarnacleClump_0
-      rect:
-        serializedVersion: 2
-        x: 201
-        y: 205
-        width: 629
-        height: 600
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 647d15f6e4d702100800000000000000
-      internalID: 81202569121224518
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
+    sprites: []
     outline: []
     customData: 
     physicsShape: []
@@ -134,8 +109,7 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable:
-      Dec_BarnacleClump_0: 81202569121224518
+    nameFileIdTable: {}
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

@@ -1,10 +1,7 @@
 fileFormatVersion: 2
-guid: d07c986bf947c42439df21cd5ef5ce2e
+guid: 59cde637184c178468e4bbe899736c32
 TextureImporter:
-  internalIDToNameTable:
-  - first:
-      213: 4743067656974006536
-    second: Dec_Vent_0
+  internalIDToNameTable: []
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -98,29 +95,7 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites:
-    - serializedVersion: 2
-      name: Dec_Vent_0
-      rect:
-        serializedVersion: 2
-        x: 209
-        y: 204
-        width: 603
-        height: 594
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 809749777e2c2d140800000000000000
-      internalID: 4743067656974006536
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
+    sprites: []
     outline: []
     customData: 
     physicsShape: []
@@ -134,8 +109,7 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable:
-      Dec_Vent_0: 4743067656974006536
+    nameFileIdTable: {}
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

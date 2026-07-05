@@ -1,10 +1,7 @@
 fileFormatVersion: 2
-guid: 9d3b4ead136b5b443bdb58e118cde03c
+guid: 2018bf77de2b00a468d2cae8fb1ba3c6
 TextureImporter:
-  internalIDToNameTable:
-  - first:
-      213: -6302809786473019193
-    second: Dec_CoralBranch_0
+  internalIDToNameTable: []
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -98,29 +95,7 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites:
-    - serializedVersion: 2
-      name: Dec_CoralBranch_0
-      rect:
-        serializedVersion: 2
-        x: 239
-        y: 245
-        width: 550
-        height: 521
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 7c88b6694ebe788a0800000000000000
-      internalID: -6302809786473019193
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
+    sprites: []
     outline: []
     customData: 
     physicsShape: []
@@ -134,8 +109,7 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable:
-      Dec_CoralBranch_0: -6302809786473019193
+    nameFileIdTable: {}
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

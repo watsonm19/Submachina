@@ -1,10 +1,7 @@
 fileFormatVersion: 2
-guid: 28626aafde979dd418fc09f3fe3dee06
+guid: 759b9c745afe1a64f8488279204d0b1b
 TextureImporter:
-  internalIDToNameTable:
-  - first:
-      213: -6692737565561900523
-    second: Dec_Protrusion_0
+  internalIDToNameTable: []
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -98,29 +95,7 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites:
-    - serializedVersion: 2
-      name: Dec_Protrusion_0
-      rect:
-        serializedVersion: 2
-        x: 230
-        y: 200
-        width: 565
-        height: 611
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 51235cdc4ae9e13a0800000000000000
-      internalID: -6692737565561900523
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
+    sprites: []
     outline: []
     customData: 
     physicsShape: []
@@ -134,8 +109,7 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable:
-      Dec_Protrusion_0: -6692737565561900523
+    nameFileIdTable: {}
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

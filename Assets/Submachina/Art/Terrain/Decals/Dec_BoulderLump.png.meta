@@ -1,10 +1,7 @@
 fileFormatVersion: 2
-guid: ed44064a13ad2ee4ca22c882322eb6fc
+guid: b48edf9bc24b54a40b5636a9d5358858
 TextureImporter:
-  internalIDToNameTable:
-  - first:
-      213: -638049555507590063
-    second: Dec_BoulderLump_0
+  internalIDToNameTable: []
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -98,29 +95,7 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites:
-    - serializedVersion: 2
-      name: Dec_BoulderLump_0
-      rect:
-        serializedVersion: 2
-        x: 175
-        y: 179
-        width: 676
-        height: 664
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 15ccfde4f413527f0800000000000000
-      internalID: -638049555507590063
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
+    sprites: []
     outline: []
     customData: 
     physicsShape: []
@@ -134,8 +109,7 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable:
-      Dec_BoulderLump_0: -638049555507590063
+    nameFileIdTable: {}
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

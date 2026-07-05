@@ -1,10 +1,7 @@
 fileFormatVersion: 2
-guid: 1d23bf9311d838b469910f739dc88f3f
+guid: 40f1921a4b9c919479968c98b78873d4
 TextureImporter:
-  internalIDToNameTable:
-  - first:
-      213: 458970040589032488
-    second: Dec_TubeWormTuft_0
+  internalIDToNameTable: []
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -98,29 +95,7 @@ TextureImporter:
     forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
-    sprites:
-    - serializedVersion: 2
-      name: Dec_TubeWormTuft_0
-      rect:
-        serializedVersion: 2
-        x: 234
-        y: 238
-        width: 557
-        height: 544
-      alignment: 0
-      pivot: {x: 0, y: 0}
-      border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
-      outline: []
-      physicsShape: []
-      tessellationDetail: -1
-      bones: []
-      spriteID: 82c1bd7f1d69e5600800000000000000
-      internalID: 458970040589032488
-      vertices: []
-      indices: 
-      edges: []
-      weights: []
+    sprites: []
     outline: []
     customData: 
     physicsShape: []
@@ -134,8 +109,7 @@ TextureImporter:
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
-    nameFileIdTable:
-      Dec_TubeWormTuft_0: 458970040589032488
+    nameFileIdTable: {}
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
