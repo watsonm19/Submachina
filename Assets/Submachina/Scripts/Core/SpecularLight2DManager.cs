@@ -30,6 +30,7 @@ namespace Submachina.Core
         private static readonly int CountID = Shader.PropertyToID("_SpecLightCount");
         private static readonly int LightAID = Shader.PropertyToID("_SpecLightA");
         private static readonly int LightBID = Shader.PropertyToID("_SpecLightB");
+        private static readonly int LightCID = Shader.PropertyToID("_SpecLightC");
         private static readonly int FalloffLUTID = Shader.PropertyToID("_SpecFalloffLUT");
 
         private static readonly List<SpecularLight2D> Lights = new List<SpecularLight2D>();
@@ -38,6 +39,7 @@ namespace Submachina.Core
         // Reused per-frame scratch (fixed length = the shader's array length).
         private static readonly Vector4[] PackedA = new Vector4[MaxLights];
         private static readonly Vector4[] PackedB = new Vector4[MaxLights];
+        private static readonly float[] PackedC = new float[MaxLights]; // sorting layer bitmask per light
 
         // Per-light falloff LUT (one ROW per light slot) + who/what each row currently holds, so we
         // only rebake a row when the light occupying that slot (or its curve) actually changes.
@@ -45,6 +47,50 @@ namespace Submachina.Core
         private readonly SpecularLight2D[] _rowLight = new SpecularLight2D[MaxLights];
         private readonly int[] _rowVersion = new int[MaxLights];
         private readonly Color[] _rowScratch = new Color[LutWidth];
+
+        // =====================
+        // Sorting layer → bit index mapping (built lazily, shared by lights and sprites)
+        // =====================
+
+        // Maps each SortingLayer.id to a bit position (0..31), built from SortingLayer.layers.
+        // Adding/removing/reordering layers in the Tag Manager just works — the map rebuilds on
+        // the next access. The limit is 24 layers (float mantissa), far beyond any real project.
+        private static Dictionary<int, int> _sortingLayerBits;
+
+        /**
+         * Converts an array of sorting layer IDs (e.g. from Light2D.targetSortingLayers) into a
+         * single uint bitmask. Returns all-bits-set if the array is null (= "affect all layers").
+         */
+        public static uint SortingLayerMask(int[] sortingLayerIDs)
+        {
+            if (sortingLayerIDs == null) return 0x00FFFFFFu;
+            if (_sortingLayerBits == null) RebuildSortingLayerMap();
+
+            uint mask = 0u;
+            for (int i = 0; i < sortingLayerIDs.Length; i++)
+                if (_sortingLayerBits.TryGetValue(sortingLayerIDs[i], out int bit))
+                    mask |= 1u << bit;
+            return mask;
+        }
+
+        /**
+         * Returns the single-bit mask for one sorting layer (what a sprite sets on itself).
+         * Unknown layers fall back to all-bits-set so they're visible to every light.
+         */
+        public static uint SortingLayerBit(int sortingLayerID)
+        {
+            if (_sortingLayerBits == null) RebuildSortingLayerMap();
+            return _sortingLayerBits.TryGetValue(sortingLayerID, out int bit) ? 1u << bit : 0x00FFFFFFu;
+        }
+
+        /** Rebuild the sorting-layer-to-bit mapping from Unity's current tag manager layers. */
+        private static void RebuildSortingLayerMap()
+        {
+            var layers = SortingLayer.layers;
+            _sortingLayerBits = new Dictionary<int, int>(layers.Length);
+            for (int i = 0; i < layers.Length && i < 24; i++)
+                _sortingLayerBits[layers[i].id] = i;
+        }
 
         /**
          * Zero the light count at startup so sprites never read stale/garbage globals before
@@ -55,6 +101,7 @@ namespace Submachina.Core
         {
             Lights.Clear();
             _instance = null;
+            _sortingLayerBits = null; // rebuild on next access in case sorting layers changed
             Shader.SetGlobalFloat(CountID, 0f);
         }
 
@@ -152,10 +199,11 @@ namespace Submachina.Core
             {
                 var light = Lights[i];
                 if (light == null || !light.isActiveAndEnabled) continue;
-                if (!light.TryPack(out Vector4 a, out Vector4 b)) continue;
+                if (!light.TryPack(out Vector4 a, out Vector4 b, out float sortingMask)) continue;
 
                 PackedA[written] = a;
                 PackedB[written] = b;
+                PackedC[written] = sortingMask;
 
                 // Rebake this slot's falloff only if a different light now sits here or its curve changed.
                 if (_rowLight[written] != light || _rowVersion[written] != light.FalloffVersion)
@@ -173,6 +221,7 @@ namespace Submachina.Core
 
             Shader.SetGlobalVectorArray(LightAID, PackedA);
             Shader.SetGlobalVectorArray(LightBID, PackedB);
+            Shader.SetGlobalFloatArray(LightCID, PackedC);
             Shader.SetGlobalFloat(CountID, written);
         }
     }

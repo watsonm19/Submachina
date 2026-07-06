@@ -101,10 +101,11 @@ namespace Submachina.Core
          * inside the inner cone cos is largest, outside the outer cone it's smaller, so
          * smoothstep(cosOuter, cosInner, dot(aim,dir)) fades 0..1 across the beam edge.
          */
-        public bool TryPack(out Vector4 a, out Vector4 b)
+        public bool TryPack(out Vector4 a, out Vector4 b, out float sortingMask)
         {
             a = default;
             b = default;
+            sortingMask = 0f;
             if (_light == null) return false;
 
             // Reach: light outer radius or the explicit override.
@@ -132,6 +133,10 @@ namespace Submachina.Core
                 // edge0 = -2, edge1 = -1 → smoothstep returns 1 for every valid cos in [-1,1].
                 b = new Vector4(aim.x, aim.y, -2f, -1f);
             }
+
+            // Sorting layer mask from the Light2D's own target layers, so the specular respects
+            // which sorting layers this light actually illuminates.
+            sortingMask = (float)SpecularLight2DManager.SortingLayerMask(_light.targetSortingLayers);
 
             return true;
         }

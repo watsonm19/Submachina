@@ -57,6 +57,7 @@ namespace Submachina.Core
         private static readonly int NormalUVRectID = Shader.PropertyToID("_NormalUVRect");
         private static readonly int NormalTexID = Shader.PropertyToID("_NormalTex");
         private static readonly int NormalTexSTID = Shader.PropertyToID("_NormalTexST");
+        private static readonly int SortingLayerBitID = Shader.PropertyToID("_SortingLayerBit");
 
         // =====================
         // Baseline (per-instance look — variations without material copies)
@@ -282,6 +283,8 @@ namespace Submachina.Core
                         normalTextureTiling.x, normalTextureTiling.y, normalTextureOffset.x, normalTextureOffset.y));
                 }
                 if (overrideColor) _mpb.SetColor(SpecColorID, specColor);
+                // Sorting layer bit so the shader only responds to lights targeting this layer
+                _mpb.SetFloat(SortingLayerBitID, (float)SpecularLight2DManager.SortingLayerBit(r.sortingLayerID));
                 r.SetPropertyBlock(_mpb);
             }
 

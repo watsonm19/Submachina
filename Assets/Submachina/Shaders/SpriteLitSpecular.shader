@@ -68,6 +68,10 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // xy = tiling (scale), zw = offset for the override texture within the sprite rect (like Unity's _ST).
         _NormalTexST("Normal Override Tiling/Offset", Vector) = (1, 1, 0, 0)
 
+        // Sorting layer bit for this sprite (set per-instance by SpecularController). Lights whose
+        // sorting layer mask doesn't overlap this bit are skipped. Default = all layers visible.
+        _SortingLayerBit("Sorting Layer Bit", Float) = 16777215
+
         // Legacy properties so materials can gracefully fall back to the legacy sprite shader.
         [HideInInspector] _Color("Tint", Color) = (1,1,1,1)
         [HideInInspector] _RendererColor("RendererColor", Color) = (1,1,1,1)
@@ -133,6 +137,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
+                float _SortingLayerBit;
             CBUFFER_END
 
             // ---- Global specular lights (packed each frame by SpecularLight2DManager) ----
@@ -141,6 +146,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
             float  _SpecLightCount;
             float4 _SpecLightA[MAX_SPEC_LIGHTS]; // xy = world pos, z = outer radius, w = strength
             float4 _SpecLightB[MAX_SPEC_LIGHTS]; // xy = aim dir (world, normalized), z = cos(outerHalf), w = cos(innerHalf)
+            float  _SpecLightC[MAX_SPEC_LIGHTS]; // sorting layer bitmask (which layers this light targets)
 
             // Per-light distance-falloff LUT (one ROW per light slot), baked by SpecularLight2DManager.
             // u = normalized distance (0 at the light, 1 at the reach); each row is that light's curve
@@ -257,10 +263,14 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 // --- Light-driven glint: real lights, cone-gated, computed on the GPU ---
                 half lightSpec = 0.0h;
                 int count = (int)_SpecLightCount;
+                uint spriteBits = (uint)_SortingLayerBit; // which sorting layer this sprite is on
                 [loop]
                 for (int i = 0; i < MAX_SPEC_LIGHTS; i++)
                 {
                     if (i >= count) break;
+
+                    // Sorting layer gate: skip lights that don't target this sprite's layer.
+                    if ((spriteBits & (uint)_SpecLightC[i]) == 0u) continue;
 
                     float2 lightPos = _SpecLightA[i].xy;
                     half range = (half)_SpecLightA[i].z;
@@ -359,6 +369,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
+                float _SortingLayerBit;
             CBUFFER_END
 
             Varyings NormalsRenderingVertex(Attributes input)
@@ -426,6 +437,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
+                float _SortingLayerBit;
             CBUFFER_END
 
             Varyings UnlitVertex(Attributes input)
