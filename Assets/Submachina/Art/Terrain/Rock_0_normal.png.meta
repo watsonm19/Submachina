@@ -1,16 +1,16 @@
 fileFormatVersion: 2
-guid: 3482a3ab87778fa4491c7cefceba933a
+guid: 02fad971303cdcf4da8f1ec793a26052
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -8560964624921409872
-    second: FossilRock_0_albedo_0
+      213: -1984782793940437788
+    second: Rock_0_normal_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
     mipMapMode: 0
     enableMipMap: 0
-    sRGBTexture: 1
+    sRGBTexture: 0
     linearTexture: 0
     fadeOut: 0
     borderMipMap: 0
@@ -46,18 +46,18 @@ TextureImporter:
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 1
+  spriteMode: 2
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
   spritePivot: {x: 0.5, y: 0.5}
-  spritePixelsToUnits: 1024
+  spritePixelsToUnits: 100
   spriteBorder: {x: 0, y: 0, z: 0, w: 0}
   spriteGenerateFallbackPhysicsShape: 1
   alphaUsage: 1
-  alphaIsTransparency: 1
-  spriteTessellationDetail: 0.067
-  textureType: 8
+  alphaIsTransparency: 0
+  spriteTessellationDetail: -1
+  textureType: 0
   textureShape: 1
   singleChannelComponent: 0
   flipbookRows: 1
@@ -101,7 +101,7 @@ TextureImporter:
     maxTextureSize: 2048
     resizeAlgorithm: 0
     textureFormat: -1
-    textureCompression: 0
+    textureCompression: 1
     compressionQuality: 50
     crunchedCompression: 0
     allowsAlphaSplitting: 0
@@ -113,73 +113,42 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: FossilRock_0_albedo_0
+      name: Rock_0_normal_0
       rect:
         serializedVersion: 2
-        x: 231
-        y: 215
-        width: 574
-        height: 593
+        x: 0
+        y: 0
+        width: 1024
+        height: 1024
       alignment: 0
-      pivot: {x: 0.5, y: 0.5}
+      pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 0b6cfd41808513980800000000000000
-      internalID: -8560964624921409872
+      spriteID: 4e47fd29092a474e0800000000000000
+      internalID: -1984782793940437788
       vertices: []
       indices: 
       edges: []
       weights: []
-    outline:
-    - - {x: 74, y: -293}
-      - {x: 108, y: -264}
-      - {x: 131, y: -253}
-      - {x: 142, y: -227}
-      - {x: 220, y: -121}
-      - {x: 281, y: -58}
-      - {x: 292, y: -40}
-      - {x: 292, y: 7}
-      - {x: 290, y: 36}
-      - {x: 283, y: 97}
-      - {x: 248, y: 141}
-      - {x: 115, y: 243}
-      - {x: 77, y: 262}
-      - {x: 15, y: 288}
-      - {x: -42, y: 296}
-      - {x: -116, y: 296}
-      - {x: -215, y: 207}
-      - {x: -234, y: 203}
-      - {x: -242, y: 134}
-      - {x: -270, y: 57}
-      - {x: -280, y: 11}
-      - {x: -280, y: -42}
-      - {x: -276, y: -126}
-      - {x: -269, y: -142}
-      - {x: -94, y: -269}
-      - {x: 3, y: -297}
-      - {x: 58, y: -297}
+    outline: []
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 5e97eb03825dee720800000000000000
-    internalID: 1537655665
+    spriteID: 
+    internalID: 0
     vertices: []
     indices: 
     edges: []
     weights: []
-    secondaryTextures:
-    - texture: {fileID: 2800000, guid: 1b5ccdde6135d5c46a5d1ddb9b21d9b2, type: 3}
-      name: _NormalMap
-    - texture: {fileID: 2800000, guid: c2c8dce069931a14f92d6cbf676d419e, type: 3}
-      name: _SpecMask
+    secondaryTextures: []
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      FossilRock_0_albedo_0: -8560964624921409872
+      Rock_0_normal_0: -1984782793940437788
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
