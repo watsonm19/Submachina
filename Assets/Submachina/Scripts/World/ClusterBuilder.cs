@@ -1,0 +1,273 @@
+using System.Collections.Generic;
+using UnityEngine;
+using Sirenix.OdinInspector;
+
+namespace Submachina.Core
+{
+    /**
+     * Procedurally populates this object with a scatter cluster described by a
+     * ClusterConfig: weighted inert rocks (randomly sized/rotated/flipped) that
+     * sometimes include one value prefab, with SpawnLuck pity protecting the
+     * value roll against long droughts.
+     *
+     * Two ways a cluster gets built:
+     *   1. Chunk pipeline — a spawn rule instantiates the cluster prefab and its
+     *      ClusterBuildConfigurator calls Build(depth, rng) with the chunk's
+     *      deterministic RNG (synchronously, before Start runs).
+     *   2. Hand-placed in a scene — Start() notices it was never built and
+     *      self-seeds from its world position, so designers can just drop the
+     *      prefab anywhere.
+     *
+     * Determinism contract:
+     *   - Build consumes exactly ONE draw from the caller's rng and derives two
+     *     internal streams from it, so cluster tuning (rock counts, pity state,
+     *     config edits) can never shift the draws seen by later rules in the
+     *     same chunk.
+     *   - layoutRng drives everything about the rocks — layout is a pure
+     *     function of the seed.
+     *   - valueRng (an isolated stream) drives the pity roll and the value
+     *     prefab's placement. Value PRESENCE is pity/play-order-dependent by
+     *     design; its position for a given seed is not.
+     *
+     * The prefab root should carry a SortingGroup and NO authored children —
+     * the builder owns (and clears) everything under it.
+     */
+    public class ClusterBuilder : MonoBehaviour
+    {
+        // Matches SpawnRuleData.SpacingRetries — attempts to satisfy minSpacing before skipping a rock
+        private const int SpacingRetries = 8;
+
+        // =====================
+        // Settings
+        // =====================
+
+        [Tooltip("The cluster recipe: rock pool, layout shape, value prefab and pity settings.")]
+        [Required, InlineEditor(objectFieldMode: InlineEditorObjectFieldModes.Boxed)]
+        [SerializeField] private ClusterConfig config;
+
+        /** The cluster recipe — settable so editor tools can wire up test instances. */
+        public ClusterConfig Config { get => config; set => config = value; }
+
+        // =====================
+        // Debug
+        // =====================
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        [Tooltip("Seed of the last build — reuse it in the preview to reproduce a layout seen in-game.")]
+        private int _lastSeed;
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        private bool HasValue => _hasValue;
+
+        // =====================
+        // State
+        // =====================
+
+        private bool _built;
+        private bool _hasValue;
+
+        // -------------------------------------------------------
+        // Lifecycle
+        // -------------------------------------------------------
+
+        /**
+         * Fallback for hand-placed instances: if the chunk pipeline never built
+         * us (its configurator runs during Instantiate, before Start), self-seed
+         * from the world position using the same primes as ChunkSpawner.SeedFor
+         * so nearby hand-placed clusters still look distinct.
+         */
+        private void Start()
+        {
+            if (_built) return;
+            BuildFromSeed(PositionHash(), Mathf.Max(0f, -transform.position.y));
+        }
+
+        // -------------------------------------------------------
+        // Building
+        // -------------------------------------------------------
+
+        /**
+         * Primary entry for the chunk pipeline. Consumes exactly ONE draw from
+         * the caller's rng (see the determinism contract in the class header).
+         */
+        public void Build(float depth, System.Random rng) => BuildFromSeed(rng.Next(), depth);
+
+        /**
+         * Clears any previous children and rebuilds the cluster. Rock layout is
+         * a pure function of the seed; the value roll additionally consults
+         * SpawnLuck's pity streak. Depth is forwarded for future depth-aware
+         * configs (unused by the current parameters).
+         */
+        public void BuildFromSeed(int seed, float depth)
+        {
+            _built = true;
+            _lastSeed = seed;
+            _hasValue = false;
+            Clear();
+
+            if (config == null) { Debug.LogWarning("[ClusterBuilder] No ClusterConfig assigned — cluster left empty.", this); return; }
+
+            // Two isolated streams: layout stays seed-pure, value absorbs the pity-dependent draws
+            var layoutRng = new System.Random(seed);
+            var valueRng = new System.Random(seed ^ unchecked((int)0x9E3779B9));
+
+            // --- Rocks: count, then per rock pick → place → dress, all from layoutRng ---
+            List<Vector2> placed = new List<Vector2>();
+            int count = layoutRng.Next(config.countMin, Mathf.Max(config.countMin, config.countMax) + 1);
+            for (int i = 0; i < count; i++)
+            {
+                GameObject prefab = config.PickRock(layoutRng);
+                if (prefab == null) break; // empty/broken pool — no point looping
+
+                // Polar placement through the falloff curve, retrying if too crowded
+                Vector2 localPos = RollPosition(layoutRng, 1f);
+                if (config.minSpacing > 0f && TooClose(placed, localPos))
+                {
+                    bool found = false;
+                    for (int r = 0; r < SpacingRetries; r++)
+                    {
+                        localPos = RollPosition(layoutRng, 1f);
+                        if (!TooClose(placed, localPos)) { found = true; break; }
+                    }
+                    if (!found) continue; // skip this rock — cluster is just a little sparser
+                }
+
+                GameObject rock = Instantiate(prefab, transform);
+                ApplyRandomTransform(rock.transform, localPos, layoutRng);
+                if (config.orderChildrenBySpawnIndex) SetSortingOrder(rock, placed.Count);
+                placed.Add(localPos);
+            }
+
+            // --- Value: pity-protected roll + center-biased placement, all from valueRng ---
+            if (config.valuePrefab != null && config.valueChance > 0f
+                && SpawnLuck.Roll(config.luckKey, config.valueChance, in config.pity, valueRng))
+            {
+                // Same radial sampling as the rocks, squeezed toward center by the bias
+                Vector2 localPos = RollPosition(valueRng, 1f - config.valueCenterBias);
+
+                GameObject value = Instantiate(config.valuePrefab, transform);
+                if (config.randomizeValueTransform)
+                    ApplyRandomTransform(value.transform, localPos, valueRng);
+                else
+                    value.transform.localPosition = localPos;
+
+                // Last spawn index → renders on top of the inert rocks
+                if (config.orderChildrenBySpawnIndex) SetSortingOrder(value, placed.Count);
+                _hasValue = true;
+            }
+        }
+
+        /**
+         * Destroys every child — the builder owns the whole subtree. Collects
+         * first because destroying while iterating reorders the child list.
+         */
+        public void Clear()
+        {
+            List<GameObject> children = new List<GameObject>(transform.childCount);
+            foreach (Transform child in transform) children.Add(child.gameObject);
+            foreach (GameObject child in children)
+            {
+                if (Application.isPlaying) Destroy(child);
+                else DestroyImmediate(child);
+            }
+        }
+
+        // -------------------------------------------------------
+        // Sampling helpers
+        // -------------------------------------------------------
+
+        /**
+         * Polar position sample: uniform angle + falloff-curved distance, with the
+         * distance optionally squeezed toward center (radiusScale 0 = dead center).
+         * Always consumes exactly two rng draws.
+         */
+        private Vector2 RollPosition(System.Random rng, float radiusScale)
+        {
+            float angle = rng.NextFloat(0f, Mathf.PI * 2f);
+            float dist = SizeSampler.Sample(0f, config.radius, config.radialFalloff, rng.NextFloat01()) * radiusScale;
+            return new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * dist;
+        }
+
+        /**
+         * Dresses an instance with the config's scale/rotation/flip rolls.
+         * Flips are negative scale components so child colliders mirror too.
+         * Always consumes exactly four rng draws.
+         */
+        private void ApplyRandomTransform(Transform t, Vector2 localPos, System.Random rng)
+        {
+            float scale = SizeSampler.Sample(config.scaleMin, config.scaleMax, config.scaleDistribution, rng.NextFloat01());
+            float rotZ = rng.NextFloat(-config.maxRotation, config.maxRotation);
+            float flipX = rng.NextFloat01() < config.flipXChance ? -1f : 1f;
+            float flipY = rng.NextFloat01() < config.flipYChance ? -1f : 1f;
+
+            t.localPosition = localPos;
+            t.localRotation = Quaternion.Euler(0f, 0f, rotZ);
+            t.localScale = new Vector3(scale * flipX, scale * flipY, 1f);
+        }
+
+        /** True if a candidate position violates minSpacing against any already-placed rock. */
+        private bool TooClose(List<Vector2> placed, Vector2 candidate)
+        {
+            float minSq = config.minSpacing * config.minSpacing;
+            foreach (Vector2 p in placed)
+                if ((p - candidate).sqrMagnitude < minSq) return true;
+            return false;
+        }
+
+        /** Stamps every SpriteRenderer under the instance with one sorting order. */
+        private static void SetSortingOrder(GameObject instance, int order)
+        {
+            foreach (SpriteRenderer sr in instance.GetComponentsInChildren<SpriteRenderer>(true))
+                sr.sortingOrder = order;
+        }
+
+        /** Position-derived seed (same primes as ChunkSpawner.SeedFor), 0.1-unit resolution. */
+        private int PositionHash()
+        {
+            int x = Mathf.RoundToInt(transform.position.x * 10f);
+            int y = Mathf.RoundToInt(transform.position.y * 10f);
+            unchecked { return x * 73856093 ^ y * 19349663; }
+        }
+
+        // -------------------------------------------------------
+        // Editor preview
+        // -------------------------------------------------------
+
+#if UNITY_EDITOR
+        // NOTE: previewing on a prefab INSTANCE in a scene records the children as
+        // prefab overrides — preview in Prefab Mode or on a test object, then Clear
+        // before saving. Pity state is live even in edit mode (static table), so
+        // repeated previews advance the streak; use Reset Pity to start fresh.
+
+        [FoldoutGroup("Preview"), LabelWidth(110)]
+        [Tooltip("On: rebuilds use the fixed seed below (reproduce a specific layout). Off: random seed each time.")]
+        [SerializeField] private bool usePreviewSeed;
+
+        [FoldoutGroup("Preview"), LabelWidth(110), EnableIf(nameof(usePreviewSeed))]
+        [SerializeField] private int previewSeed = 12345;
+
+        [FoldoutGroup("Preview")]
+        [Button("Rebuild Preview", ButtonSizes.Medium), GUIColor(0.6f, 0.9f, 0.6f)]
+        private void RebuildPreview()
+        {
+            int seed = usePreviewSeed ? previewSeed : Random.Range(int.MinValue, int.MaxValue);
+            BuildFromSeed(seed, Mathf.Max(0f, -transform.position.y));
+            Debug.Log($"[ClusterBuilder] Built with seed {seed} — {transform.childCount} children" +
+                      $"{(_hasValue ? " (value spawned!)" : "")}.", this);
+        }
+
+        [FoldoutGroup("Preview")]
+        [Button("Clear"), GUIColor(0.95f, 0.7f, 0.6f)]
+        private void ClearPreview() => Clear();
+
+        [FoldoutGroup("Preview")]
+        [Button("Reset Pity For This Key")]
+        private void ResetPity()
+        {
+            if (config == null) return;
+            SpawnLuck.Reset(config.luckKey);
+            Debug.Log($"[ClusterBuilder] Pity streak reset for key '{config.luckKey}'.");
+        }
+#endif
+    }
+}

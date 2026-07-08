@@ -204,4 +204,26 @@ namespace Submachina.Core
             }
         }
     }
+
+    /**
+     * Triggers a ClusterBuilder's procedural build using the chunk's
+     * deterministic RNG. The builder consumes exactly one draw from the chunk
+     * stream and derives its own internal streams from it, so cluster tuning
+     * (rock counts, pity state, config edits) never perturbs the draws seen by
+     * other rules in the same chunk.
+     *
+     * Silently ignores prefabs without a ClusterBuilder (mirrors the O2Pickup
+     * guard above). Depth is forwarded for future depth-aware cluster configs.
+     */
+    [Serializable]
+    public class ClusterBuildConfigurator : InstanceConfigurator
+    {
+        public override void Configure(GameObject instance, float depth, System.Random rng)
+        {
+            // Clusters only — silently ignore prefabs without a builder
+            ClusterBuilder builder = instance.GetComponent<ClusterBuilder>();
+            if (builder == null) return;
+            builder.Build(depth, rng);
+        }
+    }
 }
