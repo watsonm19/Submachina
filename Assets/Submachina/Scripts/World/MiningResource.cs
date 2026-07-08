@@ -24,7 +24,8 @@ namespace Submachina.Core
      * Setup:
      *   - Attach to the resource prefab alongside a CircleCollider2D.
      *   - Set the prefab's layer to "Resource" so MiningLaser's raycast can hit it.
-     *   - ResourceManager is injected at spawn time by WorldChunk.
+     *   - Resources are awarded through the Submarine passed to Collect() by
+     *     MiningLaser — no references need wiring at spawn time.
      */
     [RequireComponent(typeof(Collider2D))]
     public class MiningResource : MonoBehaviour
@@ -47,6 +48,10 @@ namespace Submachina.Core
                  "Assign the ScrapPickup prefab here — it will be collected by the " +
                  "submarine's PickupRangeDetector when the player comes within range.")]
         [SerializeField] private GameObject scrapPickupPrefab;
+
+        [FoldoutGroup("Settings")]
+        [Tooltip("When on, forces the collider to be a trigger so the sub cannot bump into it")]
+        [SerializeField] private bool isTrigger = true;
 
         // =====================
         // Glow
@@ -101,7 +106,7 @@ namespace Submachina.Core
         private void Awake()
         {
             // Trigger collider allows MiningLaser raycasts to detect this node
-            GetComponent<Collider2D>().isTrigger = true;
+            if(isTrigger) GetComponent<Collider2D>().isTrigger = true;
 
             // 1) Controllers anywhere (self or children) own the glint — drive through them
             //    so they remain the single MaterialPropertyBlock writer.
