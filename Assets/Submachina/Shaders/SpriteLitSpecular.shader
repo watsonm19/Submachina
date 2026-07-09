@@ -50,11 +50,27 @@ Shader "Submachina/2D/SpriteLitSpecular"
         _SpecLightDir("Baseline Glint Dir", Vector) = (-0.45, 0.6, 0.66, 0)
         _LightResponse("Light Response", Float) = 1
         _SpecBoost("Specular Boost (mining/pulse)", Float) = 0
+        // Balance the glint against the albedo. 0 = additive (glint adds HDR on top and can
+        // wash the texture out); 1 = energy-conserving replace (albedo fades toward the glint
+        // colour so the texture stays visible under the highlight). Blend anywhere between.
+        _SpecReplace("Specular Replace (0 add..1 replace)", Range(0, 1)) = 0
+        // Ceiling on the raw glint strength so a bright highlight still blooms but never floods
+        // past this cap. 0 = no clamp (unbounded HDR, the original behaviour).
+        _SpecClamp("Specular Clamp (0 = off)", Float) = 0
 
-        [Header(Idle Shimmer)]
-        _ShimmerAmp("Shimmer Amplitude", Float) = 0
-        _ShimmerSpeed("Shimmer Speed", Float) = 1
-        _ShimmerPhase("Shimmer Phase", Float) = 0
+        [Header(Animation)]
+        _ShimmerAmp("Intensity Mod Amplitude", Float) = 0
+        _ShimmerSpeed("Intensity Mod Speed", Float) = 1
+        _ShimmerPhase("Intensity Mod Phase", Float) = 0
+        // Waveform for the intensity modulation: 0 = Sine, 1 = PingPong (triangle), 2 = Noise (smooth random).
+        _ShimmerWave("Intensity Mod Waveform", Float) = 0
+        // What the intensity modulation drives: 0 = scale base intensity (legacy ±fraction),
+        // 1 = absolute add on top of base (flickers even at base 0), 2 = scale the light-driven
+        // glint only (dark stays dark until lit, then shimmers with the light), 3 = scale both.
+        _ShimmerMode("Intensity Mod Mode", Float) = 0
+        // Glint-direction wobble: x = angle amplitude (radians), y = speed, z = waveform, w = phase.
+        // Rotates BOTH the baseline glint dir and the real-light specular dir for a watery shimmer.
+        _DirWobble("Direction Wobble (amp, speed, wave, phase)", Vector) = (0, 1, 0, 0)
 
         [Header(Surface Normal)]
         // 0 = sprite _NormalMap; 1 = Dome, 2 = Bevel, 3 = Ripples, 4 = Radial, 5 = Facets; 6 = _NormalTex override.
@@ -129,9 +145,14 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecIntensity;
                 half _LightResponse;
                 half _SpecBoost;
+                half _SpecReplace;
+                half _SpecClamp;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
+                half _ShimmerWave;
+                half _ShimmerMode;
+                half4 _DirWobble;
                 half _NormalMode;
                 half _NormalStrength;
                 half _NormalFreq;
@@ -169,6 +190,24 @@ Shader "Submachina/2D/SpriteLitSpecular"
             {
                 p = float2(dot(p, float2(127.1, 311.7)), dot(p, float2(269.5, 183.3)));
                 return frac(sin(p) * 43758.5453);
+            }
+
+            // Signed -1..1 animation waveform shared by the intensity modulation and the
+            // direction wobble. t = speed-scaled time + phase (radians for the sine); all
+            // waveforms are normalized to the same period so speed feels consistent.
+            //   mode 0 = Sine (smooth pulse), 1 = PingPong (linear triangle),
+            //   mode 2 = Noise (smooth value noise — a new random level eased into per cycle).
+            half Waveform(float t, half mode)
+            {
+                if (mode < 0.5h) return (half)sin(t);
+                float u = t * 0.15915494; // radians -> cycles so triangle/noise match the sine's period
+                if (mode < 1.5h) return (half)(abs(frac(u) * 2.0 - 1.0) * 2.0 - 1.0);
+                // Value noise: hash a random level per cycle, smoothstep between neighbours.
+                float i = floor(u);
+                float f = u - i;
+                float a = frac(sin(i * 12.9898) * 43758.5453);
+                float b = frac(sin((i + 1.0) * 12.9898) * 43758.5453);
+                return (half)(lerp(a, b, f * f * (3.0 - 2.0 * f)) * 2.0 - 1.0);
             }
 
             // Surface normal for the specular: either the sprite's normal map (mode 0) or a
@@ -252,13 +291,30 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 // In this flat 2D setup the viewer looks straight down +Z.
                 const half3 V = half3(0, 0, 1);
 
-                // --- Resting baseline glint (fixed virtual dir) + idle shimmer + transient boost ---
+                // --- Animation: intensity modulation + glint-direction wobble (both waveform-driven) ---
+                // m = signed intensity modulation; wobble = signed rotation (radians) applied to the
+                // glint directions below so the highlight slides/shimmers across the surface.
+                half m = Waveform(_Time.y * _ShimmerSpeed + _ShimmerPhase, _ShimmerWave) * _ShimmerAmp;
+                half wobble = Waveform(_Time.y * _DirWobble.y + _DirWobble.w, _DirWobble.z) * _DirWobble.x;
+                half sw, cw;
+                sincos(wobble, sw, cw);
+
+                // --- Resting baseline glint (fixed virtual dir) + modulation + transient boost ---
                 // Usually zero on gameplay ore (baseIntensity 0), so this collapses to the boost term.
                 half3 Lb = normalize(_SpecLightDir.xyz);
+                Lb.xy = half2(Lb.x * cw - Lb.y * sw, Lb.x * sw + Lb.y * cw); // direction wobble
                 half3 Hb = normalize(Lb + V);
                 half baseShape = pow(saturate(dot(n, Hb)), _SpecPower);
-                half shimmer = 1.0h + sin(_Time.y * _ShimmerSpeed + _ShimmerPhase) * _ShimmerAmp;
-                half spec = baseShape * (_SpecIntensity * shimmer + _SpecBoost);
+
+                // What the intensity modulation drives (_ShimmerMode):
+                //   0 = scale base (±fraction of resting intensity — needs base > 0),
+                //   1 = absolute add (base + m, so it flickers even at base 0 / unlit),
+                //   2 = scale the light glint only (handled after the light loop),
+                //   3 = scale base AND light together.
+                half baseInt = _SpecIntensity;
+                if (_ShimmerMode < 0.5h || _ShimmerMode > 2.5h) baseInt *= 1.0h + m;
+                else if (_ShimmerMode < 1.5h) baseInt += m;
+                half spec = baseShape * (max(baseInt, 0.0h) + _SpecBoost);
 
                 // --- Light-driven glint: real lights, cone-gated, computed on the GPU ---
                 half lightSpec = 0.0h;
@@ -303,21 +359,39 @@ Shader "Submachina/2D/SpriteLitSpecular"
 
                     // Blinn-Phong against the real light: L points from surface back to light,
                     // biased toward the viewer on Z so grazing beams still pop a highlight.
-                    half3 L = normalize(half3(-dir.x, -dir.y, 0.66h));
+                    // The direction wobble rotates only this specular dir — the cone gate and
+                    // falloff above stay physical so the beam itself doesn't wander.
+                    float2 sdir = float2(dir.x * cw - dir.y * sw, dir.x * sw + dir.y * cw);
+                    half3 L = normalize(half3(-sdir.x, -sdir.y, 0.66h));
                     half3 H = normalize(L + V);
                     half s = pow(saturate(dot(n, H)), _SpecPower);
 
                     lightSpec += s * strength * falloff * cone;
                 }
-                spec += lightSpec * _LightResponse;
+                // Lit-gated modulation (modes 2/3): scale the light-driven glint so the shimmer is
+                // additive to whatever illumination is present — zero light means zero shimmer.
+                half lightMul = _ShimmerMode > 1.5h ? max(1.0h + m, 0.0h) : 1.0h;
+                spec += lightSpec * _LightResponse * lightMul;
+
+                // Optional ceiling: let a strong glint bloom but never flood past a set cap.
+                // 0 = off (unbounded HDR, the original behaviour).
+                if (_SpecClamp > 0.0h) spec = min(spec, _SpecClamp);
 
                 // Per-pixel specular mask (RGB): tints AND scales all specular — baked crystals
                 // carry their own glint colour at ~full strength, dull rock a dim grey (~0.2).
                 // Composes with _SpecColor; white default leaves unmasked sprites unchanged.
                 half3 specMask = (half3)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, input.uv).rgb;
 
-                // Add as HDR emission, masked by the sprite's coverage so it stays on the rock.
-                c.rgb += _SpecColor.rgb * specMask * (spec * c.a);
+                // Compose the glint against the albedo, masked by sprite coverage.
+                //   additive : glint added as HDR emission on top (can wash out the albedo)
+                //   replaced : albedo faded toward the glint colour (energy-conserving, so the
+                //              texture is never fully erased below a full-strength highlight)
+                // _SpecReplace blends between them: 0 = pure additive, 1 = pure replace.
+                half3 specColor = _SpecColor.rgb * specMask;
+                half cover = spec * c.a;
+                half3 additive = c.rgb + specColor * cover;
+                half3 replaced = lerp(c.rgb, specColor, saturate(cover));
+                c.rgb = lerp(additive, replaced, _SpecReplace);
                 return c;
             }
             ENDHLSL
@@ -361,9 +435,14 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecIntensity;
                 half _LightResponse;
                 half _SpecBoost;
+                half _SpecReplace;
+                half _SpecClamp;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
+                half _ShimmerWave;
+                half _ShimmerMode;
+                half4 _DirWobble;
                 half _NormalMode;
                 half _NormalStrength;
                 half _NormalFreq;
@@ -429,9 +508,14 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecIntensity;
                 half _LightResponse;
                 half _SpecBoost;
+                half _SpecReplace;
+                half _SpecClamp;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
+                half _ShimmerWave;
+                half _ShimmerMode;
+                half4 _DirWobble;
                 half _NormalMode;
                 half _NormalStrength;
                 half _NormalFreq;

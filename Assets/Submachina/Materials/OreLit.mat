@@ -33,20 +33,44 @@ Material:
         m_Offset: {x: 0, y: 0}
     - _MaskTex:
         m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
+        m_Scale: {x: 10, y: 10}
         m_Offset: {x: 0, y: 0}
     - _NormalMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _SpecMask:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _EnableExternalAlpha: 0
+    - _LightResponse: 1
+    - _NormalFreq: 8
+    - _NormalMode: 0
+    - _NormalStrength: 1
+    - _ShimmerAmp: 0
+    - _ShimmerMode: 0
+    - _ShimmerPhase: 0
+    - _ShimmerSpeed: 1
+    - _ShimmerWave: 0
+    - _SortingLayerBit: 16777215
+    - _SpecBoost: 0
+    - _SpecClamp: 0
     - _SpecIntensity: 1
     - _SpecPower: 14
+    - _SpecReplace: 0.865
     - _ZWrite: 0
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _DirWobble: {r: 0, g: 1, b: 0, a: 0}
+    - _NormalTexST: {r: 1, g: 1, b: 0, a: 0}
+    - _NormalUVRect: {r: 0.23, g: 0.2229026, b: 0.6169785, a: 0.558297}
     - _RendererColor: {r: 1, g: 1, b: 1, a: 1}
     - _SpecColor: {r: 1.6726266, g: 1.3808277, b: 0.20141576, a: 1}
     - _SpecLightDir: {r: 5.39, g: 1.08, b: 0.58, a: 0}

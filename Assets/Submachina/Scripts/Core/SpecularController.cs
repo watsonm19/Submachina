@@ -41,6 +41,19 @@ namespace Submachina.Core
          */
         public enum NormalSource { SpriteNormalMap = 0, Dome = 1, Bevel = 2, Ripples = 3, Radial = 4, Facets = 5, NormalTexture = 6 }
 
+        /** Waveform shape for the animated modulation (intensity and/or direction). */
+        public enum ModWaveform { Sine = 0, PingPong = 1, Noise = 2 }
+
+        /**
+         * What the intensity modulation drives. Values match the shader's `_ShimmerMode`.
+         *   ScaleBase        — ±fraction of the resting intensity (legacy; needs base > 0 to show).
+         *   Additive         — absolute units added on top of base, so it flickers even fully unlit.
+         *   ScaleLight       — scales the light-driven glint: dark stays dark until a light hits,
+         *                      then the modulation rides on top of whatever is lit.
+         *   ScaleBaseAndLight— scales the resting glint AND the light-driven glint together.
+         */
+        public enum ModTarget { ScaleBase = 0, Additive = 1, ScaleLight = 2, ScaleBaseAndLight = 3 }
+
         // Cached shader property ids (avoids string hashing every write)
         private static readonly int SpecColorID = Shader.PropertyToID("_SpecColor");
         private static readonly int SpecPowerID = Shader.PropertyToID("_SpecPower");
@@ -48,9 +61,14 @@ namespace Submachina.Core
         private static readonly int SpecLightDirID = Shader.PropertyToID("_SpecLightDir");
         private static readonly int LightResponseID = Shader.PropertyToID("_LightResponse");
         private static readonly int SpecBoostID = Shader.PropertyToID("_SpecBoost");
+        private static readonly int SpecReplaceID = Shader.PropertyToID("_SpecReplace");
+        private static readonly int SpecClampID = Shader.PropertyToID("_SpecClamp");
         private static readonly int ShimmerAmpID = Shader.PropertyToID("_ShimmerAmp");
         private static readonly int ShimmerSpeedID = Shader.PropertyToID("_ShimmerSpeed");
         private static readonly int ShimmerPhaseID = Shader.PropertyToID("_ShimmerPhase");
+        private static readonly int ShimmerWaveID = Shader.PropertyToID("_ShimmerWave");
+        private static readonly int ShimmerModeID = Shader.PropertyToID("_ShimmerMode");
+        private static readonly int DirWobbleID = Shader.PropertyToID("_DirWobble");
         private static readonly int NormalModeID = Shader.PropertyToID("_NormalMode");
         private static readonly int NormalStrengthID = Shader.PropertyToID("_NormalStrength");
         private static readonly int NormalFreqID = Shader.PropertyToID("_NormalFreq");
@@ -85,20 +103,61 @@ namespace Submachina.Core
                  "The LIGHT-driven glint ignores this and uses the real light direction.")]
         [SerializeField] private Vector2 baseLightDir = new Vector2(-0.45f, 0.6f);
 
+        [FoldoutGroup("Baseline"), Range(0f, 1f)]
+        [Tooltip("Balance the glint against the albedo. 0 = additive (glint adds HDR on top and can " +
+                 "wash the texture out at full strength); 1 = energy-conserving replace (albedo fades " +
+                 "toward the glint colour so the texture stays visible under the highlight).")]
+        [SerializeField] private float specReplace = 0f;
+
+        [FoldoutGroup("Baseline"), Min(0f)]
+        [Tooltip("Ceiling on the raw glint strength so a bright highlight still blooms but never floods " +
+                 "past this cap. 0 = no clamp (unbounded HDR).")]
+        [SerializeField] private float specClamp = 0f;
+
         // =====================
-        // Idle shimmer (living, shimmering sprite) — computed in-shader from _Time
+        // Animation (living, shimmering sprite) — computed in-shader from _Time, zero CPU cost
         // =====================
 
-        [FoldoutGroup("Idle Shimmer")]
-        [Tooltip("Continuously wobble the RESTING specular for a living surface. No CPU cost — the shader does it.")]
+        [FoldoutGroup("Animation")]
+        [Tooltip("Continuously modulate the specular INTENSITY for a living surface. No CPU cost — the shader does it.")]
         [SerializeField] private bool animate = false;
 
-        [FoldoutGroup("Idle Shimmer"), ShowIf(nameof(animate))]
-        [Tooltip("Wobble size as a fraction of resting intensity (0.25 = ±25%).")]
-        [SerializeField, Range(0f, 1f)] private float modAmplitude = 0.25f;
+        [FoldoutGroup("Animation"), ShowIf(nameof(animate))]
+        [Tooltip("Waveform of the intensity modulation. Sine = smooth pulse, PingPong = linear back-and-forth, " +
+                 "Noise = organic random flicker (candle/electrical feel).")]
+        [SerializeField] private ModWaveform modWaveform = ModWaveform.Sine;
 
-        [FoldoutGroup("Idle Shimmer"), ShowIf(nameof(animate))]
+        [FoldoutGroup("Animation"), ShowIf(nameof(animate))]
+        [Tooltip("What the modulation drives:\n" +
+                 "• ScaleBase — ±fraction of resting intensity (needs base > 0 to be visible).\n" +
+                 "• Additive — absolute units on top of base; flickers even at base 0 / in the dark.\n" +
+                 "• ScaleLight — dark stays dark; once a light hits, the modulation rides on the lit glint.\n" +
+                 "• ScaleBaseAndLight — scales the resting AND light-driven glint together.")]
+        [SerializeField] private ModTarget modTarget = ModTarget.ScaleBase;
+
+        [FoldoutGroup("Animation"), ShowIf(nameof(animate))]
+        [Tooltip("Modulation size. Scale modes: fraction (0.25 = ±25%). Additive: absolute intensity units.")]
+        [SerializeField, Min(0f)] private float modAmplitude = 0.25f;
+
+        [FoldoutGroup("Animation"), ShowIf(nameof(animate))]
         [SerializeField, Min(0f)] private float modSpeed = 1.5f;
+
+        [FoldoutGroup("Animation")]
+        [Tooltip("Wobble the glint DIRECTION over time so the highlight slides across the surface — a watery " +
+                 "shimmer. Rotates the baseline glint dir AND the real-light glint dir, so it works both unlit " +
+                 "(with base intensity) and while a light sweeps the sprite.")]
+        [SerializeField] private bool animateDirection = false;
+
+        [FoldoutGroup("Animation"), ShowIf(nameof(animateDirection))]
+        [Tooltip("Waveform of the direction wobble (independent of the intensity waveform).")]
+        [SerializeField] private ModWaveform dirWaveform = ModWaveform.Sine;
+
+        [FoldoutGroup("Animation"), ShowIf(nameof(animateDirection))]
+        [Tooltip("Maximum rotation of the glint direction, in degrees (swings ± this amount).")]
+        [SerializeField, Range(0f, 90f)] private float dirWobbleDegrees = 10f;
+
+        [FoldoutGroup("Animation"), ShowIf(nameof(animateDirection))]
+        [SerializeField, Min(0f)] private float dirWobbleSpeed = 1f;
 
         // =====================
         // Light reactivity (how strongly this sprite answers the real lights)
@@ -250,9 +309,13 @@ namespace Submachina.Core
             Vector2 d = baseLightDir.sqrMagnitude > 1e-4f ? baseLightDir.normalized : Vector2.up;
             Vector4 dir = new Vector4(d.x, d.y, 0.66f, 0f);
 
-            // Shimmer params (amplitude collapses to 0 when idle animation is off)
+            // Animation params (amplitudes collapse to 0 when their toggle is off, neutralizing
+            // the shader terms). Direction wobble packs as (amp radians, speed, waveform, phase)
+            // with a phase offset so intensity + direction don't move in lockstep.
             float shimmerAmp = animate ? modAmplitude : 0f;
             float shimmerPhase = _phase * 6.2831853f; // 0..2π
+            float wobbleAmp = animateDirection ? dirWobbleDegrees * Mathf.Deg2Rad : 0f;
+            Vector4 dirWobble = new Vector4(wobbleAmp, dirWobbleSpeed, (float)(int)dirWaveform, shimmerPhase + 2.399f);
 
             float normalMode = (float)(int)normalSource;
 
@@ -267,7 +330,13 @@ namespace Submachina.Core
                 _mpb.SetFloat(ShimmerAmpID, shimmerAmp);
                 _mpb.SetFloat(ShimmerSpeedID, modSpeed);
                 _mpb.SetFloat(ShimmerPhaseID, shimmerPhase);
+                _mpb.SetFloat(ShimmerWaveID, (float)(int)modWaveform);
+                _mpb.SetFloat(ShimmerModeID, (float)(int)modTarget);
+                _mpb.SetVector(DirWobbleID, dirWobble);
                 _mpb.SetFloat(SpecBoostID, 0f);
+                // Albedo balance: additive vs energy-conserving replace, plus optional glint ceiling
+                _mpb.SetFloat(SpecReplaceID, specReplace);
+                _mpb.SetFloat(SpecClampID, specClamp);
                 // Procedural-normal params (the UV rect is per-sprite so patterns stay centered on atlases)
                 _mpb.SetFloat(NormalModeID, normalMode);
                 _mpb.SetFloat(NormalStrengthID, normalStrength);
