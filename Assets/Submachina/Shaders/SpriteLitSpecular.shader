@@ -54,8 +54,8 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // wash the texture out); 1 = energy-conserving replace (albedo fades toward the glint
         // colour so the texture stays visible under the highlight). Blend anywhere between.
         _SpecReplace("Specular Replace (0 add..1 replace)", Range(0, 1)) = 0
-        // Ceiling on the raw glint strength so a bright highlight still blooms but never floods
-        // past this cap. 0 = no clamp (unbounded HDR, the original behaviour).
+        // Ceiling on the light-driven glint's PEAK strength (strength × response, applied BEFORE
+        // the distance falloff and cone shape it) so the falloff always reads through. 0 = no clamp.
         _SpecClamp("Specular Clamp (0 = off)", Float) = 0
 
         [Header(Animation)]
@@ -366,16 +366,19 @@ Shader "Submachina/2D/SpriteLitSpecular"
                     half3 H = normalize(L + V);
                     half s = pow(saturate(dot(n, H)), _SpecPower);
 
-                    lightSpec += s * strength * falloff * cone;
+                    // Optional ceiling on this light's PEAK glint (strength × response), applied
+                    // BEFORE the falloff/cone shape it. Clamping the final value instead flattened
+                    // the whole falloff gradient to the cap — a hard on/off line at the reach.
+                    half g = s * strength * _LightResponse;
+                    if (_SpecClamp > 0.0h) g = min(g, _SpecClamp);
+
+                    lightSpec += g * falloff * cone;
                 }
                 // Lit-gated modulation (modes 2/3): scale the light-driven glint so the shimmer is
                 // additive to whatever illumination is present — zero light means zero shimmer.
+                // (_LightResponse is already folded in per light above, under the clamp.)
                 half lightMul = _ShimmerMode > 1.5h ? max(1.0h + m, 0.0h) : 1.0h;
-                spec += lightSpec * _LightResponse * lightMul;
-
-                // Optional ceiling: let a strong glint bloom but never flood past a set cap.
-                // 0 = off (unbounded HDR, the original behaviour).
-                if (_SpecClamp > 0.0h) spec = min(spec, _SpecClamp);
+                spec += lightSpec * lightMul;
 
                 // Per-pixel specular mask (RGB): tints AND scales all specular — baked crystals
                 // carry their own glint colour at ~full strength, dull rock a dim grey (~0.2).

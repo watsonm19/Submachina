@@ -110,8 +110,9 @@ namespace Submachina.Core
         [SerializeField] private float specReplace = 0f;
 
         [FoldoutGroup("Baseline"), Min(0f)]
-        [Tooltip("Ceiling on the raw glint strength so a bright highlight still blooms but never floods " +
-                 "past this cap. 0 = no clamp (unbounded HDR).")]
+        [Tooltip("Ceiling on the light-driven glint's PEAK strength, applied before the light's distance " +
+                 "falloff and beam cone shape it — so a hot light never floods past this cap but the falloff " +
+                 "still reads through. Does not cap the resting glint or Pulse() flares. 0 = no clamp.")]
         [SerializeField] private float specClamp = 0f;
 
         // =====================

@@ -134,6 +134,16 @@ namespace Submachina.Core
             _instance = go.AddComponent<SpecularLight2DManager>();
         }
 
+        /**
+         * Adopt this manager as the singleton when the slot is free — covers a manager that was
+         * accidentally saved into a scene (e.g. leaked by the old HideAndDontSave setup): claiming
+         * the slot stops EnsureInstance spawning a duplicate that would fight it over the globals.
+         */
+        private void Awake()
+        {
+            if (_instance == null) _instance = this;
+        }
+
         /** Bind the LUT before the first render (and again after domain reloads, which re-run OnEnable). */
         private void OnEnable() => EnsureLut();
 
@@ -144,19 +154,26 @@ namespace Submachina.Core
          */
         private void EnsureLut()
         {
-            if (_lut != null) return; // Unity's lifetime-aware null check: destroyed counts as missing
-
-            _lut = new Texture2D(LutWidth, MaxLights, TextureFormat.RHalf, false, true)
+            if (_lut == null) // Unity's lifetime-aware null check: destroyed counts as missing
             {
-                name = "SpecFalloffLUT",
-                filterMode = FilterMode.Bilinear, // smooth over distance; rows sampled at exact centers
-                wrapMode = TextureWrapMode.Clamp,
-                hideFlags = HideFlags.HideAndDontSave
-            };
-            Shader.SetGlobalTexture(FalloffLUTID, _lut);
+                _lut = new Texture2D(LutWidth, MaxLights, TextureFormat.RHalf, false, true)
+                {
+                    name = "SpecFalloffLUT",
+                    filterMode = FilterMode.Bilinear, // smooth over distance; rows sampled at exact centers
+                    wrapMode = TextureWrapMode.Clamp,
+                    hideFlags = HideFlags.HideAndDontSave
+                };
 
-            // The new texture is blank — forget row occupants so LateUpdate rebakes every slot
-            for (int i = 0; i < MaxLights; i++) _rowLight[i] = null;
+                // The new texture is blank — forget row occupants so LateUpdate rebakes every slot
+                for (int i = 0; i < MaxLights; i++) _rowLight[i] = null;
+            }
+
+            // Rebind EVERY call (once per frame from LateUpdate), not just on creation: a retiring
+            // duplicate manager can overwrite the global with its own LUT in OnEnable and then
+            // destroy it on the way out, leaving the global pointing at a dead texture — which the
+            // shader samples as a constant, killing the distance falloff (a hard-edged glint).
+            // Rebinding a global texture id is trivially cheap and self-heals within a frame.
+            Shader.SetGlobalTexture(FalloffLUTID, _lut);
         }
 
         /** Release the LUT with the manager and clear the singleton slot. */
