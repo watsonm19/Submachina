@@ -476,9 +476,12 @@ namespace MoreMountains.Feedbacks
 				return;
 			}
 
-			// Retrieve available feedbacks
+			// Retrieve available feedbacks — skip dynamic assemblies (debugger/REPL emitted code can contain
+			// unfinished types that make GetTypes() throw ReflectionTypeLoadException) and tolerate
+			// partially loadable assemblies by falling back to the types that did load
 			List<System.Type> types = (from domainAssembly in System.AppDomain.CurrentDomain.GetAssemblies()
-				from assemblyType in domainAssembly.GetTypes()
+				where !domainAssembly.IsDynamic
+				from assemblyType in GetLoadableTypes(domainAssembly)
 				where assemblyType.IsSubclassOf(typeof(MMF_Feedback))
 				select assemblyType).ToList();
 
@@ -505,6 +508,26 @@ namespace MoreMountains.Feedbacks
 			{
 				_typeDisplays.Add(_typesAndNames[i].FeedbackName);
 				_typeNamesDisplays.Add(_typesAndNames[i].FeedbackName.Split('/').Last());
+			}
+		}
+
+		/// <summary>
+		/// Returns the types of an assembly, surviving assemblies that can only partially load
+		/// (returns whatever types did load instead of throwing ReflectionTypeLoadException)
+		/// </summary>
+		private static IEnumerable<System.Type> GetLoadableTypes(System.Reflection.Assembly assembly)
+		{
+			try
+			{
+				return assembly.GetTypes();
+			}
+			catch (System.Reflection.ReflectionTypeLoadException e)
+			{
+				return e.Types.Where(t => t != null);
+			}
+			catch (System.Exception)
+			{
+				return System.Array.Empty<System.Type>();
 			}
 		}
 

@@ -360,15 +360,32 @@ namespace MoreMountains.Feedbacks
 		{
 			foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
 			{
-				foreach (Type type in assembly.GetTypes())
+				// skip dynamic assemblies and tolerate partially loadable ones —
+				// GetTypes() throws ReflectionTypeLoadException on unfinished emitted types
+				if (assembly.IsDynamic) { continue; }
+				Type[] types;
+				try
 				{
-					if (type.Name == name)
+					types = assembly.GetTypes();
+				}
+				catch (System.Reflection.ReflectionTypeLoadException e)
+				{
+					types = e.Types;
+				}
+				catch (Exception)
+				{
+					continue;
+				}
+
+				foreach (Type type in types)
+				{
+					if ((type != null) && (type.Name == name))
 					{
 						return type;
 					}
 				}
 			}
- 
+
 			return null;
 		}
 
