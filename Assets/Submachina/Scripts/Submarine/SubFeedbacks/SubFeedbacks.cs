@@ -29,6 +29,7 @@ namespace Submachina.Core
             { 5, "Pumps" },
             { 6, "Upgrades" },
             { 7, "Sonar" },
+            { 8, "Thrust" },
         };
     }
 }

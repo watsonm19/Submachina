@@ -18,8 +18,14 @@ namespace Submachina.Core
      * At runtime a dictionary is built from the serialized mappings array
      * for O(1) lookup. Duplicate keys are warned about and last-wins.
      *
+     * Multiple routers per sub are supported: drop one on any child where a
+     * grouping of feedbacks lives and map only the keys that group cares about.
+     * Play/Stop on any router broadcasts to all routers under the same
+     * Submarine, so the same key can be mapped on several routers and each
+     * fires its own players and events.
+     *
      * Setup:
-     *   1. Add to the submarine root (or a child under it).
+     *   1. Add to the submarine root (or any child under it) — repeatable.
      *   2. In the Mappings list, add one entry per feedback key.
      *   3. Drag MMF_Player GameObjects into each entry's Players array.
      */
@@ -156,11 +162,45 @@ namespace Submachina.Core
         // =====================
 
         /**
-         * Plays all MMF_Players mapped to the given feedback key, then broadcasts
-         * FeedbackPlayed. The broadcast fires even when the key has no MMF mapping,
-         * so a key can drive pure event listeners with no player attached.
+         * Plays the given feedback key on every router under this submarine.
+         * Multiple routers can coexist (one per feedback grouping in the
+         * hierarchy) — calling Play on any of them reaches all of them, so
+         * Sub.Feedbacks.Play call sites work unchanged no matter which
+         * router holds the mapping. Falls back to local-only when the router
+         * isn't parented under a Submarine (standalone/prefab testing).
          */
         public void Play(FeedbackId key, Vector3 position, float intensity = 1f)
+        {
+            // Broadcast across all sibling routers registered to the same sub.
+            var routers = Sub != null ? Sub.FeedbackRouters : null;
+            if (routers != null && routers.Count > 0)
+                for (int i = 0; i < routers.Count; i++)
+                    routers[i].PlayLocal(key, position, intensity);
+            else
+                PlayLocal(key, position, intensity);
+        }
+
+        /**
+         * Stops the given feedback key on every router under this submarine.
+         * Used for looping feedbacks (e.g. mining active).
+         */
+        public void Stop(FeedbackId key)
+        {
+            // Broadcast across all sibling routers registered to the same sub.
+            var routers = Sub != null ? Sub.FeedbackRouters : null;
+            if (routers != null && routers.Count > 0)
+                for (int i = 0; i < routers.Count; i++)
+                    routers[i].StopLocal(key);
+            else
+                StopLocal(key);
+        }
+
+        /**
+         * Plays only this router's own mapped MMF_Players, then raises this
+         * router's FeedbackPlayed. The event fires even when the key has no MMF
+         * mapping, so a key can drive pure event listeners with no player attached.
+         */
+        private void PlayLocal(FeedbackId key, Vector3 position, float intensity)
         {
             // Fire any MMF players mapped to this key.
             if (_lookup != null && _lookup.TryGetValue(key, out var players))
@@ -171,11 +211,8 @@ namespace Submachina.Core
             FeedbackPlayed?.Invoke(key, position, intensity);
         }
 
-        /**
-         * Stops all MMF_Players mapped to the given feedback key, then broadcasts
-         * FeedbackStopped. Used for looping feedbacks (e.g. mining active).
-         */
-        public void Stop(FeedbackId key)
+        /** Stops only this router's own mapped MMF_Players, then raises FeedbackStopped. */
+        private void StopLocal(FeedbackId key)
         {
             // Stop any MMF players mapped to this key.
             if (_lookup != null && _lookup.TryGetValue(key, out var players))

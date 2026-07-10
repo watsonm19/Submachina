@@ -59,6 +59,11 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public SubmarineFeedbackRouter Feedbacks { get; private set; }
 
+        /** All feedback routers under this sub. Feedbacks stays the first-registered
+         *  entry point; Play/Stop on any router broadcasts across this list. */
+        private readonly List<SubmarineFeedbackRouter> _feedbackRouters = new();
+        public IReadOnlyList<SubmarineFeedbackRouter> FeedbackRouters => _feedbackRouters;
+
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public SubmarinePumpRouter Pumps { get; private set; }
 
@@ -105,7 +110,7 @@ namespace Submachina.Core
                 case TurretAim turret:                  Turret = turret; break;
                 case ResourceManager res:               Resources = res; break;
                 case ScrapManager scrap:                Scrap = scrap;  break;
-                case SubmarineFeedbackRouter fb:        Feedbacks = fb;  break;
+                case SubmarineFeedbackRouter fb:        RegisterFeedbackRouter(fb);  break;
                 case SubmarinePumpRouter pumps:         Pumps = pumps;  break;
                 case SubmarineAnchorRouter anchors:     Anchors = anchors;         break;
                 case PickupRangeDetector pickupRange:   PickupRange = pickupRange; break;
@@ -128,13 +133,32 @@ namespace Submachina.Core
                 case TurretAim turret when Turret == turret:                              Turret = null;      break;
                 case ResourceManager res when Resources == res:                           Resources = null;   break;
                 case ScrapManager scrap when Scrap == scrap:                             Scrap = null;       break;
-                case SubmarineFeedbackRouter fb when Feedbacks == fb:                    Feedbacks = null;   break;
+                case SubmarineFeedbackRouter fb:                                          UnregisterFeedbackRouter(fb); break;
                 case SubmarinePumpRouter pumps when Pumps == pumps:                      Pumps = null;       break;
                 case SubmarineAnchorRouter anchors when Anchors == anchors:              Anchors = null;     break;
                 case PickupRangeDetector pr when PickupRange == pr:                      PickupRange = null; break;
                 case UpgradeManager u when Upgrades == u:                                Upgrades = null;    break;
                 case SonarSystem sonar when Sonar == sonar:                              Sonar = null;       break;
             }
+        }
+
+        /**
+         * Feedback routers support multiple instances per sub (one per feedback
+         * grouping in the hierarchy). All are tracked in _feedbackRouters;
+         * Feedbacks always points at the first-registered one so existing
+         * Sub.Feedbacks.Play/Stop call sites keep working unchanged.
+         */
+        private void RegisterFeedbackRouter(SubmarineFeedbackRouter fb)
+        {
+            if (!_feedbackRouters.Contains(fb)) _feedbackRouters.Add(fb);
+            if (Feedbacks == null) Feedbacks = fb;
+        }
+
+        /** Removes a departing router; falls back to the next surviving router as the entry point. */
+        private void UnregisterFeedbackRouter(SubmarineFeedbackRouter fb)
+        {
+            _feedbackRouters.Remove(fb);
+            if (Feedbacks == fb) Feedbacks = _feedbackRouters.Count > 0 ? _feedbackRouters[0] : null;
         }
 
         // =====================

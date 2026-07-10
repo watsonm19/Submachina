@@ -30,6 +30,8 @@ namespace Submachina.Core
      *      (e.g., "Move" from your Input Action Asset — WASD/left-stick).
      */
     [RequireComponent(typeof(Rigidbody2D))]
+    [UsesFeedbacks(nameof(SubFeedbacks.ThrustActive), nameof(SubFeedbacks.ThrustLateral),
+                   nameof(SubFeedbacks.ThrustCounter), nameof(SubFeedbacks.ThrustDownward))]
     public class SubmarinePhysicsController : InputSubmarineComponent
     {
         // =====================
@@ -213,8 +215,20 @@ namespace Submachina.Core
         // Internals
         // =====================
 
+        // Below this absolute input magnitude an axis counts as "not thrusting" —
+        // shared by the O2 flags and the thrust feedback toggles so they agree.
+        private const float ThrustInputDeadzone = 0.1f;
+
         private Rigidbody2D _rb;
         private Vector2 _thrustInput;
+
+        // Latches tracking which looping thrust feedbacks are currently playing,
+        // so each cue is Played/Stopped only once on its input edge (not every frame).
+        private bool _anyThrustPlaying;
+        private bool _lateralThrustPlaying;
+        private bool _counterThrustPlaying;
+        private bool _downwardThrustPlaying;
+
         private float _facingSign = 1f;
         private float _flipAngle;          // current flip rotation: 0 = right, 180 = left
         private float _pitchAngle;         // current smoothed tilt in degrees (+ = nose up)
@@ -252,9 +266,12 @@ namespace Submachina.Core
 
             if (Sub?.O2 != null)
             {
-                Sub.O2.IsThrustingLateral  = Mathf.Abs(_thrustInput.x) > 0.1f;
-                Sub.O2.IsThrustingVertical = _thrustInput.y > 0.1f;
+                Sub.O2.IsThrustingLateral  = Mathf.Abs(_thrustInput.x) > ThrustInputDeadzone;
+                Sub.O2.IsThrustingVertical = _thrustInput.y > ThrustInputDeadzone;
             }
+
+            // Toggle looping thrust feedbacks on/off to match the player's live input
+            UpdateThrustFeedbacks();
         }
 
         private void LateUpdate()
@@ -269,6 +286,14 @@ namespace Submachina.Core
             ApplyPlayerThrust();
             ClampSpeed();
             ClampHorizontalBounds();
+        }
+
+        protected override void OnDisable()
+        {
+            base.OnDisable();
+
+            // Release any looping thrust cues so they don't hang while disabled
+            StopAllThrustFeedbacks();
         }
 
         // -------------------------------------------------------
@@ -311,6 +336,62 @@ namespace Submachina.Core
             Vector2 vertical = new Vector2(0f, verticalInput * CounterForceMod);
 
             _rb.AddForce(lateral + vertical, ForceMode2D.Force);
+        }
+
+        // -------------------------------------------------------
+        // Thrust Feedbacks
+        // -------------------------------------------------------
+
+        /**
+         * Drives the four looping thrust feedback cues from live player input.
+         *
+         * Each cue mirrors the thrust that ApplyPlayerThrust actually produces,
+         * so a feedback only plays while a real force is being applied:
+         *   - Lateral:  left/right stick beyond the deadzone.
+         *   - Counter:  upward input (the current-fighting counter-thrust).
+         *   - Downward: downward input, but only when allowDownwardThrust is on —
+         *     with it off the vertical input is clamped away and no force exists.
+         *   - Active:   the umbrella cue — true whenever any of the above is.
+         *
+         * SetThrustFeedback edge-triggers Play/Stop, so cues fire once when input
+         * begins and stop once when it ends rather than every frame.
+         */
+        private void UpdateThrustFeedbacks()
+        {
+            // Resolve which directions are producing thrust this frame
+            bool lateralActive  = Mathf.Abs(_thrustInput.x) > ThrustInputDeadzone;
+            bool counterActive  = _thrustInput.y > ThrustInputDeadzone;
+            bool downwardActive = allowDownwardThrust && _thrustInput.y < -ThrustInputDeadzone;
+            bool anyActive      = lateralActive || counterActive || downwardActive;
+
+            // Toggle each cue on its input edge
+            SetThrustFeedback(anyActive,      ref _anyThrustPlaying,      SubFeedbacks.ThrustActive);
+            SetThrustFeedback(lateralActive,  ref _lateralThrustPlaying,  SubFeedbacks.ThrustLateral);
+            SetThrustFeedback(counterActive,  ref _counterThrustPlaying,  SubFeedbacks.ThrustCounter);
+            SetThrustFeedback(downwardActive, ref _downwardThrustPlaying, SubFeedbacks.ThrustDownward);
+        }
+
+        /**
+         * Edge-triggered Play/Stop for a single looping thrust cue.
+         * No-ops while the desired state matches the latch, so the router is
+         * only touched when the input crosses on or off.
+         */
+        private void SetThrustFeedback(bool active, ref bool playing, FeedbackId key)
+        {
+            if (active == playing) return;
+            playing = active;
+
+            if (active) Sub?.Feedbacks?.Play(key, transform.position);
+            else        Sub?.Feedbacks?.Stop(key);
+        }
+
+        /** Stops any playing thrust cues and clears their latches. */
+        private void StopAllThrustFeedbacks()
+        {
+            SetThrustFeedback(false, ref _anyThrustPlaying,      SubFeedbacks.ThrustActive);
+            SetThrustFeedback(false, ref _lateralThrustPlaying,  SubFeedbacks.ThrustLateral);
+            SetThrustFeedback(false, ref _counterThrustPlaying,  SubFeedbacks.ThrustCounter);
+            SetThrustFeedback(false, ref _downwardThrustPlaying, SubFeedbacks.ThrustDownward);
         }
 
         /**
