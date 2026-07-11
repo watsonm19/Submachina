@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: 7e24930a63eb87d4384ac6a1b764d757
+guid: 3ef93f7d9fa8af249ae25a4cfde462b3
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: 6575795999541803105
-    second: Rock_3_albedo_0
+      213: -8962060717234503823
+    second: Rock_2_albedo_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -56,7 +56,7 @@ TextureImporter:
   spriteGenerateFallbackPhysicsShape: 1
   alphaUsage: 1
   alphaIsTransparency: 1
-  spriteTessellationDetail: 0.292
+  spriteTessellationDetail: 0.283
   textureType: 8
   textureShape: 1
   singleChannelComponent: 0
@@ -113,13 +113,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: Rock_3_albedo_0
+      name: Rock_2_albedo_0
       rect:
         serializedVersion: 2
-        x: 193
-        y: 137
-        width: 614
-        height: 637
+        x: 211
+        y: 242
+        width: 609
+        height: 549
       alignment: 0
       pivot: {x: 0.5, y: 0.5}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -128,41 +128,44 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 168bf1c1f9be14b50800000000000000
-      internalID: 6575795999541803105
+      spriteID: 17f31cdb24d50a380800000000000000
+      internalID: -8962060717234503823
       vertices: []
       indices: 
       edges: []
       weights: []
     outline:
-    - - {x: 29, y: -76}
-      - {x: 39, y: -72}
-      - {x: 54, y: -53}
-      - {x: 56, y: -45}
-      - {x: 70, y: -32}
-      - {x: 75, y: -13}
-      - {x: 75, y: 7}
-      - {x: 66, y: 25}
-      - {x: 57, y: 46}
-      - {x: 49, y: 59}
-      - {x: 35, y: 61}
-      - {x: 22, y: 67}
-      - {x: -5, y: 67}
-      - {x: -14, y: 60}
-      - {x: -29, y: 54}
-      - {x: -43, y: 34}
-      - {x: -52, y: 18}
-      - {x: -57, y: 14}
-      - {x: -61, y: 4}
-      - {x: -79, y: -13}
-      - {x: -79, y: -23}
-      - {x: -77, y: -32}
-      - {x: -69, y: -38}
-      - {x: -34, y: -55}
-      - {x: -26, y: -69}
-      - {x: -14, y: -85}
-      - {x: -2, y: -95}
-      - {x: 12, y: -95}
+    - - {x: -3, y: -61}
+      - {x: 26, y: -66}
+      - {x: 49, y: -69}
+      - {x: 57, y: -63}
+      - {x: 59, y: -47}
+      - {x: 67, y: -21}
+      - {x: 73, y: -4}
+      - {x: 78, y: 5}
+      - {x: 78, y: 13}
+      - {x: 72, y: 19}
+      - {x: 57, y: 32}
+      - {x: 48, y: 48}
+      - {x: 33, y: 61}
+      - {x: 15, y: 71}
+      - {x: 9, y: 71}
+      - {x: -13, y: 70}
+      - {x: -25, y: 70}
+      - {x: -37, y: 64}
+      - {x: -51, y: 63}
+      - {x: -65, y: 45}
+      - {x: -67, y: 40}
+      - {x: -68, y: 25}
+      - {x: -73, y: 17}
+      - {x: -77, y: 6}
+      - {x: -77, y: 1}
+      - {x: -76, y: -6}
+      - {x: -69, y: -24}
+      - {x: -63, y: -32}
+      - {x: -54, y: -50}
+      - {x: -35, y: -69}
+      - {x: -15, y: -69}
     customData: 
     physicsShape: []
     bones: []
@@ -172,15 +175,11 @@ TextureImporter:
     indices: 
     edges: []
     weights: []
-    secondaryTextures:
-    - texture: {fileID: 2800000, guid: 1678168216d9fd64bb3120571833d66c, type: 3}
-      name: _NormalMap
-    - texture: {fileID: 2800000, guid: b591cb222aa9d6a4c9be02ae3683bfaa, type: 3}
-      name: _SpecMask
+    secondaryTextures: []
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      Rock_3_albedo_0: 6575795999541803105
+      Rock_2_albedo_0: -8962060717234503823
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
