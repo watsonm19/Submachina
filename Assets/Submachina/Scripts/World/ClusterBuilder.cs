@@ -26,8 +26,9 @@ namespace Submachina.Core
      *   - layoutRng drives everything about the rocks — layout is a pure
      *     function of the seed.
      *   - valueRng (an isolated stream) drives the pity roll and the value
-     *     prefab's placement. Value PRESENCE is pity/play-order-dependent by
-     *     design; its position for a given seed is not.
+     *     prefab's placement — position and (for Middle/Random) its sorting
+     *     slot. Value PRESENCE is pity/play-order-dependent by design; its
+     *     position and slot for a given seed are not.
      *
      * The prefab root should carry a SortingGroup and NO authored children —
      * the builder owns (and clears) everything under it.
@@ -113,6 +114,7 @@ namespace Submachina.Core
 
             // --- Rocks: count, then per rock pick → place → dress, all from layoutRng ---
             List<Vector2> placed = new List<Vector2>();
+            List<GameObject> rocks = new List<GameObject>(); // kept so the value can slot into their sort order
             int count = layoutRng.Next(config.countMin, Mathf.Max(config.countMin, config.countMax) + 1);
             for (int i = 0; i < count; i++)
             {
@@ -136,6 +138,7 @@ namespace Submachina.Core
                 ApplyRandomTransform(rock.transform, localPos, layoutRng);
                 if (config.orderChildrenBySpawnIndex) SetSortingOrder(rock, placed.Count);
                 placed.Add(localPos);
+                rocks.Add(rock);
             }
 
             // --- Value: pity-protected roll + center-biased placement, all from valueRng ---
@@ -151,8 +154,8 @@ namespace Submachina.Core
                 else
                     value.transform.localPosition = localPos;
 
-                // Last spawn index → renders on top of the inert rocks
-                if (config.orderChildrenBySpawnIndex) SetSortingOrder(value, placed.Count);
+                // Slot the value into the rocks' sorting stack per the configured mode
+                if (config.orderChildrenBySpawnIndex) PlaceValueInSortOrder(value, rocks, valueRng);
                 _hasValue = true;
             }
         }
@@ -212,6 +215,37 @@ namespace Submachina.Core
             foreach (Vector2 p in placed)
                 if ((p - candidate).sqrMagnitude < minSq) return true;
             return false;
+        }
+
+        /**
+         * Drops the value prefab into the rocks' sorting stack at a slot chosen
+         * by config.valueSortMode, then re-stamps everything so orders stay
+         * gap-free and tie-free: rocks below the slot keep their order, the value
+         * takes the slot, and rocks at/above it shift up by one.
+         *
+         * Slot k lives in [0, N] where N = rock count (0 = under every rock,
+         * N = over every rock). Middle/Random draw k from the value rng so the
+         * slot stays a pure function of the seed. Middle picks an interior slot
+         * [1, N-1] when there's room; with 0-1 rocks there is no true middle, so
+         * it falls back to a random slot (matches "random when only 1-2 spawns").
+         */
+        private void PlaceValueInSortOrder(GameObject value, List<GameObject> rocks, System.Random rng)
+        {
+            int n = rocks.Count;
+
+            // Pick the insertion slot in [0, n] per the mode
+            int slot;
+            switch (config.valueSortMode)
+            {
+                case ValueSortMode.Bottom: slot = 0; break;
+                case ValueSortMode.Random: slot = rng.Next(0, n + 1); break;
+                case ValueSortMode.Middle: slot = n <= 1 ? rng.Next(0, n + 1) : rng.Next(1, n); break;
+                default:                   slot = n; break; // Top
+            }
+
+            // Re-stamp rocks around the slot, then drop the value in — no ties, no gaps
+            for (int i = 0; i < n; i++) SetSortingOrder(rocks[i], i < slot ? i : i + 1);
+            SetSortingOrder(value, slot);
         }
 
         /** Stamps every SpriteRenderer under the instance with one sorting order. */

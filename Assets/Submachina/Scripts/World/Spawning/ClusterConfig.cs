@@ -17,6 +17,19 @@ namespace Submachina.Core
      *
      * Create via Assets → Create → Submachina → Spawning → Cluster Config.
      */
+    /**
+     * Where the value prefab lands in the cluster's sorting order — i.e. which
+     * sibling sprites it draws in front of or behind. Only takes effect when
+     * orderChildrenBySpawnIndex is on (otherwise nothing stamps sorting orders).
+     */
+    public enum ValueSortMode
+    {
+        Bottom, // Always underneath every rock (renders first)
+        Top,    // Always on top of every rock (renders last) — the classic look
+        Middle, // Sandwiched between the rocks; with 0-1 rocks the slot is random
+        Random  // Any slot among the rocks, chosen from the value rng
+    }
+
     [CreateAssetMenu(fileName = "ClusterConfig", menuName = "Submachina/Spawning/Cluster Config")]
     public class ClusterConfig : ScriptableObject
     {
@@ -122,6 +135,12 @@ namespace Submachina.Core
         [Tooltip("On: the value prefab rolls the same scale/rotation/flip as the rocks. " +
                  "Off: it keeps its authored transform.")]
         public bool randomizeValueTransform = false;
+
+        [Tooltip("Where the value prefab sits in the sorting stack relative to the rocks: " +
+                 "Bottom = under everything, Top = over everything, Middle = wedged between them, " +
+                 "Random = any slot. Needs 'Order Children By Spawn Index' on to have any effect.")]
+        [EnableIf(nameof(orderChildrenBySpawnIndex))]
+        public ValueSortMode valueSortMode = ValueSortMode.Top;
 
         // =====================
         // Luck
