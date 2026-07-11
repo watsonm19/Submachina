@@ -66,6 +66,11 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // headroom — the result can never pass white (kills blow-out AND bloom), so the texture's
         // contrast always survives under the highlight.
         _SpecScreen("Specular Screen Blend", Range(0, 1)) = 0
+        // How much the glint's light vector leans toward the viewer instead of the light
+        // (the Z of L before normalize). 0 = fully directional — a facet only glints when it
+        // faces the light; higher = more omnidirectional glow regardless of the light's side.
+        // 0.66 preserves the shader's original feel.
+        _SpecViewBias("Specular View Bias (omnidirectionality)", Range(0, 10)) = 0.66
 
         [Header(Animation)]
         _ShimmerAmp("Intensity Mod Amplitude", Float) = 0
@@ -85,6 +90,10 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // 0 = sprite _NormalMap; 1 = Dome, 2 = Bevel, 3 = Ripples, 4 = Radial, 5 = Facets; 6 = _NormalTex override.
         _NormalMode("Normal Mode (0=texture)", Float) = 0
         _NormalStrength("Normal Strength", Float) = 1
+        // Deepens the relief fed to the 2D LIGHTING normal buffer (NormalsRendering pass), so
+        // every Light2D shades this sprite with exaggerated bumps. Independent of the specular
+        // _NormalStrength above. 1 = as authored, >1 = deeper, <1 = flatter.
+        _DiffNormalStrength("Diffuse Normal Strength", Float) = 1
         _NormalFreq("Normal Frequency", Float) = 8
         // xy = UV of the sprite rect origin, zw = UV size (remaps to 0..1 local coords).
         _NormalUVRect("Normal UV Rect", Vector) = (0, 0, 1, 1)
@@ -158,6 +167,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecClamp;
                 half _SpecAlbedoTint;
                 half _SpecScreen;
+                half _SpecViewBias;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
@@ -166,6 +176,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half4 _DirWobble;
                 half _NormalMode;
                 half _NormalStrength;
+                half _DiffNormalStrength;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
@@ -312,7 +323,9 @@ Shader "Submachina/2D/SpriteLitSpecular"
 
                 // --- Resting baseline glint (fixed virtual dir) + modulation + transient boost ---
                 // Usually zero on gameplay ore (baseIntensity 0), so this collapses to the boost term.
-                half3 Lb = normalize(_SpecLightDir.xyz);
+                // The viewer lean comes from _SpecViewBias (shared with the light-driven glint below)
+                // so one dial controls how omnidirectional ALL the glints are.
+                half3 Lb = normalize(half3(_SpecLightDir.xy, _SpecViewBias));
                 Lb.xy = half2(Lb.x * cw - Lb.y * sw, Lb.x * sw + Lb.y * cw); // direction wobble
                 half3 Hb = normalize(Lb + V);
                 half baseShape = pow(saturate(dot(n, Hb)), _SpecPower);
@@ -369,11 +382,13 @@ Shader "Submachina/2D/SpriteLitSpecular"
                     half falloff = SAMPLE_TEXTURE2D_LOD(_SpecFalloffLUT, sampler_SpecFalloffLUT, float2(u, v), 0).r;
 
                     // Blinn-Phong against the real light: L points from surface back to light,
-                    // biased toward the viewer on Z so grazing beams still pop a highlight.
+                    // biased toward the viewer on Z (_SpecViewBias) so grazing beams still pop a
+                    // highlight. Low bias = strictly directional facets; high bias = the glint
+                    // fires from most light directions (omnidirectional glow, e.g. crystals).
                     // The direction wobble rotates only this specular dir — the cone gate and
                     // falloff above stay physical so the beam itself doesn't wander.
                     float2 sdir = float2(dir.x * cw - dir.y * sw, dir.x * sw + dir.y * cw);
-                    half3 L = normalize(half3(-sdir.x, -sdir.y, 0.66h));
+                    half3 L = normalize(half3(-sdir.x, -sdir.y, _SpecViewBias));
                     half3 H = normalize(L + V);
                     half s = pow(saturate(dot(n, H)), _SpecPower);
 
@@ -466,6 +481,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecClamp;
                 half _SpecAlbedoTint;
                 half _SpecScreen;
+                half _SpecViewBias;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
@@ -474,6 +490,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half4 _DirWobble;
                 half _NormalMode;
                 half _NormalStrength;
+                half _DiffNormalStrength;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
@@ -494,7 +511,15 @@ Shader "Submachina/2D/SpriteLitSpecular"
 
             half4 NormalsRenderingFragment(Varyings input) : SV_Target
             {
-                return CommonNormalsFragment(input, input.color);
+                // Stock normals output (see Normals2DCommon.hlsl) with the relief deepened by
+                // _DiffNormalStrength: scaling the tangent-space XY relative to Z tilts the
+                // normals further off-flat BEFORE they land in the 2D light buffer, so every
+                // Light2D (multiply included) shades this sprite with exaggerated bumps.
+                const half4 mainTex = input.color * SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv);
+                half3 normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, input.uv));
+                normalTS.xy *= _DiffNormalStrength;
+                normalTS = normalize(normalTS);
+                return NormalsRenderingShared(mainTex, normalTS, input.tangentWS.xyz, input.bitangentWS.xyz, input.normalWS.xyz);
             }
             ENDHLSL
         }
@@ -541,6 +566,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecClamp;
                 half _SpecAlbedoTint;
                 half _SpecScreen;
+                half _SpecViewBias;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
@@ -549,6 +575,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half4 _DirWobble;
                 half _NormalMode;
                 half _NormalStrength;
+                half _DiffNormalStrength;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;

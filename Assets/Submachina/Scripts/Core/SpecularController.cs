@@ -65,6 +65,8 @@ namespace Submachina.Core
         private static readonly int SpecClampID = Shader.PropertyToID("_SpecClamp");
         private static readonly int SpecAlbedoTintID = Shader.PropertyToID("_SpecAlbedoTint");
         private static readonly int SpecScreenID = Shader.PropertyToID("_SpecScreen");
+        private static readonly int SpecViewBiasID = Shader.PropertyToID("_SpecViewBias");
+        private static readonly int DiffNormalStrengthID = Shader.PropertyToID("_DiffNormalStrength");
         private static readonly int ShimmerAmpID = Shader.PropertyToID("_ShimmerAmp");
         private static readonly int ShimmerSpeedID = Shader.PropertyToID("_ShimmerSpeed");
         private static readonly int ShimmerPhaseID = Shader.PropertyToID("_ShimmerPhase");
@@ -94,6 +96,12 @@ namespace Submachina.Core
         [FoldoutGroup("Baseline")]
         [Tooltip("Specular tightness (higher = smaller, sharper hotspot).")]
         [SerializeField, Min(1f)] private float specPower = 64f;
+
+        [FoldoutGroup("Baseline")]
+        [Tooltip("How much the glint leans toward the viewer instead of the light. 0 = fully " +
+                 "directional (a facet only glints when the light is on its side); higher = the glow " +
+                 "fires from most light directions (omnidirectional crystals). 0.66 = original feel.")]
+        [SerializeField, Range(0f, 10f)] private float specViewBias = 0.66f;
 
         [FoldoutGroup("Baseline")]
         [Tooltip("Resting specular intensity even when no light is on the sprite (glints against the baseline dir below). " +
@@ -216,6 +224,13 @@ namespace Submachina.Core
                  "exaggerates the baked bumps (1 = as authored, >1 = deeper, <1 = flatter); for the procedural " +
                  "patterns it controls how pronounced they are (higher = more grazing, brighter travelling glints).")]
         [SerializeField, Min(0f)] private float normalStrength = 1f;
+
+        [FoldoutGroup("Surface Normal")]
+        [Tooltip("Deepens the relief fed to the 2D LIGHTING normal buffer, so every Light2D (multiply " +
+                 "included) shades this sprite with exaggerated bumps. Independent of the specular " +
+                 "Normal Strength above and always sourced from the sprite's own normal map. " +
+                 "1 = as authored, >1 = deeper, <1 = flatter.")]
+        [SerializeField, Min(0f)] private float diffuseNormalStrength = 1f;
 
         [FoldoutGroup("Surface Normal"), HideIf(nameof(IsBaselineNormalMode))]
         [Tooltip("Wave count (Ripples/Radial) or cell count (Facets). Ignored by Dome/Bevel.")]
@@ -346,9 +361,9 @@ namespace Submachina.Core
         {
             if (_renderers == null) return;
 
-            // Baseline glint direction (z biases the half-vector toward the viewer)
+            // Baseline glint direction (the viewer lean now comes from _SpecViewBias in the shader)
             Vector2 d = baseLightDir.sqrMagnitude > 1e-4f ? baseLightDir.normalized : Vector2.up;
-            Vector4 dir = new Vector4(d.x, d.y, 0.66f, 0f);
+            Vector4 dir = new Vector4(d.x, d.y, 0f, 0f);
 
             // Animation params (amplitudes collapse to 0 when their toggle is off, neutralizing
             // the shader terms). Direction wobble packs as (amp radians, speed, waveform, phase)
@@ -365,6 +380,7 @@ namespace Submachina.Core
                 var r = _renderers[i];
                 r.GetPropertyBlock(_mpb);
                 _mpb.SetFloat(SpecPowerID, specPower);
+                _mpb.SetFloat(SpecViewBiasID, specViewBias);
                 _mpb.SetFloat(SpecIntensityID, baseIntensity);
                 _mpb.SetVector(SpecLightDirID, dir);
                 _mpb.SetFloat(LightResponseID, illuminationResponse);
@@ -384,6 +400,7 @@ namespace Submachina.Core
                 // Procedural-normal params (the UV rect is per-sprite so patterns stay centered on atlases)
                 _mpb.SetFloat(NormalModeID, normalMode);
                 _mpb.SetFloat(NormalStrengthID, normalStrength);
+                _mpb.SetFloat(DiffNormalStrengthID, diffuseNormalStrength);
                 _mpb.SetFloat(NormalFreqID, normalFrequency);
                 _mpb.SetVector(NormalUVRectID, SpriteUVRect(r));
                 // Inline normal-map override: bind the texture + its tiling/offset so the shader
