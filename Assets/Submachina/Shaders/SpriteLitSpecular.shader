@@ -57,6 +57,14 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // Ceiling on the light-driven glint's PEAK strength (strength × response, applied BEFORE
         // the distance falloff and cone shape it) so the falloff always reads through. 0 = no clamp.
         _SpecClamp("Specular Clamp (0 = off)", Float) = 0
+        // How much the sprite's own texel colours the glint (metallic feel). 0 = pure _SpecColor;
+        // 1 = the glint is fully tinted by the underlying texture — dark cracks stay dark, coloured
+        // pixels flare their own colour — so texture detail reads through the highlight.
+        _SpecAlbedoTint("Specular Albedo Tint", Range(0, 1)) = 0
+        // Screen-style softening of the ADDITIVE glint: 0 = classic HDR add (can bloom/blow out),
+        // 1 = the glint only fills the remaining headroom toward white, so bright texels take less
+        // spec and the texture's contrast survives under the highlight.
+        _SpecScreen("Specular Screen Blend", Range(0, 1)) = 0
 
         [Header(Animation)]
         _ShimmerAmp("Intensity Mod Amplitude", Float) = 0
@@ -147,6 +155,8 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecBoost;
                 half _SpecReplace;
                 half _SpecClamp;
+                half _SpecAlbedoTint;
+                half _SpecScreen;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
@@ -385,14 +395,24 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 // Composes with _SpecColor; white default leaves unmasked sprites unchanged.
                 half3 specMask = (half3)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, input.uv).rgb;
 
+                // Albedo tint (metallic feel): pull the glint colour toward the sprite's own
+                // vertex-tinted texel so texture detail reads through the highlight — dark cracks
+                // stay dark, an amethyst texel flares purple. Uses the RAW texel (not the lit
+                // result) so scene darkness doesn't double-dim the glint.
+                half3 texel = (half3)SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).rgb * input.color.rgb;
+                half3 albedoTint = lerp(half3(1.0h, 1.0h, 1.0h), texel, _SpecAlbedoTint);
+
                 // Compose the glint against the albedo, masked by sprite coverage.
-                //   additive : glint added as HDR emission on top (can wash out the albedo)
+                //   additive : glint added as HDR emission on top; _SpecScreen weights it by the
+                //              remaining headroom (a screen blend) so bright texels take less spec
+                //              and nothing pushes past white — 0 keeps the classic bloomy add.
                 //   replaced : albedo faded toward the glint colour (energy-conserving, so the
                 //              texture is never fully erased below a full-strength highlight)
                 // _SpecReplace blends between them: 0 = pure additive, 1 = pure replace.
-                half3 specColor = _SpecColor.rgb * specMask;
+                half3 specColor = _SpecColor.rgb * specMask * albedoTint;
                 half cover = spec * c.a;
-                half3 additive = c.rgb + specColor * cover;
+                half3 headroom = lerp(half3(1.0h, 1.0h, 1.0h), saturate(1.0h - c.rgb), _SpecScreen);
+                half3 additive = c.rgb + specColor * cover * headroom;
                 half3 replaced = lerp(c.rgb, specColor, saturate(cover));
                 c.rgb = lerp(additive, replaced, _SpecReplace);
                 return c;
@@ -440,6 +460,8 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecBoost;
                 half _SpecReplace;
                 half _SpecClamp;
+                half _SpecAlbedoTint;
+                half _SpecScreen;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
@@ -513,6 +535,8 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecBoost;
                 half _SpecReplace;
                 half _SpecClamp;
+                half _SpecAlbedoTint;
+                half _SpecScreen;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;

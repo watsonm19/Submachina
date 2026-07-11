@@ -32,7 +32,7 @@ namespace Submachina.Core
      * then calling `Wake()` when their contribution turns on. See `OreSpecularController`,
      * which adds a mining glow on top of this.
      */
-    public class SpecularController : MonoBehaviour
+    public class SpecularController : MonoBehaviour, ITintReceiver
     {
         /**
          * Where the specular's surface normal comes from. `SpriteNormalMap` uses the sprite's
@@ -63,6 +63,8 @@ namespace Submachina.Core
         private static readonly int SpecBoostID = Shader.PropertyToID("_SpecBoost");
         private static readonly int SpecReplaceID = Shader.PropertyToID("_SpecReplace");
         private static readonly int SpecClampID = Shader.PropertyToID("_SpecClamp");
+        private static readonly int SpecAlbedoTintID = Shader.PropertyToID("_SpecAlbedoTint");
+        private static readonly int SpecScreenID = Shader.PropertyToID("_SpecScreen");
         private static readonly int ShimmerAmpID = Shader.PropertyToID("_ShimmerAmp");
         private static readonly int ShimmerSpeedID = Shader.PropertyToID("_ShimmerSpeed");
         private static readonly int ShimmerPhaseID = Shader.PropertyToID("_ShimmerPhase");
@@ -114,6 +116,19 @@ namespace Submachina.Core
                  "falloff and beam cone shape it — so a hot light never floods past this cap but the falloff " +
                  "still reads through. Does not cap the resting glint or Pulse() flares. 0 = no clamp.")]
         [SerializeField] private float specClamp = 0f;
+
+        [FoldoutGroup("Baseline"), Range(0f, 1f)]
+        [Tooltip("How much the sprite's own texture colours the glint (metallic feel). 0 = glint is " +
+                 "pure Spec Color; 1 = glint fully tinted by the underlying texel, so dark cracks stay " +
+                 "dark and coloured pixels flare their own colour — texture detail reads through the " +
+                 "highlight instead of being washed over.")]
+        [SerializeField] private float specAlbedoTint = 0f;
+
+        [FoldoutGroup("Baseline"), Range(0f, 1f)]
+        [Tooltip("Screen-style softening of the additive glint. 0 = classic HDR add (can bloom / blow " +
+                 "out); 1 = the glint only fills the remaining headroom toward white, so bright texels " +
+                 "take less spec and the texture's contrast survives under the highlight.")]
+        [SerializeField] private float specScreen = 0f;
 
         // =====================
         // Animation (living, shimmering sprite) — computed in-shader from _Time, zero CPU cost
@@ -234,8 +249,7 @@ namespace Submachina.Core
          */
         protected virtual void Awake()
         {
-            _renderers = GetComponentsInChildren<SpriteRenderer>(true);
-            _mpb = new MaterialPropertyBlock();
+            EnsureInitialized();
 
             // Stable per-instance phase from world position (no global RNG needed)
             float h = transform.position.x * 12.9898f + transform.position.y * 78.233f;
@@ -258,6 +272,31 @@ namespace Submachina.Core
         {
             _pulse += Mathf.Max(0f, amount);
             Wake();
+        }
+
+        /**
+         * ITintReceiver — multiplies an external variation tint (e.g. ClusterBuilder's
+         * hue/brightness rolls) into this instance's specular colour, which lives behind
+         * the property block where SpriteRenderer.color can't reach. RGB only: alpha and
+         * the HDR magnitude are preserved, so a 0.8-brightness tint dims the glint in
+         * step with the albedo. Safe in edit mode (preview builds run before Awake).
+         */
+        public void ApplyTint(Color tint)
+        {
+            EnsureInitialized();
+
+            // Not overriding yet? Seed from the shared material's colour so the tint has
+            // a base to multiply into, then switch to a per-instance override.
+            if (!overrideColor)
+            {
+                if (_renderers.Length > 0 && _renderers[0].sharedMaterial != null)
+                    specColor = _renderers[0].sharedMaterial.GetColor(SpecColorID);
+                overrideColor = true;
+            }
+
+            // Multiply RGB, keep alpha — repeat calls compound by design
+            specColor = new Color(specColor.r * tint.r, specColor.g * tint.g, specColor.b * tint.b, specColor.a);
+            ApplyBaseline();
         }
 
         // -------------------------------------------------------
@@ -338,6 +377,9 @@ namespace Submachina.Core
                 // Albedo balance: additive vs energy-conserving replace, plus optional glint ceiling
                 _mpb.SetFloat(SpecReplaceID, specReplace);
                 _mpb.SetFloat(SpecClampID, specClamp);
+                // Texture-through-the-glint controls: albedo-tinted spec + screen-softened additive
+                _mpb.SetFloat(SpecAlbedoTintID, specAlbedoTint);
+                _mpb.SetFloat(SpecScreenID, specScreen);
                 // Procedural-normal params (the UV rect is per-sprite so patterns stay centered on atlases)
                 _mpb.SetFloat(NormalModeID, normalMode);
                 _mpb.SetFloat(NormalStrengthID, normalStrength);
@@ -399,12 +441,17 @@ namespace Submachina.Core
         // Editor convenience
         // -------------------------------------------------------
 
+        /** Lazily cache the renderers + property block (Awake, edit-mode ApplyTint/OnValidate). */
+        private void EnsureInitialized()
+        {
+            if (_renderers == null) _renderers = GetComponentsInChildren<SpriteRenderer>(true);
+            if (_mpb == null) _mpb = new MaterialPropertyBlock();
+        }
+
         /** Re-apply the baseline when tweaking values in the inspector at edit time. */
         private void OnValidate()
         {
-            if (!Application.isPlaying && _renderers == null && this != null)
-                _renderers = GetComponentsInChildren<SpriteRenderer>(true);
-            if (_mpb == null) _mpb = new MaterialPropertyBlock();
+            EnsureInitialized();
             ApplyBaseline();
         }
     }

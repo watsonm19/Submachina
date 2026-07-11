@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Sirenix.OdinInspector;
+using Core.Rendering;
 
 namespace Submachina.Core
 {
@@ -29,6 +30,9 @@ namespace Submachina.Core
      *     prefab's placement — position and (for Middle/Random) its sorting
      *     slot. Value PRESENCE is pity/play-order-dependent by design; its
      *     position and slot for a given seed are not.
+     *   - tintRng (a third isolated stream) drives the sprite tint rolls, so
+     *     toggling or tuning tint settings never shifts the layout or value
+     *     placement a seed produces.
      *
      * The prefab root should carry a SortingGroup and NO authored children —
      * the builder owns (and clears) everything under it.
@@ -108,9 +112,11 @@ namespace Submachina.Core
 
             if (config == null) { Debug.LogWarning("[ClusterBuilder] No ClusterConfig assigned — cluster left empty.", this); return; }
 
-            // Two isolated streams: layout stays seed-pure, value absorbs the pity-dependent draws
+            // Three isolated streams: layout stays seed-pure, value absorbs the pity-dependent
+            // draws, and tint rolls can be tuned/toggled without disturbing either
             var layoutRng = new System.Random(seed);
             var valueRng = new System.Random(seed ^ unchecked((int)0x9E3779B9));
+            var tintRng = new System.Random(seed ^ unchecked((int)0x85EBCA6B));
 
             // --- Rocks: count, then per rock pick → place → dress, all from layoutRng ---
             List<Vector2> placed = new List<Vector2>();
@@ -135,7 +141,9 @@ namespace Submachina.Core
                 }
 
                 GameObject rock = Instantiate(prefab, transform);
+                ShadowCaster2DRefresher.RefreshHierarchy(rock); // URP 2D casters don't rebuild their mesh on clone — force it
                 ApplyRandomTransform(rock.transform, localPos, layoutRng);
+                if (config.varySpriteTint) ApplyRandomTint(rock, tintRng);
                 if (config.orderChildrenBySpawnIndex) SetSortingOrder(rock, placed.Count);
                 placed.Add(localPos);
                 rocks.Add(rock);
@@ -149,10 +157,14 @@ namespace Submachina.Core
                 Vector2 localPos = RollPosition(valueRng, 1f - config.valueCenterBias);
 
                 GameObject value = Instantiate(config.valuePrefab, transform);
+                ShadowCaster2DRefresher.RefreshHierarchy(value); // same URP 2D shadow-mesh rebuild kick as the rocks
                 if (config.randomizeValueTransform)
                     ApplyRandomTransform(value.transform, localPos, valueRng);
                 else
                     value.transform.localPosition = localPos;
+
+                // Optionally give the value the same color variety as the rocks
+                if (config.varySpriteTint && config.tintValuePrefab) ApplyRandomTint(value, tintRng);
 
                 // Slot the value into the rocks' sorting stack per the configured mode
                 if (config.orderChildrenBySpawnIndex) PlaceValueInSortOrder(value, rocks, valueRng);
@@ -206,6 +218,38 @@ namespace Submachina.Core
             t.localPosition = localPos;
             t.localRotation = Quaternion.Euler(0f, 0f, rotZ);
             t.localScale = new Vector3(scale * flipX, scale * flipY, 1f);
+        }
+
+        /**
+         * Rolls one tint per instance and multiplies it into every SpriteRenderer
+         * beneath it (no-op if the prefab has none). SpriteRenderer.color is a
+         * multiply tint, so the hue cast is a low-saturation color (strength =
+         * saturation) and brightness can only darken. One roll per instance keeps
+         * multi-sprite prefabs internally consistent. Always consumes exactly two
+         * rng draws.
+         *
+         * Example: hueRange (180, 260), strength 0.15, brightness 0.9 → a mild
+         * teal-to-blue cast at 90% brightness on all of the instance's sprites.
+         */
+        private void ApplyRandomTint(GameObject instance, System.Random rng)
+        {
+            // Roll the cast hue and brightness, then bake them into a multiply color
+            float hue = Mathf.Repeat(rng.NextFloat(config.tintHueRange.x, config.tintHueRange.y) / 360f, 1f);
+            float brightness = rng.NextFloat(config.tintBrightnessRange.x, config.tintBrightnessRange.y);
+            Color tint = Color.HSVToRGB(hue, config.tintHueStrength, 1f) * brightness;
+
+            // Multiply into each renderer so authored per-sprite colors still show through
+            foreach (SpriteRenderer sr in instance.GetComponentsInChildren<SpriteRenderer>(true))
+            {
+                Color c = sr.color * tint;
+                c.a = sr.color.a; // tint never touches transparency
+                sr.color = c;
+            }
+
+            // Appearance layers that live behind property blocks / custom shaders (e.g. the
+            // specular glint) can't be reached via sr.color — hand them the same tint.
+            foreach (ITintReceiver receiver in instance.GetComponentsInChildren<ITintReceiver>(true))
+                receiver.ApplyTint(tint);
         }
 
         /** True if a candidate position violates minSpacing against any already-placed rock. */

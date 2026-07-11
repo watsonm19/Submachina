@@ -114,6 +114,40 @@ namespace Submachina.Core
         public bool orderChildrenBySpawnIndex = true;
 
         // =====================
+        // Sprite variation
+        // =====================
+
+        [Title("Sprite Variation")]
+        [InfoBox("Multiplies a random tint into each rock's SpriteRenderers (if any) for natural color " +
+                 "variety. Tints come from their own rng stream, so tuning these never changes the layout " +
+                 "a seed produces.",
+            InfoMessageType.None, "@Submachina.Core.SpawnDocs.ShowHelp")]
+        [Tooltip("On: each rock rolls a hue cast + brightness tint. Off: sprites keep their authored colors.")]
+        public bool varySpriteTint = false;
+
+        [EnableIf(nameof(varySpriteTint))]
+        [MinMaxSlider(0f, 360f, true)]
+        [Tooltip("Hue window (degrees on the color wheel) each rock's cast is drawn from. " +
+                 "0-360 = any color; narrow it to keep casts in one family (e.g. 180-260 = teal → blue).")]
+        public Vector2 tintHueRange = new Vector2(0f, 360f);
+
+        [EnableIf(nameof(varySpriteTint))]
+        [Range(0f, 1f)]
+        [Tooltip("How strongly the hue cast colors the sprite. 0 = brightness variation only, " +
+                 "0.1-0.2 = subtle natural variety, 1 = fully saturated tint.")]
+        public float tintHueStrength = 0.12f;
+
+        [EnableIf(nameof(varySpriteTint))]
+        [MinMaxSlider(0f, 1f, true)]
+        [Tooltip("Brightness multiplier range rolled per rock (multiply tints can only darken). " +
+                 "E.g. 0.8-1.0 = rocks range from slightly shadowed to untouched.")]
+        public Vector2 tintBrightnessRange = new Vector2(0.8f, 1f);
+
+        [EnableIf(nameof(varySpriteTint))]
+        [Tooltip("Also tint the value prefab's sprites. Off: the value keeps its authored look so it pops.")]
+        public bool tintValuePrefab = false;
+
+        // =====================
         // Value
         // =====================
 
