@@ -1,6 +1,6 @@
 ### --- Overview ---
 - This is a Unity 6.3 project.
-- Our custom C# code is found in Assets/Scripts. Assets/Scripts/Core is a namespace for generic, reusable code and systems. Assets/Scripts/Gameplay is specific to the gameplay systems that apply only to this project.
+- Our custom C# code specific to this game is found in Assets/Submachina/Scripts. For generic, reusable code and systems that could apply to any game, files are in Assets/Scripts/Core.
 - The project is a 2D game that is still in early development about descending underwater while gathering resources, encountering enemies, and building a modular submarine.
 - Look for a context.md in some folder roots for more information about that specific system and interactions it has with other systems.
 - Create or add to context.md files as needed to document the systems and interactions at a high level to help understand the project.
