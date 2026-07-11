@@ -62,8 +62,9 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // pixels flare their own colour — so texture detail reads through the highlight.
         _SpecAlbedoTint("Specular Albedo Tint", Range(0, 1)) = 0
         // Screen-style softening of the ADDITIVE glint: 0 = classic HDR add (can bloom/blow out),
-        // 1 = the glint only fills the remaining headroom toward white, so bright texels take less
-        // spec and the texture's contrast survives under the highlight.
+        // 1 = the glint is Reinhard-compressed below white (s/(1+s)) and fills only the remaining
+        // headroom — the result can never pass white (kills blow-out AND bloom), so the texture's
+        // contrast always survives under the highlight.
         _SpecScreen("Specular Screen Blend", Range(0, 1)) = 0
 
         [Header(Animation)]
@@ -403,16 +404,19 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half3 albedoTint = lerp(half3(1.0h, 1.0h, 1.0h), texel, _SpecAlbedoTint);
 
                 // Compose the glint against the albedo, masked by sprite coverage.
-                //   additive : glint added as HDR emission on top; _SpecScreen weights it by the
-                //              remaining headroom (a screen blend) so bright texels take less spec
-                //              and nothing pushes past white — 0 keeps the classic bloomy add.
+                //   additive : glint added as HDR emission on top (feeds bloom, can blow out).
+                //              _SpecScreen swaps it toward a Reinhard-compressed screen blend:
+                //              the glint is squashed below 1 (s/(1+s)) then fills only the
+                //              remaining headroom toward white — so at 1 the result can NEVER
+                //              pass white (no blow-out, no bloom) and texture contrast survives.
                 //   replaced : albedo faded toward the glint colour (energy-conserving, so the
                 //              texture is never fully erased below a full-strength highlight)
                 // _SpecReplace blends between them: 0 = pure additive, 1 = pure replace.
                 half3 specColor = _SpecColor.rgb * specMask * albedoTint;
                 half cover = spec * c.a;
-                half3 headroom = lerp(half3(1.0h, 1.0h, 1.0h), saturate(1.0h - c.rgb), _SpecScreen);
-                half3 additive = c.rgb + specColor * cover * headroom;
+                half3 glint = specColor * cover;
+                half3 soft = glint / (1.0h + glint); // Reinhard: HDR glint compressed to <1
+                half3 additive = c.rgb + lerp(glint, soft * saturate(1.0h - c.rgb), _SpecScreen);
                 half3 replaced = lerp(c.rgb, specColor, saturate(cover));
                 c.rgb = lerp(additive, replaced, _SpecReplace);
                 return c;

@@ -126,8 +126,9 @@ namespace Submachina.Core
 
         [FoldoutGroup("Baseline"), Range(0f, 1f)]
         [Tooltip("Screen-style softening of the additive glint. 0 = classic HDR add (can bloom / blow " +
-                 "out); 1 = the glint only fills the remaining headroom toward white, so bright texels " +
-                 "take less spec and the texture's contrast survives under the highlight.")]
+                 "out); 1 = the glint is tone-compressed below white and fills only the remaining " +
+                 "headroom — it can never blow out (and stops feeding bloom), so the texture's " +
+                 "contrast always survives under the highlight. Most visible at hot highlights.")]
         [SerializeField] private float specScreen = 0f;
 
         // =====================
