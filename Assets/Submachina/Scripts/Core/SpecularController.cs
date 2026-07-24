@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.U2D;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
@@ -8,6 +10,19 @@ namespace Submachina.Core
      * Submachina/2D/SpriteLitSpecular) using a MaterialPropertyBlock. Drop it on any
      * shiny sprite (metal, gems, ice, wet rock…) that should glint when a `SpecularLight2D`
      * sweeps over it.
+     *
+     * Scope: this base drives ONE look across the whole renderer. It writes a single
+     * renderer-level property block, which every submesh reads. That is exactly right for
+     * a SpriteRenderer (one sprite, one material).
+     *
+     * A SpriteShapeRenderer draws TWO submeshes from two different materials — a tiling
+     * fill and the stitched edge sprites — whose textures come from different places:
+     * the edge sprites carry their own `_NormalMap` / `_SpecMask` Secondary Textures,
+     * while the fill is a raw Texture2D with no secondary-texture channel at all, so it
+     * silently falls back to the shader defaults ("bump" = flat, "white" = fully shiny).
+     * Driving both from one block therefore gives them the same SETTINGS but wildly
+     * different TEXTURES. Use `SpriteShapeSpecularController` instead — it subclasses this
+     * and adds explicit per-submesh Fill/Edge routing on top of the shared baseline.
      *
      * Why a MaterialPropertyBlock: it overrides shader properties for THIS renderer only,
      * so every instance can have its own colour / shininess / response without cloning the
@@ -36,10 +51,13 @@ namespace Submachina.Core
     {
         /**
          * Where the specular's surface normal comes from. `SpriteNormalMap` uses the sprite's
-         * own `_NormalMap` (bespoke relief); the rest are procedural patterns generated in the
-         * shader from the sprite's UV — instant glint for generic sprites with no authored map.
+         * own `_NormalMap` (bespoke relief); `NormalTexture` is an explicit override texture;
+         * Dome..Facets are procedural patterns generated in the shader from the sprite's UV —
+         * instant glint for generic sprites with no authored map. WorldFacets/WorldRipples are
+         * procedural patterns keyed to WORLD position instead of UV: continuous across stitched
+         * geometry (SpriteShape fill + edges), so sparkle never seams or resets per segment.
          */
-        public enum NormalSource { SpriteNormalMap = 0, Dome = 1, Bevel = 2, Ripples = 3, Radial = 4, Facets = 5, NormalTexture = 6 }
+        public enum NormalSource { SpriteNormalMap = 0, Dome = 1, Bevel = 2, Ripples = 3, Radial = 4, Facets = 5, NormalTexture = 6, WorldFacets = 7, WorldRipples = 8 }
 
         /** Waveform shape for the animated modulation (intensity and/or direction). */
         public enum ModWaveform { Sine = 0, PingPong = 1, Noise = 2 }
@@ -54,27 +72,36 @@ namespace Submachina.Core
          */
         public enum ModTarget { ScaleBase = 0, Additive = 1, ScaleLight = 2, ScaleBaseAndLight = 3 }
 
-        // Cached shader property ids (avoids string hashing every write)
-        private static readonly int SpecColorID = Shader.PropertyToID("_SpecColor");
+        // Cached shader property ids (avoids string hashing every write).
+        // The handful a per-submesh subclass needs to re-point are protected.
+        protected static readonly int SpecColorID = Shader.PropertyToID("_SpecColor");
+        protected static readonly int NormalMapID = Shader.PropertyToID("_NormalMap");
+        protected static readonly int SpecMaskID = Shader.PropertyToID("_SpecMask");
         private static readonly int SpecPowerID = Shader.PropertyToID("_SpecPower");
         private static readonly int SpecIntensityID = Shader.PropertyToID("_SpecIntensity");
         private static readonly int SpecLightDirID = Shader.PropertyToID("_SpecLightDir");
         private static readonly int LightResponseID = Shader.PropertyToID("_LightResponse");
-        private static readonly int SpecBoostID = Shader.PropertyToID("_SpecBoost");
+        protected static readonly int SpecBoostID = Shader.PropertyToID("_SpecBoost");
         private static readonly int SpecReplaceID = Shader.PropertyToID("_SpecReplace");
         private static readonly int SpecClampID = Shader.PropertyToID("_SpecClamp");
         private static readonly int SpecAlbedoTintID = Shader.PropertyToID("_SpecAlbedoTint");
         private static readonly int SpecScreenID = Shader.PropertyToID("_SpecScreen");
         private static readonly int SpecViewBiasID = Shader.PropertyToID("_SpecViewBias");
+        private static readonly int GlowThresholdID = Shader.PropertyToID("_GlowThreshold");
+        private static readonly int GlowKneeID = Shader.PropertyToID("_GlowKnee");
+        private static readonly int GlowViewBiasID = Shader.PropertyToID("_GlowViewBias");
+        private static readonly int GlowPowerID = Shader.PropertyToID("_GlowPower");
+        private static readonly int GlowGainID = Shader.PropertyToID("_GlowGain");
         private static readonly int DiffNormalStrengthID = Shader.PropertyToID("_DiffNormalStrength");
+        private static readonly int NormalEmbossID = Shader.PropertyToID("_NormalEmboss");
         private static readonly int ShimmerAmpID = Shader.PropertyToID("_ShimmerAmp");
         private static readonly int ShimmerSpeedID = Shader.PropertyToID("_ShimmerSpeed");
         private static readonly int ShimmerPhaseID = Shader.PropertyToID("_ShimmerPhase");
         private static readonly int ShimmerWaveID = Shader.PropertyToID("_ShimmerWave");
         private static readonly int ShimmerModeID = Shader.PropertyToID("_ShimmerMode");
         private static readonly int DirWobbleID = Shader.PropertyToID("_DirWobble");
-        private static readonly int NormalModeID = Shader.PropertyToID("_NormalMode");
-        private static readonly int NormalStrengthID = Shader.PropertyToID("_NormalStrength");
+        protected static readonly int NormalModeID = Shader.PropertyToID("_NormalMode");
+        protected static readonly int NormalStrengthID = Shader.PropertyToID("_NormalStrength");
         private static readonly int NormalFreqID = Shader.PropertyToID("_NormalFreq");
         private static readonly int NormalUVRectID = Shader.PropertyToID("_NormalUVRect");
         private static readonly int NormalTexID = Shader.PropertyToID("_NormalTex");
@@ -140,6 +167,42 @@ namespace Submachina.Core
         [SerializeField] private float specScreen = 0f;
 
         // =====================
+        // Glow zone (threshold-gated bloom regions driven by the spec mask's brightness)
+        // =====================
+
+        [FoldoutGroup("Glow Zone")]
+        [Tooltip("Give BRIGHT spec-mask regions (e.g. blurry blobs painted over crystals) their own " +
+                 "bloomy specular treatment — omnidirectional, wide, HDR — while the rest of the sprite " +
+                 "keeps the Baseline metallic look. Off = whole sprite uses Baseline (previous behaviour).")]
+        [SerializeField] private bool glowZone = false;
+
+        [FoldoutGroup("Glow Zone"), ShowIf(nameof(glowZone)), Range(0f, 1f)]
+        [Tooltip("Spec-mask brightness (max of R/G/B) above which a pixel blends into the glow set. " +
+                 "Paint the metallic body comfortably below this and the crystal blobs near white.")]
+        [SerializeField] private float glowThreshold = 0.7f;
+
+        [FoldoutGroup("Glow Zone"), ShowIf(nameof(glowZone)), Range(0.001f, 0.5f)]
+        [Tooltip("Softness of the threshold edge (smoothstep half-width). With blurry mask blobs this " +
+                 "gives a natural hot-core → metallic falloff instead of a hard cutout line.")]
+        [SerializeField] private float glowKnee = 0.15f;
+
+        [FoldoutGroup("Glow Zone"), ShowIf(nameof(glowZone)), Range(0f, 10f)]
+        [Tooltip("View bias inside the glow zone. High = omnidirectional — the blobs light up from " +
+                 "virtually any light angle instead of only when a facet happens to face the light.")]
+        [SerializeField] private float glowViewBias = 4f;
+
+        [FoldoutGroup("Glow Zone"), ShowIf(nameof(glowZone)), Min(1f)]
+        [Tooltip("Specular tightness inside the glow zone. Low = a fat, soft lobe that fills the whole " +
+                 "blob; the Baseline tightness still shapes the metallic sparkle outside the zone.")]
+        [SerializeField] private float glowPower = 8f;
+
+        [FoldoutGroup("Glow Zone"), ShowIf(nameof(glowZone)), Min(0f)]
+        [Tooltip("HDR multiplier on all specular inside the glow zone — pushes the blobs past 1.0 so " +
+                 "they feed bloom. The glow keeps the mask's own colour (green blobs bloom green). " +
+                 "The Baseline screen/replace compose also fades out in the zone so bloom isn't capped.")]
+        [SerializeField] private float glowGain = 2f;
+
+        // =====================
         // Animation (living, shimmering sprite) — computed in-shader from _Time, zero CPU cost
         // =====================
 
@@ -200,8 +263,10 @@ namespace Submachina.Core
         [FoldoutGroup("Surface Normal")]
         [Tooltip("What shapes the glint. SpriteNormalMap uses the sprite's own normal map; NormalTexture uses " +
                  "an explicit texture you drop below (no import-settings wiring); the rest are procedural patterns " +
-                 "generated in-shader from the sprite UV (no texture needed). Dome = round bulge, Bevel = rim only, " +
-                 "Ripples = wavy bands, Radial = concentric rings, Facets = sparkly cells.")]
+                 "generated in-shader (no texture needed). Dome = round bulge, Bevel = rim only, " +
+                 "Ripples = wavy bands, Radial = concentric rings, Facets = sparkly cells — all in sprite UV space. " +
+                 "WorldFacets/WorldRipples are the same patterns in WORLD space: seam-free on SpriteShape terrain " +
+                 "(stitched fill + edge sprites) where the UV-space modes would jump per segment.")]
         [SerializeField] private NormalSource normalSource = NormalSource.SpriteNormalMap;
 
         [FoldoutGroup("Surface Normal"), ShowIf(nameof(normalSource), NormalSource.NormalTexture)]
@@ -232,8 +297,17 @@ namespace Submachina.Core
                  "1 = as authored, >1 = deeper, <1 = flatter.")]
         [SerializeField, Min(0f)] private float diffuseNormalStrength = 1f;
 
+        [FoldoutGroup("Surface Normal")]
+        [Tooltip("Fakes the relief contrast an ADDITIVE light would give while keeping your multiply " +
+                 "light: facets facing a specular light brighten past the multiply-lit level, facets " +
+                 "facing away darken, flat pixels are untouched. Uses the same normal source as the " +
+                 "specular (at authored depth) and the specular lights' falloff/cone, so unlit areas " +
+                 "stay dark. 0 = off; useful range ~0.5-3.")]
+        [SerializeField, Min(0f)] private float reliefEmboss = 0f;
+
         [FoldoutGroup("Surface Normal"), HideIf(nameof(IsBaselineNormalMode))]
-        [Tooltip("Wave count (Ripples/Radial) or cell count (Facets). Ignored by Dome/Bevel.")]
+        [Tooltip("Wave count (Ripples/Radial) or cell count (Facets) across the sprite. Ignored by Dome/Bevel. " +
+                 "For the World modes this is cells/waves PER WORLD UNIT instead (e.g. 8 = 8 sparkle cells per metre).")]
         [SerializeField, Min(0.01f)] private float normalFrequency = 8f;
 
         // Strength/frequency only matter for the procedural patterns (not the two texture modes).
@@ -252,9 +326,15 @@ namespace Submachina.Core
         // Internals
         // =====================
 
-        private SpriteRenderer[] _renderers;
+        private Renderer[] _renderers;   // SpriteRenderers and/or SpriteShapeRenderers
         private MaterialPropertyBlock _mpb;
         private float _phase;            // per-instance offset so a field of sprites doesn't shimmer in unison
+
+        /** The renderers this controller drives — subclasses read this for per-submesh routing. */
+        protected Renderer[] Renderers => _renderers;
+
+        /** Shared scratch property block. Always fill it completely before setting it. */
+        protected MaterialPropertyBlock Mpb => _mpb;
 
         private float _pulse;            // additive one-shot flash, decays via pulseDecay
         private float _lastBoost = float.NaN; // cheap dirty check for the transient write
@@ -355,12 +435,51 @@ namespace Submachina.Core
         /**
          * Writes the per-instance baseline into every renderer's property block. Called once
          * at spawn (and on inspector edits) — the light-driven glint is added on top by the
-         * shader, so this does NOT need to run per frame.
+         * shader, so this does NOT need to run per frame. Subclasses layer per-submesh
+         * overrides on top via `ApplyRendererOverrides`.
          */
         private void ApplyBaseline()
         {
             if (_renderers == null) return;
 
+            for (int i = 0; i < _renderers.Length; i++)
+            {
+                var r = _renderers[i];
+
+                // Renderer-level block — every submesh reads this unless a subclass
+                // overrides that slot with its own per-material block below.
+                r.GetPropertyBlock(_mpb);
+                WriteBaselineProperties(_mpb, r);
+                r.SetPropertyBlock(_mpb);
+
+                ApplyRendererOverrides(r);
+            }
+
+            _lastBoost = 0f;
+        }
+
+        /**
+         * Hook for subclasses that need to re-point individual submeshes (different normal
+         * map, spec mask or spec colour per material slot). Called right after the
+         * renderer-level block is written, so an override always wins. No-op in the base.
+         */
+        protected virtual void ApplyRendererOverrides(Renderer r) { }
+
+        /**
+         * Hook for subclasses to keep their per-submesh blocks' transient `_SpecBoost` in
+         * step with the renderer-level one — a per-material block REPLACES the renderer
+         * block for that slot, so it would otherwise miss every Pulse() flash. No-op in the base.
+         */
+        protected virtual void WriteBoostOverrides(Renderer r, float boost) { }
+
+        /**
+         * Writes the FULL per-instance baseline into the given property block for one renderer.
+         * Factored out so per-submesh overrides can repeat it into their per-material block —
+         * a per-material-index block REPLACES the renderer-level one for that submesh, so it
+         * must be written complete, not as a delta.
+         */
+        protected void WriteBaselineProperties(MaterialPropertyBlock mpb, Renderer r)
+        {
             // Baseline glint direction (the viewer lean now comes from _SpecViewBias in the shader)
             Vector2 d = baseLightDir.sqrMagnitude > 1e-4f ? baseLightDir.normalized : Vector2.up;
             Vector4 dir = new Vector4(d.x, d.y, 0f, 0f);
@@ -375,50 +494,68 @@ namespace Submachina.Core
 
             float normalMode = (float)(int)normalSource;
 
-            for (int i = 0; i < _renderers.Length; i++)
+            mpb.SetFloat(SpecPowerID, specPower);
+            mpb.SetFloat(SpecViewBiasID, specViewBias);
+            mpb.SetFloat(SpecIntensityID, baseIntensity);
+            mpb.SetVector(SpecLightDirID, dir);
+            mpb.SetFloat(LightResponseID, illuminationResponse);
+            mpb.SetFloat(ShimmerAmpID, shimmerAmp);
+            mpb.SetFloat(ShimmerSpeedID, modSpeed);
+            mpb.SetFloat(ShimmerPhaseID, shimmerPhase);
+            mpb.SetFloat(ShimmerWaveID, (float)(int)modWaveform);
+            mpb.SetFloat(ShimmerModeID, (float)(int)modTarget);
+            mpb.SetVector(DirWobbleID, dirWobble);
+            mpb.SetFloat(SpecBoostID, 0f);
+            // Albedo balance: additive vs energy-conserving replace, plus optional glint ceiling
+            mpb.SetFloat(SpecReplaceID, specReplace);
+            mpb.SetFloat(SpecClampID, specClamp);
+            // Texture-through-the-glint controls: albedo-tinted spec + screen-softened additive
+            mpb.SetFloat(SpecAlbedoTintID, specAlbedoTint);
+            mpb.SetFloat(SpecScreenID, specScreen);
+            // Glow zone: threshold-gated bloom regions from the spec mask's brightness.
+            // Toggle off = threshold 2, unreachable by a 0..1 mask, so the zone is inert.
+            mpb.SetFloat(GlowThresholdID, glowZone ? glowThreshold : 2f);
+            mpb.SetFloat(GlowKneeID, glowKnee);
+            mpb.SetFloat(GlowViewBiasID, glowViewBias);
+            mpb.SetFloat(GlowPowerID, glowPower);
+            mpb.SetFloat(GlowGainID, glowGain);
+            // Procedural-normal params (the UV rect is per-sprite so patterns stay centered on atlases)
+            mpb.SetFloat(NormalModeID, normalMode);
+            mpb.SetFloat(NormalStrengthID, normalStrength);
+            mpb.SetFloat(DiffNormalStrengthID, diffuseNormalStrength);
+            mpb.SetFloat(NormalEmbossID, reliefEmboss);
+            mpb.SetFloat(NormalFreqID, normalFrequency);
+            // Sprite rect remap only applies to SpriteRenderers; a SpriteShape mesh spans
+            // many sprite rects + a tiling fill, so it gets the identity rect.
+            mpb.SetVector(NormalUVRectID, r is SpriteRenderer sr ? SpriteUVRect(sr) : new Vector4(0f, 0f, 1f, 1f));
+            // Inline normal-map override: bind the texture + its tiling/offset so the shader
+            // (mode 6) samples it, scaled/positioned to fit the sprite. If none is assigned the
+            // shader falls back to the material's flat "bump" default.
+            if (normalSource == NormalSource.NormalTexture)
             {
-                var r = _renderers[i];
-                r.GetPropertyBlock(_mpb);
-                _mpb.SetFloat(SpecPowerID, specPower);
-                _mpb.SetFloat(SpecViewBiasID, specViewBias);
-                _mpb.SetFloat(SpecIntensityID, baseIntensity);
-                _mpb.SetVector(SpecLightDirID, dir);
-                _mpb.SetFloat(LightResponseID, illuminationResponse);
-                _mpb.SetFloat(ShimmerAmpID, shimmerAmp);
-                _mpb.SetFloat(ShimmerSpeedID, modSpeed);
-                _mpb.SetFloat(ShimmerPhaseID, shimmerPhase);
-                _mpb.SetFloat(ShimmerWaveID, (float)(int)modWaveform);
-                _mpb.SetFloat(ShimmerModeID, (float)(int)modTarget);
-                _mpb.SetVector(DirWobbleID, dirWobble);
-                _mpb.SetFloat(SpecBoostID, 0f);
-                // Albedo balance: additive vs energy-conserving replace, plus optional glint ceiling
-                _mpb.SetFloat(SpecReplaceID, specReplace);
-                _mpb.SetFloat(SpecClampID, specClamp);
-                // Texture-through-the-glint controls: albedo-tinted spec + screen-softened additive
-                _mpb.SetFloat(SpecAlbedoTintID, specAlbedoTint);
-                _mpb.SetFloat(SpecScreenID, specScreen);
-                // Procedural-normal params (the UV rect is per-sprite so patterns stay centered on atlases)
-                _mpb.SetFloat(NormalModeID, normalMode);
-                _mpb.SetFloat(NormalStrengthID, normalStrength);
-                _mpb.SetFloat(DiffNormalStrengthID, diffuseNormalStrength);
-                _mpb.SetFloat(NormalFreqID, normalFrequency);
-                _mpb.SetVector(NormalUVRectID, SpriteUVRect(r));
-                // Inline normal-map override: bind the texture + its tiling/offset so the shader
-                // (mode 6) samples it, scaled/positioned to fit the sprite. If none is assigned the
-                // shader falls back to the material's flat "bump" default.
-                if (normalSource == NormalSource.NormalTexture)
-                {
-                    if (normalTexture != null) _mpb.SetTexture(NormalTexID, normalTexture);
-                    _mpb.SetVector(NormalTexSTID, new Vector4(
-                        normalTextureTiling.x, normalTextureTiling.y, normalTextureOffset.x, normalTextureOffset.y));
-                }
-                if (overrideColor) _mpb.SetColor(SpecColorID, specColor);
-                // Sorting layer bit so the shader only responds to lights targeting this layer
-                _mpb.SetFloat(SortingLayerBitID, (float)SpecularLight2DManager.SortingLayerBit(r.sortingLayerID));
-                r.SetPropertyBlock(_mpb);
+                if (normalTexture != null) mpb.SetTexture(NormalTexID, normalTexture);
+                mpb.SetVector(NormalTexSTID, new Vector4(
+                    normalTextureTiling.x, normalTextureTiling.y, normalTextureOffset.x, normalTextureOffset.y));
             }
+            if (overrideColor) mpb.SetColor(SpecColorID, specColor);
+            // Sorting layer bit so the shader only responds to lights targeting this layer
+            mpb.SetFloat(SortingLayerBitID, (float)SpecularLight2DManager.SortingLayerBit(r.sortingLayerID));
+        }
 
-            _lastBoost = 0f;
+        /**
+         * The specular colour this instance actually renders with: the per-instance override
+         * when enabled, otherwise the colour baked into the slot's shared material. Subclasses
+         * need this to scale/tint a single submesh relative to the shared baseline.
+         */
+        protected Color GetEffectiveSpecColor(Renderer r, int materialIndex)
+        {
+            if (overrideColor) return specColor;
+
+            var mats = r != null ? r.sharedMaterials : null;
+            if (mats != null && materialIndex >= 0 && materialIndex < mats.Length && mats[materialIndex] != null)
+                return mats[materialIndex].GetColor(SpecColorID);
+
+            return Color.white;
         }
 
         /**
@@ -452,6 +589,9 @@ namespace Submachina.Core
                 r.GetPropertyBlock(_mpb);
                 _mpb.SetFloat(SpecBoostID, boost);
                 r.SetPropertyBlock(_mpb);
+
+                // Keep any per-submesh blocks a subclass owns flashing in sync.
+                WriteBoostOverrides(r, boost);
             }
         }
 
@@ -462,7 +602,16 @@ namespace Submachina.Core
         /** Lazily cache the renderers + property block (Awake, edit-mode ApplyTint/OnValidate). */
         private void EnsureInitialized()
         {
-            if (_renderers == null) _renderers = GetComponentsInChildren<SpriteRenderer>(true);
+            // Gather only the renderer types the specular shader targets (plain sprites and
+            // SpriteShape terrain) — skipping particles/lines/etc. that may share the hierarchy.
+            if (_renderers == null)
+            {
+                var all = GetComponentsInChildren<Renderer>(true);
+                var list = new List<Renderer>(all.Length);
+                foreach (var r in all)
+                    if (r is SpriteRenderer || r is SpriteShapeRenderer) list.Add(r);
+                _renderers = list.ToArray();
+            }
             if (_mpb == null) _mpb = new MaterialPropertyBlock();
         }
 

@@ -72,6 +72,20 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // 0.66 preserves the shader's original feel.
         _SpecViewBias("Specular View Bias (omnidirectionality)", Range(0, 10)) = 0.66
 
+        [Header(Glow Zone)]
+        // Threshold-gated glow regions driven by the spec mask's BRIGHTNESS: pixels whose
+        // _SpecMask max-component exceeds the threshold blend from the normal specular set
+        // above to this Glow set — omnidirectional bias, wider lobe, HDR gain — and the
+        // screen/replace compose fades back to pure additive so the glow survives to bloom.
+        // Lets one sprite mix directional metallic sparkle (body) with bloomy hotspots
+        // (e.g. crystal blobs painted bright in the mask). Threshold > 1 (the default)
+        // disables the zone entirely — a 0..1 mask can never reach it.
+        _GlowThreshold("Glow Mask Threshold (>1 = off)", Range(0, 2)) = 2
+        _GlowKnee("Glow Threshold Knee (soft edge)", Range(0.001, 0.5)) = 0.15
+        _GlowViewBias("Glow View Bias (omnidirectionality)", Range(0, 10)) = 4
+        _GlowPower("Glow Tightness", Range(1, 200)) = 8
+        _GlowGain("Glow Gain (HDR multiplier)", Float) = 2
+
         [Header(Animation)]
         _ShimmerAmp("Intensity Mod Amplitude", Float) = 0
         _ShimmerSpeed("Intensity Mod Speed", Float) = 1
@@ -87,13 +101,19 @@ Shader "Submachina/2D/SpriteLitSpecular"
         _DirWobble("Direction Wobble (amp, speed, wave, phase)", Vector) = (0, 1, 0, 0)
 
         [Header(Surface Normal)]
-        // 0 = sprite _NormalMap; 1 = Dome, 2 = Bevel, 3 = Ripples, 4 = Radial, 5 = Facets; 6 = _NormalTex override.
+        // 0 = sprite _NormalMap; 1 = Dome, 2 = Bevel, 3 = Ripples, 4 = Radial, 5 = Facets; 6 = _NormalTex override;
+        // 7 = World Facets, 8 = World Ripples (world-space patterns — seam-free on stitched
+        // geometry like SpriteShape fill + edges, where sprite-local UV modes would jump per segment).
         _NormalMode("Normal Mode (0=texture)", Float) = 0
         _NormalStrength("Normal Strength", Float) = 1
         // Deepens the relief fed to the 2D LIGHTING normal buffer (NormalsRendering pass), so
         // every Light2D shades this sprite with exaggerated bumps. Independent of the specular
         // _NormalStrength above. 1 = as authored, >1 = deeper, <1 = flatter.
         _DiffNormalStrength("Diffuse Normal Strength", Float) = 1
+        // Fake "additive light" relief: multiplies the lit color by the normal's signed response
+        // to each specular light (facing-light facets brighten past the multiply-lit level,
+        // facing-away darken, flat pixels untouched). 0 = off; the useful range is ~0.5-3.
+        _NormalEmboss("Relief Emboss (fake additive relief)", Float) = 0
         _NormalFreq("Normal Frequency", Float) = 8
         // xy = UV of the sprite rect origin, zw = UV size (remaps to 0..1 local coords).
         _NormalUVRect("Normal UV Rect", Vector) = (0, 0, 1, 1)
@@ -168,6 +188,11 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecAlbedoTint;
                 half _SpecScreen;
                 half _SpecViewBias;
+                half _GlowThreshold;
+                half _GlowKnee;
+                half _GlowViewBias;
+                half _GlowPower;
+                half _GlowGain;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
@@ -177,6 +202,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalMode;
                 half _NormalStrength;
                 half _DiffNormalStrength;
+                half _NormalEmboss;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
@@ -232,20 +258,42 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 return (half)(lerp(a, b, f * f * (3.0 - 2.0 * f)) * 2.0 - 1.0);
             }
 
-            // Surface normal for the specular: either the sprite's normal map (mode 0) or a
-            // procedural pattern generated from the sprite's local UV (modes 1..5). Procedural
-            // normals only tilt in XY across the flat quad — enough to make lights glint with no
-            // authored texture. _NormalUVRect remaps atlas UVs to 0..1 so patterns stay centered.
-            half3 ComputeSurfaceNormal(float2 uv)
+            // Deepen/flatten a normal's relief: scaling XY relative to Z tilts it further
+            // off-flat (1 = as sampled, >1 = deeper, <1 = flatter, 0 = flat).
+            half3 ScaleRelief(half3 n, half s)
+            {
+                return normalize(half3(n.xy * s, n.z));
+            }
+
+            // BASE surface normal (strength NOT applied — callers scale relief via ScaleRelief so
+            // the specular depth and the emboss term can use the same map at different depths):
+            // either the sprite's normal map (mode 0), a procedural pattern generated from the
+            // sprite's local UV (modes 1..5), or a WORLD-SPACE procedural pattern (modes 7..8).
+            // Procedural normals only tilt in XY across the flat quad — enough to make lights
+            // glint with no authored texture. _NormalUVRect remaps atlas UVs to 0..1 so the
+            // UV-space patterns stay centered.
+            half3 ComputeSurfaceNormal(float2 uv, float2 wpos)
             {
                 // Mode 0: the sprite's own normal map (straight RGB, matches our baked maps).
-                // _NormalStrength deepens the relief: scaling XY relative to Z tilts the normals
-                // further off-flat (1 = as authored, >1 = more pronounced, <1 = flatter).
                 if (_NormalMode < 0.5h)
                 {
                     half3 n0 = SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, uv).xyz * 2.0h - 1.0h;
-                    n0.xy *= _NormalStrength;
                     return normalize(n0);
+                }
+
+                // Modes 7/8: WORLD-SPACE patterns — hashed/waved from the fragment's world
+                // position instead of sprite UV, so they are continuous across stitched geometry
+                // (SpriteShape fill + rotated edge sprites) with zero seams or per-segment resets.
+                // Here _NormalFreq means repeats/cells PER WORLD UNIT.
+                if (_NormalMode > 6.5h)
+                {
+                    float wfreq = max(_NormalFreq, 1e-4);
+                    float2 gw;
+                    if (_NormalMode < 7.5h)      // World Facets: random tilt per hashed world cell (sparkle)
+                        gw = Hash22(floor(wpos * wfreq)) * 2.0 - 1.0;
+                    else                         // World Ripples: parallel wavy bands along world X
+                        gw = float2(cos(wpos.x * wfreq * 6.2831853), 0.0);
+                    return normalize(half3((half2)gw, 1.0h));
                 }
 
                 // Remap the sprite's atlas UV to 0..1 across its own rect (used by the override
@@ -259,7 +307,6 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 {
                     float2 tp = p * _NormalTexST.xy + _NormalTexST.zw;
                     half3 n6 = SAMPLE_TEXTURE2D(_NormalTex, sampler_NormalTex, tp).xyz * 2.0h - 1.0h;
-                    n6.xy *= _NormalStrength; // deepen the relief (see mode 0)
                     return normalize(n6);
                 }
 
@@ -285,7 +332,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 else                             // Facets: random tilt per hashed cell (sparkle)
                     g = Hash22(floor(p * freq)) * 2.0 - 1.0;
 
-                return normalize(half3((half2)(g * _NormalStrength), 1.0h));
+                return normalize(half3((half2)g, 1.0h));
             }
 
             Varyings LitVertex(Attributes input)
@@ -306,9 +353,30 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 // Base = the stock normal-mapped 2D diffuse lit color.
                 half4 c = CommonLitFragment(input, input.color);
 
-                // Surface normal: the sprite's normal map, or a procedural pattern (Dome/Bevel/
-                // Ripples/Radial/Facets) — see ComputeSurfaceNormal.
-                half3 n = ComputeSurfaceNormal(input.uv);
+                // Surface normal: the sprite's normal map, a procedural pattern (Dome/Bevel/
+                // Ripples/Radial/Facets), or a world-space pattern (World Facets/Ripples — for
+                // stitched SpriteShape geometry). The base is kept at authored depth for the
+                // emboss term; the specular gets its own _NormalStrength-scaled copy.
+                half3 nBase = ComputeSurfaceNormal(input.uv, input.worldPos.xy);
+                half3 n = ScaleRelief(nBase, _NormalStrength);
+
+                // Per-pixel specular mask (RGB tint × strength, composed at the end). Sampled
+                // EARLY because its brightness also drives the glow zone below.
+                half3 specMask = (half3)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, input.uv).rgb;
+
+                // --- Glow zone: threshold-gate the mask's brightness into a 0..1 weight ---
+                // Below the threshold a pixel keeps the normal specular set (directional
+                // metallic sparkle); above it (bright blobs marking crystals) the parameters
+                // blend toward the Glow set: omnidirectional bias, wider lobe, HDR gain, and
+                // (at compose time) pure additive so the glow survives to bloom. The default
+                // threshold of 2 is unreachable by a 0..1 mask, so the zone is inert.
+                half maskVal = max(specMask.r, max(specMask.g, specMask.b));
+                half glowW = smoothstep(_GlowThreshold - _GlowKnee, _GlowThreshold + _GlowKnee, maskVal);
+
+                // Per-pixel parameter blend — the baseline glint and light loop run ONCE with
+                // these locals, so the glow zone costs two lerps, not a second Blinn-Phong pass.
+                half viewBias = lerp(_SpecViewBias, _GlowViewBias, glowW);
+                half specPow  = lerp(_SpecPower,    _GlowPower,    glowW);
 
                 // In this flat 2D setup the viewer looks straight down +Z.
                 const half3 V = half3(0, 0, 1);
@@ -323,12 +391,12 @@ Shader "Submachina/2D/SpriteLitSpecular"
 
                 // --- Resting baseline glint (fixed virtual dir) + modulation + transient boost ---
                 // Usually zero on gameplay ore (baseIntensity 0), so this collapses to the boost term.
-                // The viewer lean comes from _SpecViewBias (shared with the light-driven glint below)
-                // so one dial controls how omnidirectional ALL the glints are.
-                half3 Lb = normalize(half3(_SpecLightDir.xy, _SpecViewBias));
+                // The viewer lean comes from viewBias (the _SpecViewBias/_GlowViewBias blend, shared
+                // with the light-driven glint below) so the glow zone affects ALL the glints alike.
+                half3 Lb = normalize(half3(_SpecLightDir.xy, viewBias));
                 Lb.xy = half2(Lb.x * cw - Lb.y * sw, Lb.x * sw + Lb.y * cw); // direction wobble
                 half3 Hb = normalize(Lb + V);
-                half baseShape = pow(saturate(dot(n, Hb)), _SpecPower);
+                half baseShape = pow(saturate(dot(n, Hb)), specPow);
 
                 // What the intensity modulation drives (_ShimmerMode):
                 //   0 = scale base (±fraction of resting intensity — needs base > 0),
@@ -342,6 +410,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
 
                 // --- Light-driven glint: real lights, cone-gated, computed on the GPU ---
                 half lightSpec = 0.0h;
+                half emboss = 0.0h; // signed relief response (facing-light positive, facing-away negative)
                 int count = (int)_SpecLightCount;
                 uint spriteBits = (uint)_SortingLayerBit; // which sorting layer this sprite is on
                 [loop]
@@ -382,15 +451,16 @@ Shader "Submachina/2D/SpriteLitSpecular"
                     half falloff = SAMPLE_TEXTURE2D_LOD(_SpecFalloffLUT, sampler_SpecFalloffLUT, float2(u, v), 0).r;
 
                     // Blinn-Phong against the real light: L points from surface back to light,
-                    // biased toward the viewer on Z (_SpecViewBias) so grazing beams still pop a
-                    // highlight. Low bias = strictly directional facets; high bias = the glint
-                    // fires from most light directions (omnidirectional glow, e.g. crystals).
-                    // The direction wobble rotates only this specular dir — the cone gate and
-                    // falloff above stay physical so the beam itself doesn't wander.
+                    // biased toward the viewer on Z (viewBias — the per-pixel _SpecViewBias/
+                    // _GlowViewBias blend) so grazing beams still pop a highlight. Low bias =
+                    // strictly directional facets; high bias = the glint fires from most light
+                    // directions (omnidirectional glow, e.g. crystals). The direction wobble
+                    // rotates only this specular dir — the cone gate and falloff above stay
+                    // physical so the beam itself doesn't wander.
                     float2 sdir = float2(dir.x * cw - dir.y * sw, dir.x * sw + dir.y * cw);
-                    half3 L = normalize(half3(-sdir.x, -sdir.y, _SpecViewBias));
+                    half3 L = normalize(half3(-sdir.x, -sdir.y, viewBias));
                     half3 H = normalize(L + V);
-                    half s = pow(saturate(dot(n, H)), _SpecPower);
+                    half s = pow(saturate(dot(n, H)), specPow);
 
                     // Optional ceiling on this light's PEAK glint (strength × response), applied
                     // BEFORE the falloff/cone shape it. Clamping the final value instead flattened
@@ -399,6 +469,16 @@ Shader "Submachina/2D/SpriteLitSpecular"
                     if (_SpecClamp > 0.0h) g = min(g, _SpecClamp);
 
                     lightSpec += g * falloff * cone;
+
+                    // Relief emboss: signed lambert of the AUTHORED normal against this light,
+                    // anchored to the flat-normal response so untextured pixels contribute zero.
+                    // A grazing light vector (low Z) maximizes the relief contrast. Gated by the
+                    // same falloff/cone, so unlit areas stay untouched. Applied after the loop.
+                    if (_NormalEmboss > 0.0h)
+                    {
+                        half3 Ld = normalize(half3(-dir.x, -dir.y, 0.5h));
+                        emboss += (dot(nBase.xy, Ld.xy) + (nBase.z - 1.0h) * Ld.z) * falloff * cone;
+                    }
                 }
                 // Lit-gated modulation (modes 2/3): scale the light-driven glint so the shimmer is
                 // additive to whatever illumination is present — zero light means zero shimmer.
@@ -406,16 +486,30 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half lightMul = _ShimmerMode > 1.5h ? max(1.0h + m, 0.0h) : 1.0h;
                 spec += lightSpec * lightMul;
 
-                // Per-pixel specular mask (RGB): tints AND scales all specular — baked crystals
-                // carry their own glint colour at ~full strength, dull rock a dim grey (~0.2).
-                // Composes with _SpecColor; white default leaves unmasked sprites unchanged.
-                half3 specMask = (half3)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, input.uv).rgb;
+                // Glow-zone HDR push: scales ALL specular (baseline + boost + light-driven) in
+                // the bright-mask zone so crystal blobs climb past 1.0 and feed bloom, while
+                // sub-threshold pixels keep their exact pre-glow value.
+                spec *= lerp(1.0h, _GlowGain, glowW);
+
+                // Fake "additive light" relief from the normal's signed per-light response.
+                // The bright lobe ADDS albedo-coloured light (the one thing a multiply light
+                // can't do — this is what makes relief pop in a dark multiply-lit scene); the
+                // dark lobe multiplicatively shades whatever the scene lights left. Flat pixels
+                // are untouched, unlit areas stay dark (emboss is falloff/cone gated per light).
+                // texel = the sprite's own coloured pixel (also reused by the albedo tint below).
+                half3 texel = (half3)SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).rgb * input.color.rgb;
+                half relief = emboss * _NormalEmboss;
+                c.rgb += texel * max(relief, 0.0h) * c.a;     // facing the light: additive, like an additive Light2D
+                c.rgb *= max(1.0h + min(relief, 0.0h), 0.0h); // facing away: multiplicative shading
+
+                // (specMask was sampled before the light loop — its RGB tints AND scales all
+                // specular below: baked crystals carry their own glint colour at ~full strength,
+                // dull rock a dim grey. Composes with _SpecColor; white default = unchanged.)
 
                 // Albedo tint (metallic feel): pull the glint colour toward the sprite's own
-                // vertex-tinted texel so texture detail reads through the highlight — dark cracks
-                // stay dark, an amethyst texel flares purple. Uses the RAW texel (not the lit
-                // result) so scene darkness doesn't double-dim the glint.
-                half3 texel = (half3)SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).rgb * input.color.rgb;
+                // vertex-tinted texel (sampled above) so texture detail reads through the
+                // highlight — dark cracks stay dark, an amethyst texel flares purple. Uses the
+                // RAW texel (not the lit result) so scene darkness doesn't double-dim the glint.
                 half3 albedoTint = lerp(half3(1.0h, 1.0h, 1.0h), texel, _SpecAlbedoTint);
 
                 // Compose the glint against the albedo, masked by sprite coverage.
@@ -427,13 +521,19 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 //   replaced : albedo faded toward the glint colour (energy-conserving, so the
                 //              texture is never fully erased below a full-strength highlight)
                 // _SpecReplace blends between them: 0 = pure additive, 1 = pure replace.
+                // In the glow zone the compose is forced toward pure additive: the screen-blend
+                // ceiling (which deliberately caps the glint below white — exactly what suppresses
+                // bloom) and the replace blend both fade out with glowW, so the metallic body keeps
+                // its contrast-preserving compose while the hotspots emit true HDR.
+                half screen  = _SpecScreen  * (1.0h - glowW);
+                half replace = _SpecReplace * (1.0h - glowW);
                 half3 specColor = _SpecColor.rgb * specMask * albedoTint;
                 half cover = spec * c.a;
                 half3 glint = specColor * cover;
                 half3 soft = glint / (1.0h + glint); // Reinhard: HDR glint compressed to <1
-                half3 additive = c.rgb + lerp(glint, soft * saturate(1.0h - c.rgb), _SpecScreen);
+                half3 additive = c.rgb + lerp(glint, soft * saturate(1.0h - c.rgb), screen);
                 half3 replaced = lerp(c.rgb, specColor, saturate(cover));
-                c.rgb = lerp(additive, replaced, _SpecReplace);
+                c.rgb = lerp(additive, replaced, replace);
                 return c;
             }
             ENDHLSL
@@ -482,6 +582,11 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecAlbedoTint;
                 half _SpecScreen;
                 half _SpecViewBias;
+                half _GlowThreshold;
+                half _GlowKnee;
+                half _GlowViewBias;
+                half _GlowPower;
+                half _GlowGain;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
@@ -491,6 +596,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalMode;
                 half _NormalStrength;
                 half _DiffNormalStrength;
+                half _NormalEmboss;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
@@ -567,6 +673,11 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _SpecAlbedoTint;
                 half _SpecScreen;
                 half _SpecViewBias;
+                half _GlowThreshold;
+                half _GlowKnee;
+                half _GlowViewBias;
+                half _GlowPower;
+                half _GlowGain;
                 half _ShimmerAmp;
                 half _ShimmerSpeed;
                 half _ShimmerPhase;
@@ -576,6 +687,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalMode;
                 half _NormalStrength;
                 half _DiffNormalStrength;
+                half _NormalEmboss;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
