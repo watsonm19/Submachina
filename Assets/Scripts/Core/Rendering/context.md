@@ -134,3 +134,84 @@ Debug: `CurrentFlowBias` readout + "Reset Flow Bias" button in Testing & Debug.
 - **Depth-driven grading**: darken + shift the deep tint as the player descends.
 - **Bubble emitter** (sprites) for stronger interactivity on impacts/propulsion.
 - Tie ambient amplitude / chromatic to player turbulence or nearby currents.
+
+# Rendering — Spline Fill Terrain
+
+Spline-outlined 2D terrain meshes with first-class seamless texturing, replacing the
+SpriteShapeRenderer's second-class tiling fill. The SpriteShapeController is kept purely as
+the **spline editor**; the visual is a generated mesh on a child object.
+
+## Pieces
+
+- **`SplineFillMeshBuilder.cs`** (`Core.Rendering`, `[ExecuteAlways]`, on a child with
+  MeshFilter + MeshRenderer) — samples the closed spline, insets an **edge band** ring,
+  ear-clips the interior, and bakes: planar tiling UVs (local or world space,
+  `uvTilesPerUnit`), and per-vertex **edge data in TEXCOORD1** (xy = outward direction,
+  z = 0 at the outline → 1 inside). Auto-rebuilds in the editor on spline/settings changes
+  (editor-only polling; stripped from builds). `Bake To Asset` freezes the mesh into a
+  `.asset` (re-bakes overwrite in place, prefab refs survive) — baked objects skip ALL
+  generation and the builder/controller can be deleted. Live meshes are per-instance;
+  baked meshes are shared — bake anything instantiated repeatedly.
+
+- **`Assets/Submachina/Shaders/SplineFillLitSpecular.shader`** — MeshRenderer sibling of
+  `SpriteLitSpecular` (both share `SpecularLitCore.hlsl`: the global specular lights,
+  surface-normal modes, and the whole glint pipeline). Fill albedo/normal/specmask are
+  material texture slots sampled with the mesh UVs (`_MainTex_ST` tiling/offset works).
+  Edge-band effects driven by TEXCOORD1: `_EdgeDarken`/`_EdgeColor` (multiply inner-glow
+  rim, applied before specular so bevel glints survive), `_EdgeBevel` (bends normals
+  outward in BOTH the light-buffer pass and the specular — edges round under lights),
+  `_EdgeAlphaFade` (rim melts to transparent), shaped by `_EdgeWidth`/`_EdgeFalloff`.
+  The normal map and spec mask also have their own `_NormalMap_ST`/`_SpecMask_ST`
+  transforms RELATIVE to the fill UV ((1,0) = follow the fill), plus per-map Stamp Once
+  modes that window the map to a single placement — outside it the normal reads flat and
+  the mask reads `_SpecMaskOnceBg` (match it to the stamp's border colour; the
+  one-glowy-spot-at-a-position setup for reused decal-sized mask graphics).
+
+- **`SplineFillOverride.cs`** (`Core.Rendering`) — per-object overrides over ONE shared
+  material via MaterialPropertyBlock: texture set, fill tiling/offset, the edge-band look,
+  and a whole-object `tint` (the SpriteRenderer.color equivalent; the specular glint colour
+  is separate — dim it in step via SpecularController.ApplyTint). Free in this project:
+  every specular renderer already carries a property block. Compose-safe with
+  SpecularController (both read-modify-write the block).
+
+## Gotchas
+
+- Keep the edge band width below the shape's tightest feature radius or the inset ring can
+  fold over itself (miter limit softens, doesn't eliminate).
+- Property blocks live on the NATIVE renderer: they survive domain reloads and can't remove
+  single properties. To clear stale overrides: `renderer.SetPropertyBlock(null)` then
+  re-`Apply()` every block-writing component on that renderer.
+- MeshRenderer sorting layer/order is script-only — the builder exposes it.
+
+# Rendering — 2D Shadow Caster Self-Healing
+
+URP's `ShadowCaster2D` never serializes its shadow mesh (`m_ShadowMesh.m_Mesh` is always
+`{fileID: 0}`); it is regenerated only when the component detects a *change* against its
+serialized "previous" values or its internal `m_ForceShadowMeshRebuild` flag is set. A
+cleanly-serialized caster therefore detects no change after scene load, domain reload, or
+`Instantiate()`, keeps an empty mesh, and silently casts no shadow. Sprite reimports (e.g.
+editing a custom outline) can also strand a caster with an empty mesh — and the first
+rebuild after a provider re-initializes can itself come up empty, needing a second pass.
+
+## Pieces
+
+- **`ShadowCaster2DRefresher.cs`** (`Core.Rendering`, runtime) — sets the internal rebuild
+  flag via reflection. Drop ONE on any scene object (a manager is fine): with
+  `refreshEntireScene` (default on) it heals every caster in the loaded scenes at Start.
+  Spawners can call `RefreshHierarchy(root)` right after `Instantiate` for a targeted fix.
+  Also exposes `ForceRebuild(caster)` and `HasShadowGeometry(caster)` for the editor side.
+
+- **`Core/Editor/ShadowCaster2DEditorRefresher.cs`** (`Core.Editor`, `[InitializeOnLoad]`)
+  — edit-mode auto-heal: refreshes all casters on scene open, after any texture reimport
+  (via `AssetPostprocessor`), and on demand via **Tools/Custom/Refresh 2D Shadows**.
+  Drives each caster's public `Update()` directly and synchronously — deliberately NOT
+  `EditorApplication.QueuePlayerLoopUpdate()`, which would tick every other ExecuteAlways
+  script in the scene (chunk spawners etc.). Verifies geometry after each pass and retries
+  stragglers up to 3 passes (some empties are legitimate, e.g. no sprite assigned).
+
+## Gotchas
+
+- The reflection targets `m_ForceShadowMeshRebuild` (URP 17.x). If a URP upgrade renames it,
+  a one-time warning fires and the code falls back to nudging `trimEdge`.
+- Domain reload (script recompile) wipes rebuilt meshes for casters whose serialized state
+  is self-consistent — use the menu item if shadows vanish after a compile.
