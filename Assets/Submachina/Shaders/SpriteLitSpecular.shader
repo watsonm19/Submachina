@@ -104,12 +104,34 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // 0 = sprite _NormalMap; 1 = Dome, 2 = Bevel, 3 = Ripples, 4 = Radial, 5 = Facets; 6 = _NormalTex override;
         // 7 = World Facets, 8 = World Ripples (world-space patterns — seam-free on stitched
         // geometry like SpriteShape fill + edges, where sprite-local UV modes would jump per segment).
+        // 9 = AlbedoHeight — derive the relief from the albedo treated as a height map (the
+        // Laigter / Material Maker trick), for sprites with no authored normal.
         _NormalMode("Normal Mode (0=texture)", Float) = 0
+        // Mode 9 controls. Radius is the central-difference tap distance in TEXELS (1 =
+        // adjacent texel = finest detail; larger reads broader forms and suppresses noise).
+        // Strength is the gradient -> slope gain; NEGATIVE inverts the relief so dark reads
+        // as high. _NormalStrength still scales the result afterwards, as it does every mode.
+        _HeightRadius("Albedo Height Radius (texels)", Range(0.25, 8)) = 1
+        _HeightStrength("Albedo Height Strength (+/- inverts)", Range(-40, 40)) = 8
+        // Blur = mip level the broad gradient is read from; the single best cure for a gritty,
+        // pixelly result. NEEDS MIPMAPS on the texture — sprites often have them off, and then
+        // this does nothing. Detail mixes the crisp LOD-0 gradient back over that broad form
+        // (0 = pure form, 1 = all the texture's detail). Compress applies a soft knee to the
+        // slope so hard albedo edges stop reading as cliffs while gentle shading survives.
+        _HeightBlur("Albedo Height Blur (mip)", Range(0, 6)) = 1
+        _HeightDetail("Albedo Height Detail Mix", Range(0, 1)) = 0.5
+        _HeightCompress("Albedo Height Slope Compress", Range(0, 8)) = 2
         _NormalStrength("Normal Strength", Float) = 1
         // Deepens the relief fed to the 2D LIGHTING normal buffer (NormalsRendering pass), so
         // every Light2D shades this sprite with exaggerated bumps. Independent of the specular
         // _NormalStrength above. 1 = as authored, >1 = deeper, <1 = flatter.
         _DiffNormalStrength("Diffuse Normal Strength", Float) = 1
+        // Feed the 2D LIGHT BUFFER from the same normal the specular uses, instead of only
+        // from _NormalMap. This is what makes the procedural and AlbedoHeight modes read as
+        // real relief under ordinary Light2Ds — without it they drive the specular alone and
+        // the surface stays flat under normal lighting. Off by default: turning it on changes
+        // the look of anything already using a procedural mode.
+        [MaterialToggle] _DiffFromMode("Diffuse Uses Normal Mode", Float) = 0
         // Fake "additive light" relief: multiplies the lit color by the normal's signed response
         // to each specular light (facing-light facets brighten past the multiply-lit level,
         // facing-away darken, flat pixels untouched). 0 = off; the useful range is ~0.5-3.
@@ -260,6 +282,16 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _CavityRidge;
                 half _CavityScale;
                 half _CavitySpec;
+                // Albedo-as-height normal (mode 9). Deliberately NOT named _MainTex_TexelSize:
+                // the 2D SRP Batcher rejects any material carrying a _TexelSize/_ST property,
+                // so the magic name would silently unbatch every sprite using this shader.
+                float4 _HeightTexel;
+                half _HeightRadius;
+                half _HeightStrength;
+                half _HeightBlur;
+                half _HeightDetail;
+                half _HeightCompress;
+                half _DiffFromMode;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
@@ -295,7 +327,8 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 // tiling/atlas remap folded in) — the curvature terms need it to stay correct
                 // under per-instance tiling.
                 float2 uvEff;
-                half3 nBase = ComputeSurfaceNormal(input.uv, input.worldPos.xy, uvEff);
+                // Normal UV and albedo UV are the same thing on a sprite (one texture set).
+                half3 nBase = ComputeSurfaceNormal(input.uv, input.uv, input.worldPos.xy, uvEff);
                 half3 texel = (half3)SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).rgb * input.color.rgb;
 
                 // Full glint pipeline (baseline + shimmer + real lights + glow zone + compose)
@@ -330,6 +363,7 @@ Shader "Submachina/2D/SpriteLitSpecular"
             {
                 COMMON_2D_NORMALS_OUTPUTS
                 half4   color           : COLOR;
+                float3  worldPos        : TEXCOORD4; // needed by the world-space normal modes
             };
 
             #include "Packages/com.unity.render-pipelines.universal/Shaders/2D/Include/Normals2DCommon.hlsl"
@@ -375,11 +409,24 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _CavityRidge;
                 half _CavityScale;
                 half _CavitySpec;
+                // Albedo-as-height normal (mode 9). Deliberately NOT named _MainTex_TexelSize:
+                // the 2D SRP Batcher rejects any material carrying a _TexelSize/_ST property,
+                // so the magic name would silently unbatch every sprite using this shader.
+                float4 _HeightTexel;
+                half _HeightRadius;
+                half _HeightStrength;
+                half _HeightBlur;
+                half _HeightDetail;
+                half _HeightCompress;
+                half _DiffFromMode;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
                 float _SortingLayerBit;
             CBUFFER_END
+
+            // Shared core, for ComputeSurfaceNormal/ScaleRelief when _DiffFromMode is on.
+            #include "SpecularLitCore.hlsl"
 
             Varyings NormalsRenderingVertex(Attributes input)
             {
@@ -389,20 +436,35 @@ Shader "Submachina/2D/SpriteLitSpecular"
 
                 Varyings o = CommonNormalsVertex(input);
                 o.color = input.color * _Color * unity_SpriteColor;
+                o.worldPos = TransformObjectToWorld(input.positionOS.xyz);
 
                 return o;
             }
 
             half4 NormalsRenderingFragment(Varyings input) : SV_Target
             {
-                // Stock normals output (see Normals2DCommon.hlsl) with the relief deepened by
-                // _DiffNormalStrength: scaling the tangent-space XY relative to Z tilts the
-                // normals further off-flat BEFORE they land in the 2D light buffer, so every
-                // Light2D (multiply included) shades this sprite with exaggerated bumps.
                 const half4 mainTex = input.color * SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv);
-                half3 normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, input.uv));
-                normalTS.xy *= _DiffNormalStrength;
-                normalTS = normalize(normalTS);
+
+                // Where the LIGHT BUFFER's normal comes from. _DiffFromMode on = the same
+                // ComputeSurfaceNormal the specular uses, so procedural and albedo-height
+                // relief is lit by every Light2D instead of only glinting — without it those
+                // modes never reach the diffuse lighting and the surface reads flat.
+                // Off = the stock path, the sprite's own _NormalMap.
+                half3 normalTS;
+                if (_DiffFromMode > 0.5h)
+                {
+                    float2 uvEff;
+                    normalTS = ComputeSurfaceNormal(input.uv, input.uv, input.worldPos.xy, uvEff);
+                }
+                else
+                {
+                    normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, input.uv));
+                }
+
+                // Deepen the relief by _DiffNormalStrength: scaling the tangent-space XY
+                // relative to Z tilts the normals further off-flat BEFORE they land in the 2D
+                // light buffer, so every Light2D (multiply included) shades with bigger bumps.
+                normalTS = ScaleRelief(normalTS, _DiffNormalStrength);
                 return NormalsRenderingShared(mainTex, normalTS, input.tangentWS.xyz, input.bitangentWS.xyz, input.normalWS.xyz);
             }
             ENDHLSL
@@ -478,6 +540,16 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _CavityRidge;
                 half _CavityScale;
                 half _CavitySpec;
+                // Albedo-as-height normal (mode 9). Deliberately NOT named _MainTex_TexelSize:
+                // the 2D SRP Batcher rejects any material carrying a _TexelSize/_ST property,
+                // so the magic name would silently unbatch every sprite using this shader.
+                float4 _HeightTexel;
+                half _HeightRadius;
+                half _HeightStrength;
+                half _HeightBlur;
+                half _HeightDetail;
+                half _HeightCompress;
+                half _DiffFromMode;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;

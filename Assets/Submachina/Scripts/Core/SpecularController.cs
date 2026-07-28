@@ -56,8 +56,11 @@ namespace Submachina.Core
          * instant glint for generic sprites with no authored map. WorldFacets/WorldRipples are
          * procedural patterns keyed to WORLD position instead of UV: continuous across stitched
          * geometry (SpriteShape fill + edges), so sparkle never seams or resets per segment.
+         * `AlbedoHeight` derives the relief from the sprite's own albedo treated as a height
+         * map (the Laigter / Material Maker trick) — real relief that follows the actual art,
+         * with no authored normal map and no bake step.
          */
-        public enum NormalSource { SpriteNormalMap = 0, Dome = 1, Bevel = 2, Ripples = 3, Radial = 4, Facets = 5, NormalTexture = 6, WorldFacets = 7, WorldRipples = 8 }
+        public enum NormalSource { SpriteNormalMap = 0, Dome = 1, Bevel = 2, Ripples = 3, Radial = 4, Facets = 5, NormalTexture = 6, WorldFacets = 7, WorldRipples = 8, AlbedoHeight = 9 }
 
         /** Waveform shape for the animated modulation (intensity and/or direction). */
         public enum ModWaveform { Sine = 0, PingPong = 1, Noise = 2 }
@@ -114,6 +117,13 @@ namespace Submachina.Core
         protected static readonly int NormalModeID = Shader.PropertyToID("_NormalMode");
         protected static readonly int NormalStrengthID = Shader.PropertyToID("_NormalStrength");
         private static readonly int NormalFreqID = Shader.PropertyToID("_NormalFreq");
+        private static readonly int HeightTexelID = Shader.PropertyToID("_HeightTexel");
+        private static readonly int HeightRadiusID = Shader.PropertyToID("_HeightRadius");
+        private static readonly int HeightStrengthID = Shader.PropertyToID("_HeightStrength");
+        private static readonly int HeightBlurID = Shader.PropertyToID("_HeightBlur");
+        private static readonly int HeightDetailID = Shader.PropertyToID("_HeightDetail");
+        private static readonly int HeightCompressID = Shader.PropertyToID("_HeightCompress");
+        private static readonly int DiffFromModeID = Shader.PropertyToID("_DiffFromMode");
         private static readonly int NormalUVRectID = Shader.PropertyToID("_NormalUVRect");
         private static readonly int NormalTexID = Shader.PropertyToID("_NormalTex");
         private static readonly int NormalTexSTID = Shader.PropertyToID("_NormalTexST");
@@ -324,6 +334,15 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float diffuseNormalStrength = 1f;
 
         [FoldoutGroup("Surface Normal")]
+        [Tooltip("Feed the 2D LIGHT BUFFER from the Normal Source above instead of only from the sprite's " +
+                 "_NormalMap. THIS is what makes the procedural and AlbedoHeight modes read as real depth: " +
+                 "without it they drive the SPECULAR only, so the surface still looks flat under an ordinary " +
+                 "Light2D and never matches what an authored normal texture gives you.\n\n" +
+                 "Off by default because turning it on changes the look of anything already using a " +
+                 "procedural mode (those have always been specular-only). No extra cost when off.")]
+        [SerializeField] private bool diffuseUsesNormalMode = false;
+
+        [FoldoutGroup("Surface Normal")]
         [Tooltip("Fakes the relief contrast an ADDITIVE light would give while keeping your multiply " +
                  "light: facets facing a specular light brighten past the multiply-lit level, facets " +
                  "facing away darken, flat pixels are untouched. Uses the same normal source as the " +
@@ -358,14 +377,73 @@ namespace Submachina.Core
         private bool HasReliefEmboss => reliefEmboss > 0f;
         private bool HasDirectionalGrooves => directionalGrooves > 0f;
 
+        [FoldoutGroup("Surface Normal"), ShowIf(nameof(normalSource), NormalSource.AlbedoHeight)]
+        [InfoBox("Albedo is not height — this cannot tell PIGMENT from SHAPE, so dark paint on a flat " +
+                 "surface becomes a dent. It reads well on textures whose value variation IS the relief " +
+                 "(rock, bark, rubble, corrosion) and badly on flat-lit graphic art. Inherent to the " +
+                 "technique; Laigter and Material Maker have the same failure mode.\n\n" +
+                 "Note this drives the SPECULAR relief only — like every procedural mode, URP's diffuse " +
+                 "2D lighting still reads the (flat) _NormalMap. Pair it with Ambient Relief to see the " +
+                 "shape without a specular light on it.")]
+        [Tooltip("Central-difference tap distance in TEXELS. 1 = adjacent texel, the finest detail the " +
+                 "texture can express; larger reads broader forms and suppresses per-texel noise. " +
+                 "Texel-based (not screen-based), so the relief is stable under camera zoom.")]
+        [SerializeField, Range(0.25f, 8f)] private float heightTapRadius = 1f;
+
+        [FoldoutGroup("Surface Normal"), ShowIf(nameof(normalSource), NormalSource.AlbedoHeight)]
+        [Tooltip("Gain converting the luminance gradient into surface slope — the main depth dial. " +
+                 "NEGATIVE inverts the relief, so dark reads as HIGH instead of low (worth trying: which " +
+                 "way round looks right depends entirely on how the texture was painted). Normal Strength " +
+                 "above still scales the result afterwards, as it does for every mode.")]
+        [SerializeField, Range(-40f, 40f)] private float heightStrength = 8f;
+
+        [FoldoutGroup("Surface Normal"), ShowIf(nameof(normalSource), NormalSource.AlbedoHeight)]
+        [InfoBox("Blur is 0 but the source texture has no mipmaps, so blur/detail can't work — the relief " +
+                 "will stay gritty. Enable 'Generate Mip Maps' on the texture's import settings.",
+                 InfoMessageType.Warning, nameof(HeightBlurNeedsMips))]
+        [Tooltip("THE fix for a gritty, pixelly result: the mip level the broad gradient is read from. " +
+                 "Each step doubles both the blur and the tap radius, so raising it REMOVES fine structure " +
+                 "rather than just softening it — that's what separates form from noise.\n\n" +
+                 "Requires the texture to have MIPMAPS. Sprites often ship with 'Generate Mip Maps' off, " +
+                 "in which case every level returns the base image and this does nothing.")]
+        [SerializeField, Range(0f, 6f)] private float heightBlur = 1f;
+
+        [FoldoutGroup("Surface Normal"), ShowIf(nameof(normalSource), NormalSource.AlbedoHeight)]
+        [Tooltip("How much of the crisp, unblurred gradient is mixed back over the broad form above. " +
+                 "0 = pure smooth shape (start here if the result is too busy), 1 = all of the texture's " +
+                 "detail. Costs nothing when Blur is 0, since there's nothing to mix against.")]
+        [SerializeField, Range(0f, 1f)] private float heightDetail = 0.5f;
+
+        [FoldoutGroup("Surface Normal"), ShowIf(nameof(normalSource), NormalSource.AlbedoHeight)]
+        [Tooltip("Soft knee on the slope, for 'details that shouldn't be there'. Hard albedo edges — " +
+                 "outlines, paint boundaries, speckles — produce extreme gradients that read as cliffs, " +
+                 "while gentle shading (the part that actually IS shape) produces small ones. This pulls " +
+                 "the extremes toward a ceiling and leaves the gentle end nearly untouched, so it " +
+                 "suppresses the wrong detail specifically instead of flattening everything. 0 = off.")]
+        [SerializeField, Range(0f, 8f)] private float heightCompress = 2f;
+
+        // Warn when blur is asked for but the texture can't deliver it.
+        private bool HeightBlurNeedsMips
+        {
+            get
+            {
+                if (normalSource != NormalSource.AlbedoHeight || heightBlur <= 0f) return false;
+                var sr = GetComponentInChildren<SpriteRenderer>();
+                var tex = sr != null && sr.sprite != null ? sr.sprite.texture : null;
+                return tex != null && tex.mipmapCount <= 1;
+            }
+        }
+
         [FoldoutGroup("Surface Normal"), HideIf(nameof(IsBaselineNormalMode))]
         [Tooltip("Wave count (Ripples/Radial) or cell count (Facets) across the sprite. Ignored by Dome/Bevel. " +
                  "For the World modes this is cells/waves PER WORLD UNIT instead (e.g. 8 = 8 sparkle cells per metre).")]
         [SerializeField, Min(0.01f)] private float normalFrequency = 8f;
 
-        // Strength/frequency only matter for the procedural patterns (not the two texture modes).
+        // Frequency only matters for the procedural patterns — not the texture modes, and not
+        // AlbedoHeight (which has its own texel-space radius instead).
         private bool IsBaselineNormalMode =>
-            normalSource == NormalSource.SpriteNormalMap || normalSource == NormalSource.NormalTexture;
+            normalSource == NormalSource.SpriteNormalMap || normalSource == NormalSource.NormalTexture
+            || normalSource == NormalSource.AlbedoHeight;
 
         // =====================
         // Ambient relief — the relief you can see with NO light on the surface
@@ -648,6 +726,21 @@ namespace Submachina.Core
             mpb.SetFloat(DiffNormalStrengthID, diffuseNormalStrength);
             mpb.SetFloat(NormalEmbossID, reliefEmboss);
             mpb.SetFloat(NormalFreqID, normalFrequency);
+            // Albedo-as-height relief (mode 9). Harmless to write in every mode — the shader
+            // only reads these on mode 9. The texel size lets the tap radius be expressed in
+            // TEXELS (so relief is stable under zoom); left at zero the shader falls back to
+            // screen-pixel taps, which is why a MeshRenderer with no sprite is fine here.
+            var heightTex = r is SpriteRenderer hsr && hsr.sprite != null ? hsr.sprite.texture : null;
+            mpb.SetVector(HeightTexelID, heightTex != null
+                ? new Vector4(1f / heightTex.width, 1f / heightTex.height, heightTex.width, heightTex.height)
+                : Vector4.zero);
+            mpb.SetFloat(HeightRadiusID, heightTapRadius);
+            mpb.SetFloat(HeightStrengthID, heightStrength);
+            mpb.SetFloat(HeightBlurID, heightBlur);
+            mpb.SetFloat(HeightDetailID, heightDetail);
+            mpb.SetFloat(HeightCompressID, heightCompress);
+            // Whether the 2D light buffer reads the Normal Source too, or only _NormalMap.
+            mpb.SetFloat(DiffFromModeID, diffuseUsesNormalMode ? 1f : 0f);
             // Light-FOLLOWING relief: the emboss's grazing angle plus the directional groove
             // term. These live with the lights, so they're independent of the ambientRelief
             // toggle below (which only gates the light-independent terms).

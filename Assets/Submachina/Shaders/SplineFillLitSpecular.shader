@@ -100,9 +100,25 @@ Shader "Submachina/2D/SplineFillLitSpecular"
         // 0 = _NormalMap (the tiling fill map — the usual choice here); 1..5 = procedural
         // UV patterns (of limited use on tiling UVs); 6 = _NormalTex override;
         // 7 = World Facets, 8 = World Ripples (world-space, always seam-free).
+        // 9 = AlbedoHeight — derive the relief from the fill albedo treated as a height map
+        // (the Laigter / Material Maker trick), for texture sets with no authored normal.
         _NormalMode("Normal Mode (0=texture)", Float) = 0
+        // Mode 9: tap distance in TEXELS (1 = finest detail, larger reads broader forms) and
+        // the gradient -> slope gain (NEGATIVE inverts, so dark reads as high).
+        _HeightRadius("Albedo Height Radius (texels)", Range(0.25, 8)) = 1
+        _HeightStrength("Albedo Height Strength (+/- inverts)", Range(-40, 40)) = 8
+        // Blur = mip the broad gradient is read from (the cure for gritty results; NEEDS
+        // MIPMAPS). Detail mixes the crisp LOD-0 gradient back over it. Compress soft-knees
+        // the slope so hard albedo edges stop reading as cliffs.
+        _HeightBlur("Albedo Height Blur (mip)", Range(0, 6)) = 1
+        _HeightDetail("Albedo Height Detail Mix", Range(0, 1)) = 0.5
+        _HeightCompress("Albedo Height Slope Compress", Range(0, 8)) = 2
         _NormalStrength("Normal Strength", Float) = 1
         _DiffNormalStrength("Diffuse Normal Strength", Float) = 1
+        // Feed the 2D LIGHT BUFFER from the same normal the specular uses, not just _NormalMap.
+        // This is what makes the procedural / AlbedoHeight modes read as real relief under
+        // ordinary Light2Ds. Off by default — it changes the look of existing procedural setups.
+        [MaterialToggle] _DiffFromMode("Diffuse Uses Normal Mode", Float) = 0
         _NormalEmboss("Relief Emboss (fake additive relief)", Float) = 0
         // How high each specular light sits above the plane for the emboss. LOW = grazing =
         // maximum relief contrast (reads as shadow); high = overhead = flat. 0.5 = legacy.
@@ -237,6 +253,15 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _CavityRidge;
                 half _CavityScale;
                 half _CavitySpec;
+                // Albedo-as-height normal (mode 9). Deliberately NOT named _MainTex_TexelSize —
+                // the 2D SRP Batcher rejects materials carrying a _TexelSize property.
+                float4 _HeightTexel;
+                half _HeightRadius;
+                half _HeightStrength;
+                half _HeightBlur;
+                half _HeightDetail;
+                half _HeightCompress;
+                half _DiffFromMode;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
@@ -290,7 +315,10 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 // tiling (material, or a SplineFillOverride per-object override) is folded in
                 // and the curvature terms don't need re-tuning when a piece is retiled.
                 float2 uvEff;
-                half3 nCurv = ComputeSurfaceNormal(uvNrm, input.worldPos.xy, uvEff);
+                // Normal-map UV vs ALBEDO UV: mode 9 differentiates the albedo, so it must ride
+                // the fill UV (input.uv) rather than uvNrm — otherwise a de-synced _NormalMap_ST
+                // would have it reading a different part of the texture than the one on screen.
+                half3 nCurv = ComputeSurfaceNormal(uvNrm, input.uv, input.worldPos.xy, uvEff);
                 if (_NormalMapOnce > 0.5h && (any(uvNrm < 0.0) || any(uvNrm > 1.0)))
                     nCurv = half3(0.0h, 0.0h, 1.0h);
                 // nCurv is kept UNBEVELLED for the curvature terms: the bevel is a wide smooth
@@ -344,8 +372,9 @@ Shader "Submachina/2D/SplineFillLitSpecular"
             struct Varyings
             {
                 COMMON_2D_NORMALS_OUTPUTS
-                half4  color : COLOR;
-                float4 edge  : TEXCOORD5; // xy = outward dir, z = edge distance 0..1
+                half4  color    : COLOR;
+                float3 worldPos : TEXCOORD4; // needed by the world-space normal modes
+                float4 edge     : TEXCOORD5; // xy = outward dir, z = edge distance 0..1
             };
 
             #include "Packages/com.unity.render-pipelines.universal/Shaders/2D/Include/Normals2DCommon.hlsl"
@@ -403,17 +432,30 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _CavityRidge;
                 half _CavityScale;
                 half _CavitySpec;
+                // Albedo-as-height normal (mode 9). Deliberately NOT named _MainTex_TexelSize —
+                // the 2D SRP Batcher rejects materials carrying a _TexelSize property.
+                float4 _HeightTexel;
+                half _HeightRadius;
+                half _HeightStrength;
+                half _HeightBlur;
+                half _HeightDetail;
+                half _HeightCompress;
+                half _DiffFromMode;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
                 float _SortingLayerBit;
             CBUFFER_END
 
+            // Shared core, for ComputeSurfaceNormal when _DiffFromMode is on.
+            #include "SpecularLitCore.hlsl"
+
             Varyings NormalsRenderingVertex(Attributes input)
             {
                 Varyings o = CommonNormalsVertex(input);
                 o.color = input.color * _Color;
                 o.edge = input.edgeData;
+                o.worldPos = TransformObjectToWorld(input.positionOS.xyz);
                 // Keep the light-buffer normals sampling in lockstep with the lit pass's tiling.
                 o.uv = o.uv * _MainTex_ST.xy + _MainTex_ST.zw;
                 return o;
@@ -421,16 +463,29 @@ Shader "Submachina/2D/SplineFillLitSpecular"
 
             half4 NormalsRenderingFragment(Varyings input) : SV_Target
             {
-                // Stock normals output with the relief deepened by _DiffNormalStrength, PLUS
-                // the edge bevel: near the rim the normal is tilted outward before it lands
-                // in the 2D light buffer, so every Light2D shades the edge as a rounded form.
+                // Normals output with the relief deepened by _DiffNormalStrength, PLUS the edge
+                // bevel: near the rim the normal is tilted outward before it lands in the 2D
+                // light buffer, so every Light2D shades the edge as a rounded form.
                 const half4 mainTex = input.color * SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv);
                 half dd = (half)saturate(input.edge.z / max(_EdgeWidth, 1e-4));
                 half w = pow(saturate(1.0h - dd), _EdgeFalloff);
                 // Same relative normal-map UV + stamp-once window as the lit pass, so the
                 // diffuse light buffer and the specular read identical relief.
                 float2 uvNrm = input.uv * _NormalMap_ST.xy + _NormalMap_ST.zw;
-                half3 normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, uvNrm));
+
+                // _DiffFromMode on = light the buffer from the same ComputeSurfaceNormal the
+                // specular uses, so procedural / albedo-height relief reaches the diffuse
+                // lighting instead of only glinting. Off = the stock _NormalMap path.
+                half3 normalTS;
+                if (_DiffFromMode > 0.5h)
+                {
+                    float2 uvEff;
+                    normalTS = ComputeSurfaceNormal(uvNrm, input.uv, input.worldPos.xy, uvEff);
+                }
+                else
+                {
+                    normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, uvNrm));
+                }
                 if (_NormalMapOnce > 0.5h && (any(uvNrm < 0.0) || any(uvNrm > 1.0)))
                     normalTS = half3(0.0h, 0.0h, 1.0h);
                 normalTS = normalize(half3(normalTS.xy * _DiffNormalStrength + (half2)input.edge.xy * (_EdgeBevel * w), normalTS.z));
@@ -519,6 +574,15 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _CavityRidge;
                 half _CavityScale;
                 half _CavitySpec;
+                // Albedo-as-height normal (mode 9). Deliberately NOT named _MainTex_TexelSize —
+                // the 2D SRP Batcher rejects materials carrying a _TexelSize property.
+                float4 _HeightTexel;
+                half _HeightRadius;
+                half _HeightStrength;
+                half _HeightBlur;
+                half _HeightDetail;
+                half _HeightCompress;
+                half _DiffFromMode;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;

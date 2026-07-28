@@ -41,6 +41,84 @@ SAMPLER(sampler_NormalTex);
 TEXTURE2D(_SpecMask);
 SAMPLER(sampler_SpecMask);
 
+// Perceptual luminance of the albedo at an explicit mip, used as the height field by mode 9.
+// Sampling a coarse LOD is how the blur is done: the hardware's mip chain is an already-
+// filtered box blur, far cheaper than widening the tap kernel.
+// REQUIRES MIPMAPS on the texture. Sprites frequently ship with "Generate Mip Maps" OFF, in
+// which case every LOD returns the base level and the blur silently does nothing.
+half SampleAlbedoHeight(float2 uv, float lod)
+{
+    half3 rgb = (half3)SAMPLE_TEXTURE2D_LOD(_MainTex, sampler_MainTex, uv, lod).rgb;
+    return dot(rgb, half3(0.299h, 0.587h, 0.114h));
+}
+
+// One central-difference gradient of the height field, at a given tap radius and mip.
+// Returns the SLOPE, i.e. the negated gradient — a normal tilts away from rising height.
+half2 AlbedoHeightGradient(float2 uv, float2 e, float lod)
+{
+    half hL = SampleAlbedoHeight(uv - float2(e.x, 0), lod);
+    half hR = SampleAlbedoHeight(uv + float2(e.x, 0), lod);
+    half hD = SampleAlbedoHeight(uv - float2(0, e.y), lod);
+    half hU = SampleAlbedoHeight(uv + float2(0, e.y), lod);
+    return half2(hL - hR, hD - hU);
+}
+
+// Surface normal derived from the ALBEDO treated as a height map — the trick Laigter and
+// Material Maker use when there's no authored normal map. Central-difference the luminance
+// over a texel-space neighbourhood to get the height gradient, then tilt the normal by it:
+// n = normalize(-dh/du, -dh/dv, 1), which is exactly the tangent-space normal convention.
+//
+// Cost: four taps of a texture the shader is ALREADY sampling, one or two texels from the
+// fetch it already did, so they land on the same cache lines. Cheap in practice — the thing
+// to watch is overdraw (this is a transparent-queue shader), not the taps themselves.
+//
+// The radius is in TEXELS, not screen pixels, so the derived relief is stable under camera
+// zoom and matches what an offline baker would produce from the same texture.
+//
+// INHERENT LIMITATION (true of every tool that does this, not of this implementation):
+// albedo is not height. Dark PAINT on a flat surface becomes a dent and light paint becomes
+// a bump, because the technique cannot separate pigment from shape. It reads well on
+// textures whose value variation IS the relief — rock, bark, rubble, corrosion — and badly
+// on flat-lit graphic art or anything with strong albedo-only markings.
+half3 AlbedoHeightNormal(float2 uv)
+{
+    // Tap offset in UV. _HeightTexel.xy is (1/width, 1/height) of the source texture, written
+    // by the driver (SpecularController fills it from the sprite). It is NOT Unity's magic
+    // _MainTex_TexelSize: that name makes the 2D SRP Batcher drop the whole material.
+    //
+    // Floored at one screen pixel's worth of UV. That covers both failure modes: an unset
+    // _HeightTexel (falls back to pixel-sized taps, which is right at 1:1 density), and heavy
+    // MAGNIFICATION, where texel-sized taps would land inside one texel and flatten the relief.
+    float2 px = (abs(ddx(uv)) + abs(ddy(uv))) * 0.5;
+    float2 e0 = max(_HeightTexel.xy, px) * max(_HeightRadius, 0.01h);
+
+    // BROAD pass — the fix for a gritty, over-detailed result. Sample a coarse mip with a
+    // proportionally wider radius (both double per mip level) so the kernel keeps covering
+    // the same texture area: raising the blur REMOVES fine structure rather than just
+    // softening it in place, which is what separates form from noise.
+    float lod = _HeightBlur;
+    half2 g = AlbedoHeightGradient(uv, e0 * exp2(lod), lod);
+
+    // FINE pass — the crisp LOD-0 gradient mixed back over the broad form.
+    // 0 = pure smooth form, 1 = all of the texture's detail. Skipped entirely when there's
+    // no blur to mix against, saving four taps (uniform branch, so the whole draw agrees).
+    if (lod > 0.001h && _HeightDetail > 0.001h)
+        g = lerp(g, AlbedoHeightGradient(uv, e0, 0.0), _HeightDetail);
+
+    // A negative _HeightStrength inverts the relief — dark reads as high instead of low.
+    g *= _HeightStrength;
+
+    // Soft-knee compression on the slope magnitude. Hard albedo edges — outlines, paint
+    // boundaries, the "detail that shouldn't be there" — produce extreme gradients that read
+    // as cliffs, while gentle shading (the part that IS shape) produces small ones. Dividing
+    // by (1 + |g|k) pulls the extremes toward a ceiling and leaves the gentle end near-linear,
+    // so it suppresses exactly the wrong detail instead of flattening everything.
+    if (_HeightCompress > 0.0h)
+        g /= 1.0h + length(g) * _HeightCompress;
+
+    return normalize(half3(g, 1.0h));
+}
+
 // Cheap 2D hash for the Facets pattern (a random value per cell).
 float2 Hash22(float2 p)
 {
@@ -84,7 +162,7 @@ half3 ScaleRelief(half3 n, half s)
 // per-map tiling/offset, or world position for the world modes). The curvature terms need it
 // to know how many UV units a step of one world unit covers — that ratio is what a tiling
 // override changes, and without it the cavity gain drifts every time the fill is retiled.
-half3 ComputeSurfaceNormal(float2 uv, float2 wpos, out float2 uvEff)
+half3 ComputeSurfaceNormal(float2 uv, float2 uvAlbedo, float2 wpos, out float2 uvEff)
 {
     uvEff = uv; // every branch below overwrites this; seeded so no path can leave it unset
     // Mode 0: the sprite's own normal map. UnpackNormal decodes BOTH encodings:
@@ -96,6 +174,15 @@ half3 ComputeSurfaceNormal(float2 uv, float2 wpos, out float2 uvEff)
         uvEff = uv;
         half3 n0 = UnpackNormal(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, uv));
         return normalize(n0);
+    }
+
+    // Mode 9: derive the relief from the ALBEDO as if it were a height map. Tested BEFORE
+    // the world modes below, whose `> 6.5` test would otherwise swallow it. Uses the albedo's
+    // own UV (not the normal map's), since that's the texture being differentiated.
+    if (_NormalMode > 8.5h)
+    {
+        uvEff = uvAlbedo;
+        return AlbedoHeightNormal(uvAlbedo);
     }
 
     // Modes 7/8: WORLD-SPACE patterns — hashed/waved from the fragment's world
