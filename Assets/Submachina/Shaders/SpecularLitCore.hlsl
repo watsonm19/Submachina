@@ -80,14 +80,20 @@ half3 ScaleRelief(half3 n, half s)
 // Procedural normals only tilt in XY across the flat quad — enough to make lights
 // glint with no authored texture. _NormalUVRect remaps atlas UVs to 0..1 so the
 // UV-space patterns stay centered.
-half3 ComputeSurfaceNormal(float2 uv, float2 wpos)
+// `uvEff` reports the coordinate the normal actually VARIES OVER (post atlas-remap, post
+// per-map tiling/offset, or world position for the world modes). The curvature terms need it
+// to know how many UV units a step of one world unit covers — that ratio is what a tiling
+// override changes, and without it the cavity gain drifts every time the fill is retiled.
+half3 ComputeSurfaceNormal(float2 uv, float2 wpos, out float2 uvEff)
 {
+    uvEff = uv; // every branch below overwrites this; seeded so no path can leave it unset
     // Mode 0: the sprite's own normal map. UnpackNormal decodes BOTH encodings:
     // Unity-imported "Normal map" textures (BC5/DXT5nm channel-packed, z rebuilt
     // from xy) and our straight-RGB baked maps (opaque alpha -> plain xy*2-1).
     // Same decoder as the NormalsRendering pass, so diffuse and specular agree.
     if (_NormalMode < 0.5h)
     {
+        uvEff = uv;
         half3 n0 = UnpackNormal(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, uv));
         return normalize(n0);
     }
@@ -98,6 +104,7 @@ half3 ComputeSurfaceNormal(float2 uv, float2 wpos)
     // Here _NormalFreq means repeats/cells PER WORLD UNIT.
     if (_NormalMode > 6.5h)
     {
+        uvEff = wpos; // world patterns vary per world unit, so world position IS their UV
         float wfreq = max(_NormalFreq, 1e-4);
         float2 gw;
         if (_NormalMode < 7.5h)      // World Facets: random tilt per hashed world cell (sparkle)
@@ -118,10 +125,12 @@ half3 ComputeSurfaceNormal(float2 uv, float2 wpos)
     if (_NormalMode > 5.5h)
     {
         float2 tp = p * _NormalTexST.xy + _NormalTexST.zw;
+        uvEff = tp; // includes the override's own tiling, so curvature tracks it too
         half3 n6 = UnpackNormal(SAMPLE_TEXTURE2D(_NormalTex, sampler_NormalTex, tp));
         return normalize(n6);
     }
 
+    uvEff = p; // procedural patterns vary over the rect-remapped local UV
     float2 c = p - 0.5;
     float freq = max(_NormalFreq, 1e-4);
     float2 g = float2(0, 0); // desired normal tilt in XY (pre-strength)
@@ -147,36 +156,79 @@ half3 ComputeSurfaceNormal(float2 uv, float2 wpos)
     return normalize(half3((half2)g, 1.0h));
 }
 
-// Live cavity/AO from the normal field's DIVERGENCE — a "cavity map" computed per-frame
-// instead of baked. Screen-space derivatives of the normal give the local curvature:
-// concave (pits) comes out negative, convex (ridges) positive.
-//   e.g. a 1D valley h = x^2 has tangent-space normal (-2x, 1), so ddx(n.x) = -2;
-//        a ridge h = -x^2 gives (2x, 1) and ddx(n.x) = +2.
-// Returned pre-split as (pitDepth, ridgeHeight), both 0..1, so the caller can weight the
-// dark and bright halves independently.
-//
-// Two properties of derivatives to keep in mind:
-//   - they're evaluated per 2x2 pixel quad, so the result is slightly blocky under heavy
-//     magnification, and
-//   - their magnitude scales with texel density per pixel — i.e. with camera zoom. Our
-//     setup is orthographic at a fixed size, so _CavityScale can be tuned once and stays
-//     valid; a zooming camera would need it driven from the zoom.
-// A NEGATIVE _CavityScale swaps pit/ridge, which is the fix if a normal map's X/green
-// channel is inverted relative to Unity's convention.
-half2 ComputeCavity(half3 nBase)
+// Everything the curvature terms (isotropic cavity + directional grooves) need, gathered
+// ONCE per fragment. Derivatives must be taken outside the light loop — gradient
+// instructions in its divergent control flow (all those `continue`s) are undefined.
+struct CurvatureBasis
 {
-    // Divergence of the normal's XY, gained into a usable range and clamped so one steep
-    // texel can't blow the term past full occlusion. Computed UNCONDITIONALLY — derivative
-    // instructions inside branches are a portability hazard, and they're only 2 ops anyway.
-    half curv = (half)clamp((ddx(nBase.x) + ddy(nBase.y)) * _CavityScale, -1.0, 1.0);
+    float2 gnx, gny;   // screen-space gradients of the normal's x / y
+    float2 duvx, duvy; // screen-space gradients of the normal's own UV — the J_uv columns
+    float2 jw0, jw1;   // rows of J_world^-1: turns a world direction into a screen direction
+    half   valid;      // 0 kills every curvature term (Facets modes, degenerate quad)
+};
+
+// Builds the basis. `nCurv` is the normal BEFORE any caller-side bending (the spline fill's
+// edge bevel), because a bevel is a wide smooth ramp that would otherwise register as real
+// curvature and paint a false cavity ring around every rim — on top of the _EdgeDarken
+// already treating that area. `uvEff` is what ComputeSurfaceNormal reports the normal varies
+// over, so per-object tiling/offset overrides are accounted for automatically.
+CurvatureBasis BuildCurvatureBasis(half3 nCurv, float2 uvEff, float2 wpos)
+{
+    CurvatureBasis b;
+    b.gnx = float2(ddx(nCurv.x), ddy(nCurv.x));
+    b.gny = float2(ddx(nCurv.y), ddy(nCurv.y));
+    b.duvx = ddx(uvEff);
+    b.duvy = ddy(uvEff);
+
+    // J_world = [ d(wpos)/d(screenX) | d(wpos)/d(screenY) ]; we want its inverse, which maps
+    // a world direction back to the screen direction that travels along it.
+    float2 dwx = ddx(wpos), dwy = ddy(wpos);
+    float det = dwx.x * dwy.y - dwy.x * dwx.y;
+    float inv = abs(det) > 1e-12 ? 1.0 / det : 0.0; // degenerate quad -> terms drop out
+    b.jw0 = float2(dwy.y, -dwy.x) * inv;
+    b.jw1 = float2(-dwx.y, dwx.x) * inv;
 
     // The Facets patterns (modes 5 and 7) are piecewise constant per hashed cell: their
-    // derivative is exactly 0 inside a cell and a spike at the boundary, so cavity would
-    // draw cell OUTLINES rather than relief. Mask it off rather than branching around it.
+    // derivative is 0 inside a cell and a spike at the boundary, so curvature would draw
+    // cell OUTLINES rather than relief. Masked, not branched around — see the note above.
     bool facets = (_NormalMode > 4.5h && _NormalMode < 5.5h) || (_NormalMode > 6.5h && _NormalMode < 7.5h);
-    curv = facets ? 0.0h : curv;
+    b.valid = (facets || inv == 0.0) ? 0.0h : 1.0h;
+    return b;
+}
 
-    return half2(saturate(-curv), saturate(curv)); // x = pit depth, y = ridge height
+// Second derivative of the height field along a unit WORLD direction L (the Hessian's L-L
+// component). POSITIVE inside any trough running ACROSS L, ~0 for one running ALONG it —
+// the anisotropy of raking light — and positive in a pit, negative on a ridge, for any L.
+//
+// The normal's xy is the height gradient in UV SPACE (d(h)/d(u) = -n.x), while L is in world
+// space, so the two have to be reconciled. Moving one world unit along L is a screen step of
+// Ls = J_world^-1 L, which is a UV step of q = J_uv Ls. Writing the bilinear form in screen
+// gradients, one factor of J_uv cancels and it collapses to:
+//     d2h/dL2 = -( q . (A_screen Ls) )      where A_screen rows are grad_screen(n.x), (n.y)
+// Verified: a valley h = u^2 (n.x = -2u) returns +2 along L = (1,0) and 0 along L = (0,1).
+//
+// Because q carries the UV-per-world ratio, the result is correct under per-object TILING
+// (it scales as tiling^2, as the real curvature does) and invariant to camera ZOOM, sprite
+// scale, and the D3D-vs-GL ddy sign convention. Offset, being a translation, cancels in
+// every derivative and so never mattered.
+half HeightCurvature(CurvatureBasis b, float2 Lworld)
+{
+    float2 Ls = float2(dot(b.jw0, Lworld), dot(b.jw1, Lworld)); // world dir -> screen dir
+    float2 q  = b.duvx * Ls.x + b.duvy * Ls.y;                  // UV travelled per world unit
+    return (half)(-(q.x * dot(b.gnx, Ls) + q.y * dot(b.gny, Ls))) * b.valid;
+}
+
+// Direction-INDEPENDENT cavity: the height field's Laplacian, i.e. the curvature summed over
+// two orthogonal world axes. This is the same quantity a baker writes to a cavity/AO map,
+// computed live. Returned pre-split as (pitDepth, ridgeHeight), both 0..1, so the dark and
+// bright halves weight independently. A NEGATIVE _CavityScale swaps them — the fix for a
+// normal map whose X/green channel is inverted relative to Unity's convention.
+// Still per-2x2-pixel-quad, so slightly blocky under heavy magnification.
+half2 ComputeCavity(CurvatureBasis b)
+{
+    half lap = HeightCurvature(b, float2(1, 0)) + HeightCurvature(b, float2(0, 1));
+    half curv = (half)clamp(lap * _CavityScale, -1.0, 1.0); // clamped so one steep texel can't blow it out
+    return half2(saturate(curv), saturate(-curv)); // curvature is positive in pits
 }
 
 // The full specular pipeline applied on top of the already-lit base color `c`:
@@ -185,6 +237,10 @@ half2 ComputeCavity(half3 nBase)
 //   c        = the 2D-lit base color (CommonLitFragment result)
 //   nBase    = surface normal at AUTHORED depth (ComputeSurfaceNormal, optionally
 //              bent by the caller — e.g. the spline fill's edge bevel)
+//   nCurv    = the same normal BEFORE any such caller-side bend, used only by the curvature
+//              terms; pass nBase when the caller doesn't bend it
+//   uvEff    = the coordinate the normal varies over (ComputeSurfaceNormal's out param), so
+//              the curvature terms stay correct under per-object tiling overrides
 //   texel    = the RAW vertex-tinted albedo texel (NOT the lit result), used by
 //              the emboss relief and the albedo-tinted glint
 //   specMask = the pre-sampled per-pixel specular mask (RGB tint × strength) —
@@ -192,7 +248,8 @@ half2 ComputeCavity(half3 nBase)
 //              the spline-fill shader samples it itself (own UV transform + the
 //              stamp-once window)
 //   wpos     = fragment world position (real-light specular + world patterns)
-half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, float2 wpos)
+half4 ApplySpecularMasked(half4 c, half3 nBase, half3 nCurv, half3 texel, half3 specMask,
+                          float2 uvEff, float2 wpos)
 {
     // The specular gets its own _NormalStrength-scaled copy of the relief; the
     // emboss term below keeps the authored-depth nBase.
@@ -233,12 +290,16 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, flo
     half3 La = normalize(half3(_AmbientDir.xy, max(_AmbientDir.z, 1e-3h)));
     half fill = (dot(nBase.xy, La.xy) + (nBase.z - 1.0h) * La.z) * _AmbientFill;
 
-    // Cavity (pits, ridges) + slope shading, combined into one occlusion multiplier.
-    // pow's base is floored off zero because pow(0, 0) is undefined — with _SlopeAO at 0
-    // (the default) this still evaluates to exactly 1, i.e. the term is naturally off.
-    half2 cav = ComputeCavity(nBase);
+    // Cavity (pits, ridges) + slope shading. pow's base is floored off zero because
+    // pow(0, 0) is undefined — with _SlopeAO at 0 (the default) this still evaluates to
+    // exactly 1, i.e. the term is naturally off.
+    // The final occlusion multiplier is assembled AFTER the light loop (the lit-fade needs
+    // the accumulated light gate), but every DERIVATIVE-based quantity is computed here,
+    // outside the loop: gradient instructions inside its divergent control flow (all those
+    // `continue`s) are undefined behaviour.
+    CurvatureBasis curvBasis = BuildCurvatureBasis(nCurv, uvEff, wpos);
+    half2 cav = ComputeCavity(curvBasis);
     half slope = pow(max(saturate(nBase.z), 1e-4h), _SlopeAO);
-    half ao = saturate(slope * (1.0h - cav.x * _CavityAmount));
     half ridge = cav.y * _CavityRidge;
 
     // In this flat 2D setup the viewer looks straight down +Z.
@@ -273,7 +334,9 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, flo
 
     // --- Light-driven glint: real lights, cone-gated, computed on the GPU ---
     half lightSpec = 0.0h;
-    half emboss = 0.0h; // signed relief response (facing-light positive, facing-away negative)
+    half emboss = 0.0h;    // signed relief response (facing-light positive, facing-away negative)
+    half dirGroove = 0.0h; // net groove occlusion along each light's direction (unsigned, >= 0)
+    half gateSum = 0.0h;   // summed falloff*cone, used to normalise the two terms above
     int count = (int)_SpecLightCount;
     uint spriteBits = (uint)_SortingLayerBit; // which sorting layer this sprite is on
     [loop]
@@ -333,15 +396,29 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, flo
 
         lightSpec += g * falloff * cone;
 
+        // How much of this light lands here. Accumulated so the two relief terms below can
+        // be normalised after the loop instead of stacking per light (see (c) further down).
+        half gate = falloff * cone;
+        gateSum += gate;
+
         // Relief emboss: signed lambert of the AUTHORED normal against this light,
         // anchored to the flat-normal response so untextured pixels contribute zero.
-        // A grazing light vector (low Z) maximizes the relief contrast. Gated by the
-        // same falloff/cone, so unlit areas stay untouched. Applied after the loop.
+        // _EmbossElevation is how high this light sits above the surface plane — LOW is
+        // grazing, which maximizes relief contrast and is what makes the result read as
+        // shadow rather than as tinting. Gated by falloff/cone, so unlit areas stay untouched.
         if (_NormalEmboss > 0.0h)
         {
-            half3 Ld = normalize(half3(-dir.x, -dir.y, 0.5h));
-            emboss += (dot(nBase.xy, Ld.xy) + (nBase.z - 1.0h) * Ld.z) * falloff * cone;
+            half3 Ld = normalize(half3(-dir.x, -dir.y, max(_EmbossElevation, 1e-3h)));
+            emboss += (dot(nBase.xy, Ld.xy) + (nBase.z - 1.0h) * Ld.z) * gate;
         }
+
+        // Directional groove occlusion: net darkening in grooves running ACROSS this light's
+        // direction, none in grooves running along it. Complements the emboss above — that
+        // gives the bright-wall/dark-wall CONTRAST, this gives the net energy LOSS the
+        // antisymmetric emboss cancels out to zero. Same falloff/cone gate. `dir` is used
+        // unsigned (the term is quadratic in L), so light->surface vs surface->light is moot.
+        if (_DirCavity > 0.0h)
+            dirGroove += max(HeightCurvature(curvBasis, dir), 0.0h) * gate;
     }
     // Lit-gated modulation (modes 2/3): scale the light-driven glint so the shimmer is
     // additive to whatever illumination is present — zero light means zero shimmer.
@@ -349,23 +426,41 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, flo
     half lightMul = _ShimmerMode > 1.5h ? max(1.0h + m, 0.0h) : 1.0h;
     spec += lightSpec * lightMul;
 
+    // --- Relief layering: normalise the per-light terms, then assemble the occlusion ---
+    // Both per-light relief terms accumulate raw, so two overlapping beams used to double the
+    // relief and blow out. Dividing by the summed gate, FLOORED AT 1, keeps a single light
+    // bit-for-bit unchanged while making overlapping lights average instead of sum.
+    half gateNorm = max(gateSum, 1.0h);
+    half relief = (emboss / gateNorm) * _NormalEmboss;
+    half groove = saturate((dirGroove / gateNorm) * _DirCavityScale) * _DirCavity;
+
+    // The isotropic cavity is the AMBIENT occlusion term. Physically AO belongs to ambient
+    // light while direct light should cast real shadows instead — which is what the emboss and
+    // the groove term are for — so leaving both at full strength darkens a spotlit crevice
+    // twice under two different models. _CavityLitFade dials how much direct light suppresses
+    // the ambient one. 0 = the two simply stack (the behaviour before this term existed).
+    half litFade = 1.0h - _CavityLitFade * saturate(gateSum);
+    half ao = saturate(slope * (1.0h - cav.x * _CavityAmount * litFade));
+
+    // Everything that darkens, in one multiplier: ambient cavity + slope + directional grooves.
+    half occl = saturate(ao * (1.0h - groove));
+
     // Glow-zone HDR push: scales ALL specular (baseline + boost + light-driven) in
     // the bright-mask zone so crystal blobs climb past 1.0 and feed bloom, while
     // sub-threshold pixels keep their exact pre-glow value.
     spec *= lerp(1.0h, _GlowGain, glowW);
 
-    // Cavity occlusion on the GLINT: grit packed down into a crevice shouldn't sparkle,
-    // and gating the specular does as much for the sense of depth as darkening the albedo.
-    // Kept on its own dial so the two can be balanced independently (0 = glint ignores the
-    // occlusion, 1 = fully occluded by it).
-    spec *= lerp(1.0h, ao, _CavitySpec);
+    // Occlusion on the GLINT: grit packed down into a crevice shouldn't sparkle, and gating
+    // the specular does as much for the sense of depth as darkening the albedo. Kept on its
+    // own dial so the two can be balanced independently (0 = glint ignores the occlusion,
+    // 1 = fully occluded by it).
+    spec *= lerp(1.0h, occl, _CavitySpec);
 
     // Fake "additive light" relief from the normal's signed per-light response.
     // The bright lobe ADDS albedo-coloured light (the one thing a multiply light
     // can't do — this is what makes relief pop in a dark multiply-lit scene); the
     // dark lobe multiplicatively shades whatever the scene lights left. Flat pixels
     // are untouched, unlit areas stay dark (emboss is falloff/cone gated per light).
-    half relief = emboss * _NormalEmboss;
     c.rgb += texel * max(relief, 0.0h) * c.a;     // facing the light: additive, like an additive Light2D
     c.rgb *= max(1.0h + min(relief, 0.0h), 0.0h); // facing away: multiplicative shading
 
@@ -376,7 +471,7 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, flo
     half ambient = fill + ridge;
     c.rgb += texel * max(ambient, 0.0h) * c.a;     // sun-facing slopes + ridge crests
     c.rgb *= max(1.0h + min(ambient, 0.0h), 0.0h); // slopes turned away from the fill
-    c.rgb *= ao;                                   // cavity pits + slope shading
+    c.rgb *= occl;                                 // ambient cavity + slope + directional grooves
 
     // (specMask was sampled before the light loop — its RGB tints AND scales all
     // specular below: baked crystals carry their own glint colour at ~full strength,
@@ -414,11 +509,12 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, flo
 }
 
 // Convenience wrapper for callers whose spec mask simply shares the main UV
-// (the sprite shader): samples _SpecMask at uv and runs the full pipeline.
-half4 ApplySpecular(half4 c, half3 nBase, half3 texel, float2 uv, float2 wpos)
+// (the sprite shader): samples _SpecMask at uv and runs the full pipeline. That caller
+// doesn't bend the normal, so nBase doubles as the curvature normal.
+half4 ApplySpecular(half4 c, half3 nBase, half3 texel, float2 uv, float2 uvEff, float2 wpos)
 {
     half3 specMask = (half3)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, uv).rgb;
-    return ApplySpecularMasked(c, nBase, texel, specMask, wpos);
+    return ApplySpecularMasked(c, nBase, nBase, texel, specMask, uvEff, wpos);
 }
 
 #endif // SUBMACHINA_SPECULAR_LIT_CORE_INCLUDED

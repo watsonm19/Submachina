@@ -104,6 +104,9 @@ Shader "Submachina/2D/SplineFillLitSpecular"
         _NormalStrength("Normal Strength", Float) = 1
         _DiffNormalStrength("Diffuse Normal Strength", Float) = 1
         _NormalEmboss("Relief Emboss (fake additive relief)", Float) = 0
+        // How high each specular light sits above the plane for the emboss. LOW = grazing =
+        // maximum relief contrast (reads as shadow); high = overhead = flat. 0.5 = legacy.
+        _EmbossElevation("Emboss Light Elevation", Range(0.05, 2)) = 0.5
         _NormalFreq("Normal Frequency", Float) = 8
         // xy = UV of the sprite rect origin, zw = UV size — identity on meshes.
         _NormalUVRect("Normal UV Rect", Vector) = (0, 0, 1, 1)
@@ -118,15 +121,24 @@ Shader "Submachina/2D/SplineFillLitSpecular"
         //   A) fill   — a fixed virtual "sun" shading the relief everywhere. Keep the
         //               direction the same across materials so the scene shares one sun.
         //   B) slope  — steeper pixels darker; direction-independent depth floor.
-        //   C) cavity — normal-field divergence: dark pits, bright ridges, no baked map.
-        //               Negative gain flips pit/ridge for inverted-channel normal maps.
+        //   C) cavity — the height field's Laplacian: dark pits, bright ridges, no baked map.
+        //               Gain is per WORLD unit, so it does NOT drift with camera zoom or with
+        //               a tiling override (material or SplineFillOverride). Negative flips it.
         _AmbientFill("Ambient Fill Strength", Range(0, 3)) = 0
         _AmbientDir("Ambient Fill Dir (xyz)", Vector) = (-0.45, 0.6, 0.5, 0)
         _SlopeAO("Slope Shading Exponent (0 = off)", Range(0, 4)) = 0
         _CavityAmount("Cavity Occlusion (pits)", Range(0, 2)) = 0
         _CavityRidge("Cavity Ridge Highlight", Range(0, 2)) = 0
-        _CavityScale("Cavity Derivative Gain (+/-)", Range(-60, 60)) = 8
+        _CavityScale("Cavity Curvature Gain (+/-)", Range(-20, 20)) = 1
         _CavitySpec("Cavity Occludes Specular", Range(0, 1)) = 0
+        //   D) grooves — the LIGHT-FOLLOWING cavity: net darkening in grooves running ACROSS
+        //      a specular light's direction, none along it, so shading sweeps with the beam.
+        //      Complements Relief Emboss (contrast) with the net energy loss it cancels out.
+        //      Same per-world-unit curvature units as Cavity Gain, so the two are comparable.
+        //      Lit Fade hands crevices from the ambient cavity to these where light lands.
+        _DirCavity("Directional Groove Strength", Range(0, 2)) = 0
+        _DirCavityScale("Directional Groove Gain (+/-)", Range(-20, 20)) = 1
+        _CavityLitFade("Cavity Fade Under Direct Light", Range(0, 1)) = 0
 
         // Sorting layer bit (set per-instance by SpecularController). Default = all layers.
         _SortingLayerBit("Sorting Layer Bit", Float) = 16777215
@@ -213,6 +225,10 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _NormalStrength;
                 half _DiffNormalStrength;
                 half _NormalEmboss;
+                half _EmbossElevation;
+                half _DirCavity;
+                half _DirCavityScale;
+                half _CavityLitFade;
                 // Ambient relief (ungated fill light + cavity/slope AO) — SpecularLitCore.hlsl
                 half4 _AmbientDir;
                 half _AmbientFill;
@@ -270,10 +286,17 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 // edge rounds under the specular lights (the diffuse side of the same bevel
                 // happens in the NormalsRendering pass). Stamp Once: outside the map's
                 // single 0..1 window the surface is treated as flat.
-                half3 nBase = ComputeSurfaceNormal(uvNrm, input.worldPos.xy);
+                // uvEff is the coordinate the normal varies over — uvNrm here, so the fill's
+                // tiling (material, or a SplineFillOverride per-object override) is folded in
+                // and the curvature terms don't need re-tuning when a piece is retiled.
+                float2 uvEff;
+                half3 nCurv = ComputeSurfaceNormal(uvNrm, input.worldPos.xy, uvEff);
                 if (_NormalMapOnce > 0.5h && (any(uvNrm < 0.0) || any(uvNrm > 1.0)))
-                    nBase = half3(0.0h, 0.0h, 1.0h);
-                nBase = normalize(half3(nBase.xy + (half2)input.edge.xy * (_EdgeBevel * w), nBase.z));
+                    nCurv = half3(0.0h, 0.0h, 1.0h);
+                // nCurv is kept UNBEVELLED for the curvature terms: the bevel is a wide smooth
+                // ramp across the whole band, so differentiating it would paint a false cavity
+                // ring around the rim — which _EdgeDarken is already treating.
+                half3 nBase = normalize(half3(nCurv.xy + (half2)input.edge.xy * (_EdgeBevel * w), nCurv.z));
 
                 // Edge darken BEFORE the specular add (the Photoshop "inner glow, black,
                 // multiply" look) — bevel glints still fire on the darkened rim, which is
@@ -289,7 +312,7 @@ Shader "Submachina/2D/SplineFillLitSpecular"
 
                 // Full glint pipeline shared with the sprite shader.
                 half3 texel = (half3)SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).rgb * input.color.rgb;
-                c = ApplySpecularMasked(c, nBase, texel, specMask, input.worldPos.xy);
+                c = ApplySpecularMasked(c, nBase, nCurv, texel, specMask, uvEff, input.worldPos.xy);
 
                 // Alpha fade LAST, over everything (lit base + glints), so the whole
                 // surface melts toward the background at the rim.
@@ -368,6 +391,10 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _NormalStrength;
                 half _DiffNormalStrength;
                 half _NormalEmboss;
+                half _EmbossElevation;
+                half _DirCavity;
+                half _DirCavityScale;
+                half _CavityLitFade;
                 // Ambient relief (ungated fill light + cavity/slope AO) — SpecularLitCore.hlsl
                 half4 _AmbientDir;
                 half _AmbientFill;
@@ -480,6 +507,10 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _NormalStrength;
                 half _DiffNormalStrength;
                 half _NormalEmboss;
+                half _EmbossElevation;
+                half _DirCavity;
+                half _DirCavityScale;
+                half _CavityLitFade;
                 // Ambient relief (ungated fill light + cavity/slope AO) — SpecularLitCore.hlsl
                 half4 _AmbientDir;
                 half _AmbientFill;

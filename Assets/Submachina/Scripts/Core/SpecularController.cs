@@ -94,6 +94,10 @@ namespace Submachina.Core
         private static readonly int GlowGainID = Shader.PropertyToID("_GlowGain");
         private static readonly int DiffNormalStrengthID = Shader.PropertyToID("_DiffNormalStrength");
         private static readonly int NormalEmbossID = Shader.PropertyToID("_NormalEmboss");
+        private static readonly int EmbossElevationID = Shader.PropertyToID("_EmbossElevation");
+        private static readonly int DirCavityID = Shader.PropertyToID("_DirCavity");
+        private static readonly int DirCavityScaleID = Shader.PropertyToID("_DirCavityScale");
+        private static readonly int CavityLitFadeID = Shader.PropertyToID("_CavityLitFade");
         private static readonly int AmbientFillID = Shader.PropertyToID("_AmbientFill");
         private static readonly int AmbientDirID = Shader.PropertyToID("_AmbientDir");
         private static readonly int SlopeAOID = Shader.PropertyToID("_SlopeAO");
@@ -327,6 +331,33 @@ namespace Submachina.Core
                  "stay dark. 0 = off; useful range ~0.5-3.")]
         [SerializeField, Min(0f)] private float reliefEmboss = 0f;
 
+        [FoldoutGroup("Surface Normal"), ShowIf(nameof(HasReliefEmboss))]
+        [Tooltip("How high each specular light sits above the surface plane for the Relief Emboss above. " +
+                 "LOW = grazing light = maximum relief contrast, which is what makes the result read as " +
+                 "SHADOW rather than as tinting; high = overhead = flat. 0.5 is what this used to hardcode, " +
+                 "so lower it to make your lights sculpt the surface harder.")]
+        [SerializeField, Range(0.05f, 2f)] private float embossElevation = 0.5f;
+
+        [FoldoutGroup("Surface Normal")]
+        [Tooltip("The LIGHT-FOLLOWING cavity term: net darkening in grooves that run ACROSS a specular " +
+                 "light's direction, and none in grooves running along it — so the shading sweeps as the " +
+                 "beam moves. Complements Relief Emboss rather than duplicating it: the emboss is " +
+                 "antisymmetric (a fine groove's bright wall exactly cancels its dark wall, netting zero " +
+                 "darkening), while this is the net energy loss real raking light suffers crossing a groove. " +
+                 "0 = off.")]
+        [SerializeField, Range(0f, 2f)] private float directionalGrooves = 0f;
+
+        [FoldoutGroup("Surface Normal"), ShowIf(nameof(HasDirectionalGrooves))]
+        [Tooltip("Gain on the directional groove measurement. Same per-world-unit curvature units as the " +
+                 "Ambient Relief cavity gain, so the two are directly comparable and neither drifts with " +
+                 "camera zoom, sprite scale, or a tiling override. A negative value flips it (brightens " +
+                 "grooves instead), the fix for a normal map with an inverted channel.")]
+        [SerializeField, Range(-20f, 20f)] private float directionalGrooveGain = 1f;
+
+        // Sub-controls only matter once their parent term is actually contributing.
+        private bool HasReliefEmboss => reliefEmboss > 0f;
+        private bool HasDirectionalGrooves => directionalGrooves > 0f;
+
         [FoldoutGroup("Surface Normal"), HideIf(nameof(IsBaselineNormalMode))]
         [Tooltip("Wave count (Ripples/Radial) or cell count (Facets) across the sprite. Ignored by Dome/Bevel. " +
                  "For the World modes this is cells/waves PER WORLD UNIT instead (e.g. 8 = 8 sparkle cells per metre).")]
@@ -385,17 +416,26 @@ namespace Submachina.Core
         [SerializeField, Range(0f, 2f)] private float cavityRidge = 0f;
 
         [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
-        [Tooltip("Gain on the raw curvature measurement. Both the normal map's relief depth AND its texel " +
-                 "density per screen pixel feed this, so expect to tune it per material — raise until pits " +
-                 "read, back off before they crush to black. A NEGATIVE value swaps pits and ridges, which " +
-                 "is the fix if a normal map's X/green channel is inverted.")]
-        [SerializeField, Range(-60f, 60f)] private float cavityGain = 8f;
+        [Tooltip("Gain on the curvature measurement. Measured per WORLD unit, so it does NOT drift with " +
+                 "camera zoom, sprite scale, or a tiling override — tune it once per normal map (raise " +
+                 "until pits read, back off before they crush to black). Same units as the Directional " +
+                 "Groove Gain, so the two are directly comparable. A NEGATIVE value swaps pits and ridges, " +
+                 "the fix if a normal map's X/green channel is inverted.")]
+        [SerializeField, Range(-20f, 20f)] private float cavityGain = 1f;
 
         [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
         [Tooltip("How much the cavity/slope occlusion also gates the SPECULAR — grit packed down into a " +
                  "crevice shouldn't sparkle. Gating the glint sells depth about as strongly as darkening " +
                  "the albedo does. 0 = glint ignores occlusion, 1 = fully occluded.")]
         [SerializeField, Range(0f, 1f)] private float cavityOccludesSpecular = 0f;
+
+        [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
+        [Tooltip("How much DIRECT light suppresses the cavity occlusion above. Physically, ambient occlusion " +
+                 "belongs to AMBIENT light — direct light is supposed to cast real shadows instead, which is " +
+                 "what Relief Emboss and Directional Grooves do. At 0 a spotlit crevice gets darkened twice " +
+                 "by two different models; raise toward 1 to hand crevices over to the light-following terms " +
+                 "wherever a beam actually lands. 0 = the terms simply stack.")]
+        [SerializeField, Range(0f, 1f)] private float cavityFadeUnderLight = 0f;
 
         // =====================
         // Transient flare (one-shot pulses)
@@ -608,6 +648,12 @@ namespace Submachina.Core
             mpb.SetFloat(DiffNormalStrengthID, diffuseNormalStrength);
             mpb.SetFloat(NormalEmbossID, reliefEmboss);
             mpb.SetFloat(NormalFreqID, normalFrequency);
+            // Light-FOLLOWING relief: the emboss's grazing angle plus the directional groove
+            // term. These live with the lights, so they're independent of the ambientRelief
+            // toggle below (which only gates the light-independent terms).
+            mpb.SetFloat(EmbossElevationID, embossElevation);
+            mpb.SetFloat(DirCavityID, directionalGrooves);
+            mpb.SetFloat(DirCavityScaleID, directionalGrooveGain);
             // Ambient relief: the three light-INDEPENDENT terms (fill sun, slope shading,
             // cavity). The master toggle off writes plain zeros, each of which is the
             // shader's natural no-op, so the terms cost nothing and change nothing.
@@ -619,6 +665,7 @@ namespace Submachina.Core
             mpb.SetFloat(CavityRidgeID, ambientRelief ? cavityRidge : 0f);
             mpb.SetFloat(CavityScaleID, cavityGain);
             mpb.SetFloat(CavitySpecID, ambientRelief ? cavityOccludesSpecular : 0f);
+            mpb.SetFloat(CavityLitFadeID, ambientRelief ? cavityFadeUnderLight : 0f);
             // Sprite rect remap only applies to SpriteRenderers; a SpriteShape mesh spans
             // many sprite rects + a tiling fill, so it gets the identity rect.
             mpb.SetVector(NormalUVRectID, r is SpriteRenderer sr ? SpriteUVRect(sr) : new Vector4(0f, 0f, 1f, 1f));
