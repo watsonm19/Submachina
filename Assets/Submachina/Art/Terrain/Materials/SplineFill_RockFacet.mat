@@ -1,0 +1,91 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: SplineFill_RockFacet
+  m_Shader: {fileID: 4800000, guid: 788c8ceb49920ca4fb257ad68fae5dd3, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: cb8a4fdc4097b0748876a070b6cbd733, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MaskTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalMap:
+        m_Texture: {fileID: 2800000, guid: 9b083d01697576c4e8371ebbe63fb973, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _SpecMask:
+        m_Texture: {fileID: 2800000, guid: 5e46636ebd3a9614c8ce32587fd3c10c, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _DiffNormalStrength: 1
+    - _EdgeAlphaFade: 0
+    - _EdgeBevel: 1.5
+    - _EdgeDarken: 0.85
+    - _EdgeFalloff: 2
+    - _EdgeWidth: 1
+    - _GlowGain: 2
+    - _GlowKnee: 0.15
+    - _GlowPower: 8
+    - _GlowThreshold: 2
+    - _GlowViewBias: 4
+    - _LightResponse: 1
+    - _NormalEmboss: 0
+    - _NormalFreq: 12
+    - _NormalMapOnce: 0
+    - _NormalMode: 0
+    - _NormalStrength: 1
+    - _ShimmerAmp: 0
+    - _ShimmerMode: 0
+    - _ShimmerPhase: 0
+    - _ShimmerSpeed: 1
+    - _ShimmerWave: 0
+    - _SortingLayerBit: 16777215
+    - _SpecAlbedoTint: 0
+    - _SpecBoost: 0
+    - _SpecClamp: 0
+    - _SpecIntensity: 0
+    - _SpecMaskOnce: 0
+    - _SpecPower: 64
+    - _SpecReplace: 0
+    - _SpecScreen: 0
+    - _SpecViewBias: 0.66
+    - _ZWrite: 0
+    m_Colors:
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _DirWobble: {r: 0, g: 1, b: 0, a: 0}
+    - _EdgeColor: {r: 0, g: 0, b: 0, a: 1}
+    - _NormalTexST: {r: 1, g: 1, b: 0, a: 0}
+    - _NormalUVRect: {r: 0, g: 0, b: 1, a: 1}
+    - _SpecColor: {r: 1.3, g: 1.4, b: 1.6, a: 1}
+    - _SpecLightDir: {r: -0.45, g: 0.6, b: 0.66, a: 0}
+    - _SpecMaskOnceBg: {r: 1, g: 1, b: 1, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1
