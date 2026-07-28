@@ -13,6 +13,7 @@ namespace Core.Editor
      * with an empty mesh and cast no shadow until something "changes" in the
      * Inspector. This hook heals all casters automatically:
      *   - when a scene is opened,
+     *   - after every domain reload (script recompiles wipe the meshes too),
      *   - after any texture reimport (sprite outline edits change the mesh source),
      *   - on demand via Tools/Custom/Refresh 2D Shadows.
      *
@@ -31,6 +32,10 @@ namespace Core.Editor
         static ShadowCaster2DEditorRefresher()
         {
             EditorSceneManager.sceneOpened += (scene, mode) => RequestRefresh();
+
+            // Domain reloads (script recompiles) also wipe rebuilt meshes — this ctor
+            // reruns after every reload, so schedule a refresh once the editor settles
+            EditorApplication.delayCall += RequestRefresh;
         }
 
         [MenuItem("Tools/Custom/Refresh 2D Shadows")]

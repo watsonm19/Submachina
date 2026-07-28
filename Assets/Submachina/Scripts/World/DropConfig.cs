@@ -1,3 +1,4 @@
+using Core.Rendering;
 using UnityEngine;
 
 namespace Submachina.Core
@@ -49,6 +50,7 @@ namespace Submachina.Core
                     prefab,
                     position + (Vector3)offset,
                     Quaternion.identity);
+                ShadowCaster2DRefresher.RefreshHierarchy(instance); // URP 2D casters don't rebuild their mesh on clone — force it
 
                 Configure(instance);
             }

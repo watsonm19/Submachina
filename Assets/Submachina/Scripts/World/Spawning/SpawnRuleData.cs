@@ -1,4 +1,5 @@
 using System;
+using Core.Rendering;
 using UnityEngine;
 using Sirenix.OdinInspector;
 
@@ -189,6 +190,7 @@ namespace Submachina.Core
 
                 // Instantiate at the world position, apply optional scale, then per-instance setup
                 GameObject go = UnityEngine.Object.Instantiate(prefab, result.position, Quaternion.identity, parent);
+                ShadowCaster2DRefresher.RefreshHierarchy(go); // URP 2D casters don't rebuild their mesh on clone — force it
                 if (result.scaleOverride.HasValue)
                     go.transform.localScale = result.scaleOverride.Value;
                 configurator?.Configure(go, ctx.depth, rng);

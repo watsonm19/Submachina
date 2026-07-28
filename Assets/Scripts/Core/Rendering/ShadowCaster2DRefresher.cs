@@ -39,6 +39,16 @@ namespace Core.Rendering
         [Tooltip("Also rebuild casters on inactive objects.")]
         [SerializeField] private bool includeInactive = true;
 
+        [Tooltip("Periodically re-kick casters whose mesh is still empty. Safety net for " +
+                 "late spawns and rebuilds that come up empty on their first pass.")]
+        [SerializeField] private bool periodicSweep = true;
+
+        [Tooltip("Seconds between sweep passes.")]
+        [SerializeField] private float sweepInterval = 2f;
+
+        // Next Time.time at which the periodic sweep runs
+        private float _nextSweepTime;
+
         // Cached reflection handles into ShadowCaster2D internals (URP 17.x).
         private static readonly FieldInfo ForceRebuildField =
             typeof(ShadowCaster2D).GetField("m_ForceShadowMeshRebuild",
@@ -62,6 +72,24 @@ namespace Core.Rendering
         {
             if (refreshEntireScene) RefreshScene(includeInactive);
             else RefreshHierarchy(gameObject, includeInactive);
+        }
+
+        /**
+         * Periodic safety net: a caster's first rebuild after its shape provider
+         * initializes can come up empty (observed on cluster-spawned rocks), and
+         * objects spawned through paths that don't call RefreshHierarchy would
+         * otherwise stay shadowless forever. Re-kicking only empty casters makes
+         * this converge quickly and costs almost nothing per sweep.
+         */
+        private void Update()
+        {
+            if (!periodicSweep || Time.time < _nextSweepTime) return;
+            _nextSweepTime = Time.time + sweepInterval;
+
+            // Re-flag only the casters that still have no shadow geometry
+            var include = includeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
+            foreach (ShadowCaster2D caster in FindObjectsByType<ShadowCaster2D>(include, FindObjectsSortMode.None))
+                if (!HasShadowGeometry(caster)) ForceRebuild(caster);
         }
 
         /**

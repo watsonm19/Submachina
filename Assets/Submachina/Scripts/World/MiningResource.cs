@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Core.Rendering;
 using UnityEngine;
 using Sirenix.OdinInspector;
 
@@ -198,7 +199,10 @@ namespace Submachina.Core
             // Roll for a scrap pickup drop — spawns a physical world object that the
             // player must come within pickup range to collect (bank-full check happens there)
             if (scrapPickupPrefab != null && Random.value < scrapDropChance)
-                Instantiate(scrapPickupPrefab, transform.position, Quaternion.identity);
+            {
+                GameObject scrap = Instantiate(scrapPickupPrefab, transform.position, Quaternion.identity);
+                ShadowCaster2DRefresher.RefreshHierarchy(scrap); // URP 2D casters don't rebuild their mesh on clone — force it
+            }
 
             Destroy(gameObject);
         }
