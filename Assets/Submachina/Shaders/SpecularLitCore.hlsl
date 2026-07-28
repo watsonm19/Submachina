@@ -147,6 +147,38 @@ half3 ComputeSurfaceNormal(float2 uv, float2 wpos)
     return normalize(half3((half2)g, 1.0h));
 }
 
+// Live cavity/AO from the normal field's DIVERGENCE — a "cavity map" computed per-frame
+// instead of baked. Screen-space derivatives of the normal give the local curvature:
+// concave (pits) comes out negative, convex (ridges) positive.
+//   e.g. a 1D valley h = x^2 has tangent-space normal (-2x, 1), so ddx(n.x) = -2;
+//        a ridge h = -x^2 gives (2x, 1) and ddx(n.x) = +2.
+// Returned pre-split as (pitDepth, ridgeHeight), both 0..1, so the caller can weight the
+// dark and bright halves independently.
+//
+// Two properties of derivatives to keep in mind:
+//   - they're evaluated per 2x2 pixel quad, so the result is slightly blocky under heavy
+//     magnification, and
+//   - their magnitude scales with texel density per pixel — i.e. with camera zoom. Our
+//     setup is orthographic at a fixed size, so _CavityScale can be tuned once and stays
+//     valid; a zooming camera would need it driven from the zoom.
+// A NEGATIVE _CavityScale swaps pit/ridge, which is the fix if a normal map's X/green
+// channel is inverted relative to Unity's convention.
+half2 ComputeCavity(half3 nBase)
+{
+    // Divergence of the normal's XY, gained into a usable range and clamped so one steep
+    // texel can't blow the term past full occlusion. Computed UNCONDITIONALLY — derivative
+    // instructions inside branches are a portability hazard, and they're only 2 ops anyway.
+    half curv = (half)clamp((ddx(nBase.x) + ddy(nBase.y)) * _CavityScale, -1.0, 1.0);
+
+    // The Facets patterns (modes 5 and 7) are piecewise constant per hashed cell: their
+    // derivative is exactly 0 inside a cell and a spike at the boundary, so cavity would
+    // draw cell OUTLINES rather than relief. Mask it off rather than branching around it.
+    bool facets = (_NormalMode > 4.5h && _NormalMode < 5.5h) || (_NormalMode > 6.5h && _NormalMode < 7.5h);
+    curv = facets ? 0.0h : curv;
+
+    return half2(saturate(-curv), saturate(curv)); // x = pit depth, y = ridge height
+}
+
 // The full specular pipeline applied on top of the already-lit base color `c`:
 // baseline glint + shimmer/wobble animation + the real-light Blinn-Phong loop +
 // glow zone + relief emboss + the additive/screen/replace compose.
@@ -179,6 +211,35 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, flo
     // these locals, so the glow zone costs two lerps, not a second Blinn-Phong pass.
     half viewBias = lerp(_SpecViewBias, _GlowViewBias, glowW);
     half specPow  = lerp(_SpecPower,    _GlowPower,    glowW);
+
+    // --- Ambient relief: the UNGATED half of the lighting model ---
+    // URP 2D shades normal maps strictly per-LIGHT and positionally (see
+    // LightingUtility.hlsl: lightColor *= saturate(dot(dirToLight, normal)), which needs a
+    // light POSITION — so a Global Light2D, having none, is a flat multiply that ignores
+    // normals entirely). The per-light _NormalEmboss further down is gated by each light's
+    // falloff/cone. Net effect: with no specular light on a surface, its relief vanishes.
+    // These three terms are the fix, and none of them is light-gated:
+    //   fill   = signed lambert against a fixed virtual "sun" — directional relief
+    //            everywhere, the 2D stand-in for a 3D directional light.
+    //   cavity = normal-field divergence — direction-INDEPENDENT depth (dark pits,
+    //            bright ridge crests). Survives in total darkness.
+    //   slope  = steeper pixels sit darker — a one-instruction always-on depth floor.
+    // All read nBase (authored depth), so they stay in step with the emboss.
+
+    // Virtual directional fill. Anchored the same way as the per-light emboss:
+    // dot(n.xy, L.xy) + (n.z - 1) * L.z is exactly 0 for a flat normal (0,0,1), so
+    // untextured pixels are never tinted or washed out. Z is clamped off zero so a
+    // zeroed _AmbientDir can't produce a NaN out of normalize.
+    half3 La = normalize(half3(_AmbientDir.xy, max(_AmbientDir.z, 1e-3h)));
+    half fill = (dot(nBase.xy, La.xy) + (nBase.z - 1.0h) * La.z) * _AmbientFill;
+
+    // Cavity (pits, ridges) + slope shading, combined into one occlusion multiplier.
+    // pow's base is floored off zero because pow(0, 0) is undefined — with _SlopeAO at 0
+    // (the default) this still evaluates to exactly 1, i.e. the term is naturally off.
+    half2 cav = ComputeCavity(nBase);
+    half slope = pow(max(saturate(nBase.z), 1e-4h), _SlopeAO);
+    half ao = saturate(slope * (1.0h - cav.x * _CavityAmount));
+    half ridge = cav.y * _CavityRidge;
 
     // In this flat 2D setup the viewer looks straight down +Z.
     const half3 V = half3(0, 0, 1);
@@ -293,6 +354,12 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, flo
     // sub-threshold pixels keep their exact pre-glow value.
     spec *= lerp(1.0h, _GlowGain, glowW);
 
+    // Cavity occlusion on the GLINT: grit packed down into a crevice shouldn't sparkle,
+    // and gating the specular does as much for the sense of depth as darkening the albedo.
+    // Kept on its own dial so the two can be balanced independently (0 = glint ignores the
+    // occlusion, 1 = fully occluded by it).
+    spec *= lerp(1.0h, ao, _CavitySpec);
+
     // Fake "additive light" relief from the normal's signed per-light response.
     // The bright lobe ADDS albedo-coloured light (the one thing a multiply light
     // can't do — this is what makes relief pop in a dark multiply-lit scene); the
@@ -301,6 +368,15 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 texel, half3 specMask, flo
     half relief = emboss * _NormalEmboss;
     c.rgb += texel * max(relief, 0.0h) * c.a;     // facing the light: additive, like an additive Light2D
     c.rgb *= max(1.0h + min(relief, 0.0h), 0.0h); // facing away: multiplicative shading
+
+    // Ambient relief, composed exactly like the emboss above — bright half ADDS
+    // albedo-coloured light (the thing a multiply-only 2D light can never do), dark half
+    // shades multiplicatively. The difference is that NONE of this is falloff/cone gated,
+    // so it survives with no light on the surface at all, which is the whole point.
+    half ambient = fill + ridge;
+    c.rgb += texel * max(ambient, 0.0h) * c.a;     // sun-facing slopes + ridge crests
+    c.rgb *= max(1.0h + min(ambient, 0.0h), 0.0h); // slopes turned away from the fill
+    c.rgb *= ao;                                   // cavity pits + slope shading
 
     // (specMask was sampled before the light loop — its RGB tints AND scales all
     // specular below: baked crystals carry their own glint colour at ~full strength,

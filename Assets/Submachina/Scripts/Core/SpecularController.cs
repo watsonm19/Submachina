@@ -94,6 +94,13 @@ namespace Submachina.Core
         private static readonly int GlowGainID = Shader.PropertyToID("_GlowGain");
         private static readonly int DiffNormalStrengthID = Shader.PropertyToID("_DiffNormalStrength");
         private static readonly int NormalEmbossID = Shader.PropertyToID("_NormalEmboss");
+        private static readonly int AmbientFillID = Shader.PropertyToID("_AmbientFill");
+        private static readonly int AmbientDirID = Shader.PropertyToID("_AmbientDir");
+        private static readonly int SlopeAOID = Shader.PropertyToID("_SlopeAO");
+        private static readonly int CavityAmountID = Shader.PropertyToID("_CavityAmount");
+        private static readonly int CavityRidgeID = Shader.PropertyToID("_CavityRidge");
+        private static readonly int CavityScaleID = Shader.PropertyToID("_CavityScale");
+        private static readonly int CavitySpecID = Shader.PropertyToID("_CavitySpec");
         private static readonly int ShimmerAmpID = Shader.PropertyToID("_ShimmerAmp");
         private static readonly int ShimmerSpeedID = Shader.PropertyToID("_ShimmerSpeed");
         private static readonly int ShimmerPhaseID = Shader.PropertyToID("_ShimmerPhase");
@@ -201,6 +208,21 @@ namespace Submachina.Core
                  "they feed bloom. The glow keeps the mask's own colour (green blobs bloom green). " +
                  "The Baseline screen/replace compose also fades out in the zone so bloom isn't capped.")]
         [SerializeField] private float glowGain = 2f;
+
+        // =====================
+        // Spec mask (per-pixel gate/tint on ALL specular — which pixels get to glint)
+        // =====================
+
+        [FoldoutGroup("Spec Mask")]
+        [Tooltip("Per-instance specular mask (RGB tint × strength per pixel): bright pixels glint at " +
+                 "full strength, dark pixels stay dull — e.g. a speckle graphic makes ONLY the speckles " +
+                 "light up under a sweeping light ('hidden gold'). Pairs well with the Glow Zone (bright " +
+                 "speckles bloom) and a Facets normal (each speckle answers a different light angle). " +
+                 "Bound directly, so the sprite needs no _SpecMask Secondary Texture wiring. Sampled with " +
+                 "the sprite's own UVs: standalone sprites line up 1:1, atlased sprites won't (use a " +
+                 "Secondary Texture there so it atlases along). Empty = keep the sprite's Secondary " +
+                 "Texture / material default. For spline-fill meshes use SplineFillOverride's slot instead.")]
+        [SerializeField] private Texture2D specMaskTexture;
 
         // =====================
         // Animation (living, shimmering sprite) — computed in-shader from _Time, zero CPU cost
@@ -313,6 +335,67 @@ namespace Submachina.Core
         // Strength/frequency only matter for the procedural patterns (not the two texture modes).
         private bool IsBaselineNormalMode =>
             normalSource == NormalSource.SpriteNormalMap || normalSource == NormalSource.NormalTexture;
+
+        // =====================
+        // Ambient relief — the relief you can see with NO light on the surface
+        // =====================
+
+        [FoldoutGroup("Ambient Relief")]
+        [InfoBox("URP 2D can only shade a normal map from POSITIONAL lights — a Global Light2D has no " +
+                 "position, so it's a flat multiply that ignores normals — and Relief Emboss above is " +
+                 "gated by each specular light's falloff/cone. Result: unlit surfaces read as completely " +
+                 "flat. These three terms are ungated, so relief survives in the dark.")]
+        [Tooltip("Master switch for all three ambient relief terms. Off zeroes them in the shader, " +
+                 "so this is a clean A/B toggle with no other bookkeeping.")]
+        [SerializeField] private bool ambientRelief = false;
+
+        [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
+        [Tooltip("(A) Virtual directional fill light — a fixed 'sun' that shades the relief EVERYWHERE, " +
+                 "the 2D stand-in for Unity's 3D directional light. Brightens slopes facing it and shades " +
+                 "slopes turned away; flat pixels are untouched, so untextured sprites never wash out. " +
+                 "0 = off; useful range ~0.2-1.")]
+        [SerializeField, Range(0f, 3f)] private float ambientFill = 0f;
+
+        [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
+        [Tooltip("Direction the ambient fill 'sun' comes from, in sprite/UV space. Keep this IDENTICAL " +
+                 "across every material in the scene — a shared direction is what reads as one sun; " +
+                 "per-object directions just read as noise.")]
+        [SerializeField] private Vector2 ambientFillDir = new Vector2(-0.45f, 0.6f);
+
+        [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
+        [Tooltip("How high the fill 'sun' sits above the surface plane. Low = grazing light = maximum " +
+                 "relief contrast (long apparent shading); high = overhead = flatter, subtler shading.")]
+        [SerializeField, Range(0.05f, 2f)] private float ambientFillElevation = 0.5f;
+
+        [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
+        [Tooltip("(B) Slope shading — steeper pixels sit darker, regardless of any light direction. " +
+                 "Costs one instruction. Not true occlusion (it also dims the rim of a big smooth bulge), " +
+                 "but it's a cheap always-on depth floor. 0 = off; useful range ~0.5-3.")]
+        [SerializeField, Range(0f, 4f)] private float slopeShading = 0f;
+
+        [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
+        [Tooltip("(C) Cavity occlusion — darkens PITS, derived live from the normal map's curvature " +
+                 "(no baked AO texture needed). This is the term that makes crevices read as deep. " +
+                 "0 = off; useful range ~0.3-1.")]
+        [SerializeField, Range(0f, 2f)] private float cavityOcclusion = 0f;
+
+        [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
+        [Tooltip("The bright half of the same cavity term — brightens RIDGE CRESTS with albedo-coloured " +
+                 "light. Often sells relief harder than the dark half does, so try raising both together.")]
+        [SerializeField, Range(0f, 2f)] private float cavityRidge = 0f;
+
+        [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
+        [Tooltip("Gain on the raw curvature measurement. Both the normal map's relief depth AND its texel " +
+                 "density per screen pixel feed this, so expect to tune it per material — raise until pits " +
+                 "read, back off before they crush to black. A NEGATIVE value swaps pits and ridges, which " +
+                 "is the fix if a normal map's X/green channel is inverted.")]
+        [SerializeField, Range(-60f, 60f)] private float cavityGain = 8f;
+
+        [FoldoutGroup("Ambient Relief"), ShowIf(nameof(ambientRelief))]
+        [Tooltip("How much the cavity/slope occlusion also gates the SPECULAR — grit packed down into a " +
+                 "crevice shouldn't sparkle. Gating the glint sells depth about as strongly as darkening " +
+                 "the albedo does. 0 = glint ignores occlusion, 1 = fully occluded.")]
+        [SerializeField, Range(0f, 1f)] private float cavityOccludesSpecular = 0f;
 
         // =====================
         // Transient flare (one-shot pulses)
@@ -525,6 +608,17 @@ namespace Submachina.Core
             mpb.SetFloat(DiffNormalStrengthID, diffuseNormalStrength);
             mpb.SetFloat(NormalEmbossID, reliefEmboss);
             mpb.SetFloat(NormalFreqID, normalFrequency);
+            // Ambient relief: the three light-INDEPENDENT terms (fill sun, slope shading,
+            // cavity). The master toggle off writes plain zeros, each of which is the
+            // shader's natural no-op, so the terms cost nothing and change nothing.
+            Vector2 fd = ambientFillDir.sqrMagnitude > 1e-4f ? ambientFillDir.normalized : Vector2.up;
+            mpb.SetVector(AmbientDirID, new Vector4(fd.x, fd.y, ambientFillElevation, 0f));
+            mpb.SetFloat(AmbientFillID, ambientRelief ? ambientFill : 0f);
+            mpb.SetFloat(SlopeAOID, ambientRelief ? slopeShading : 0f);
+            mpb.SetFloat(CavityAmountID, ambientRelief ? cavityOcclusion : 0f);
+            mpb.SetFloat(CavityRidgeID, ambientRelief ? cavityRidge : 0f);
+            mpb.SetFloat(CavityScaleID, cavityGain);
+            mpb.SetFloat(CavitySpecID, ambientRelief ? cavityOccludesSpecular : 0f);
             // Sprite rect remap only applies to SpriteRenderers; a SpriteShape mesh spans
             // many sprite rects + a tiling fill, so it gets the identity rect.
             mpb.SetVector(NormalUVRectID, r is SpriteRenderer sr ? SpriteUVRect(sr) : new Vector4(0f, 0f, 1f, 1f));
@@ -537,6 +631,10 @@ namespace Submachina.Core
                 mpb.SetVector(NormalTexSTID, new Vector4(
                     normalTextureTiling.x, normalTextureTiling.y, normalTextureOffset.x, normalTextureOffset.y));
             }
+            // Inline spec-mask override: gates/tints all specular per pixel without Secondary
+            // Texture wiring. Left empty, the sprite's own _SpecMask (or the "white" = fully
+            // shiny default) shows through.
+            if (specMaskTexture != null) mpb.SetTexture(SpecMaskID, specMaskTexture);
             if (overrideColor) mpb.SetColor(SpecColorID, specColor);
             // Sorting layer bit so the shader only responds to lights targeting this layer
             mpb.SetFloat(SortingLayerBitID, (float)SpecularLight2DManager.SortingLayerBit(r.sortingLayerID));
@@ -602,14 +700,15 @@ namespace Submachina.Core
         /** Lazily cache the renderers + property block (Awake, edit-mode ApplyTint/OnValidate). */
         private void EnsureInitialized()
         {
-            // Gather only the renderer types the specular shader targets (plain sprites and
-            // SpriteShape terrain) — skipping particles/lines/etc. that may share the hierarchy.
+            // Gather only the renderer types the specular shaders target: plain sprites,
+            // SpriteShape terrain, and generated spline-fill meshes (MeshRenderer +
+            // SplineFillLitSpecular) — skipping particles/lines/etc. in the hierarchy.
             if (_renderers == null)
             {
                 var all = GetComponentsInChildren<Renderer>(true);
                 var list = new List<Renderer>(all.Length);
                 foreach (var r in all)
-                    if (r is SpriteRenderer || r is SpriteShapeRenderer) list.Add(r);
+                    if (r is SpriteRenderer || r is SpriteShapeRenderer || r is MeshRenderer) list.Add(r);
                 _renderers = list.ToArray();
             }
             if (_mpb == null) _mpb = new MaterialPropertyBlock();

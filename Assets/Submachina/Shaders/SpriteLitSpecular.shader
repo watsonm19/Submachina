@@ -122,6 +122,34 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // xy = tiling (scale), zw = offset for the override texture within the sprite rect (like Unity's _ST).
         _NormalTexST("Normal Override Tiling/Offset", Vector) = (1, 1, 0, 0)
 
+        [Header(Ambient Relief)]
+        // URP 2D shades normal maps only from POSITIONAL lights — a Global Light2D has no
+        // position, so it CANNOT light a normal map (it's a flat multiply) — and the
+        // _NormalEmboss above is gated by each specular light's falloff/cone. So relief
+        // disappears wherever no specular light reaches. These are the ungated substitute
+        // (see SpecularLitCore.hlsl for the full story); all three default to OFF.
+        //
+        // A) Virtual directional fill — a fixed "sun" that shades the relief everywhere.
+        //    Keep the direction identical across every material or the scene reads as if
+        //    each rock had its own sun. xyz = tangent/UV space (z leans toward the viewer;
+        //    lower z = more grazing = more relief contrast).
+        _AmbientFill("Ambient Fill Strength", Range(0, 3)) = 0
+        _AmbientDir("Ambient Fill Dir (xyz)", Vector) = (-0.45, 0.6, 0.5, 0)
+        // B) Slope shading — steeper pixels darker. One pow, direction-independent, not
+        //    true occlusion (it dims the rim of a big smooth dome too). 0 = off, ~0.5-3 useful.
+        _SlopeAO("Slope Shading Exponent (0 = off)", Range(0, 4)) = 0
+        // C) Cavity from the normal field's divergence — a live cavity map, no baked texture:
+        //    pits darken, ridge crests brighten. Occlusion/Ridge weight the two halves
+        //    independently; Gain scales the raw screen-space derivative (relief depth AND
+        //    texel density both feed it, so expect to tune it per material). A NEGATIVE gain
+        //    flips pit/ridge — the fix for a normal map with an inverted X/green channel.
+        _CavityAmount("Cavity Occlusion (pits)", Range(0, 2)) = 0
+        _CavityRidge("Cavity Ridge Highlight", Range(0, 2)) = 0
+        _CavityScale("Cavity Derivative Gain (+/-)", Range(-60, 60)) = 8
+        // How much the cavity/slope occlusion ALSO gates the specular — grit packed into a
+        // crevice shouldn't glint. 0 = glint unoccluded, 1 = fully occluded.
+        _CavitySpec("Cavity Occludes Specular", Range(0, 1)) = 0
+
         // Sorting layer bit for this sprite (set per-instance by SpecularController). Lights whose
         // sorting layer mask doesn't overlap this bit are skipped. Default = all layers visible.
         _SortingLayerBit("Sorting Layer Bit", Float) = 16777215
@@ -203,6 +231,14 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalStrength;
                 half _DiffNormalStrength;
                 half _NormalEmboss;
+                // Ambient relief (ungated fill light + cavity/slope AO) — SpecularLitCore.hlsl
+                half4 _AmbientDir;
+                half _AmbientFill;
+                half _SlopeAO;
+                half _CavityAmount;
+                half _CavityRidge;
+                half _CavityScale;
+                half _CavitySpec;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
@@ -302,6 +338,14 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalStrength;
                 half _DiffNormalStrength;
                 half _NormalEmboss;
+                // Ambient relief (ungated fill light + cavity/slope AO) — SpecularLitCore.hlsl
+                half4 _AmbientDir;
+                half _AmbientFill;
+                half _SlopeAO;
+                half _CavityAmount;
+                half _CavityRidge;
+                half _CavityScale;
+                half _CavitySpec;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
@@ -393,6 +437,14 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalStrength;
                 half _DiffNormalStrength;
                 half _NormalEmboss;
+                // Ambient relief (ungated fill light + cavity/slope AO) — SpecularLitCore.hlsl
+                half4 _AmbientDir;
+                half _AmbientFill;
+                half _SlopeAO;
+                half _CavityAmount;
+                half _CavityRidge;
+                half _CavityScale;
+                half _CavitySpec;
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
