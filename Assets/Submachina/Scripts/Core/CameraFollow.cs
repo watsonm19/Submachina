@@ -54,13 +54,19 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Bounds")]
-        [Tooltip("Clamp how far up the camera can travel. " +
+        [InfoBox("When a LevelBounds is assigned (or found in the scene), the FULL view rect is clamped " +
+                 "inside it. The legacy clampTop fields below only apply when no LevelBounds is available.")]
+        [Tooltip("The level's authoritative extents. Auto-resolved from the scene at Awake when left empty.")]
+        [SerializeField] private LevelBounds levelBounds;
+
+        [FoldoutGroup("Bounds")]
+        [Tooltip("LEGACY (superseded by LevelBounds): clamp how far up the camera can travel. " +
                  "Set to 0 to represent the ocean surface — the camera never shows above water.")]
         [SerializeField] private bool clampTop = true;
 
         [FoldoutGroup("Bounds")]
         [ShowIf("clampTop")]
-        [Tooltip("Maximum world Y the camera can reach. 0 = ocean surface.")]
+        [Tooltip("LEGACY (superseded by LevelBounds): maximum world Y the camera can reach. 0 = ocean surface.")]
         [SerializeField] private float topBoundY = 0f;
 
         // =====================
@@ -72,9 +78,23 @@ namespace Submachina.Core
             ? (Vector2)target.position + offset
             : Vector2.zero;
 
+        // =====================
+        // State
+        // =====================
+
+        // Cached camera on this object — needed for view-rect clamping against LevelBounds
+        private Camera _cam;
+
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
+
+        private void Awake()
+        {
+            // Cache references once: the camera we ride on and the scene's level bounds
+            _cam = GetComponent<Camera>();
+            if (levelBounds == null) levelBounds = LevelBounds.Find();
+        }
 
         private void LateUpdate()
         {
@@ -98,17 +118,31 @@ namespace Submachina.Core
          */
         private void MoveTowardsTarget()
         {
-            // Build the desired position from target + offset
-            float desiredX = lockX ? transform.position.x : target.position.x + offset.x;
-            float desiredY = target.position.y + offset.y;
-
-            // Apply top bound — never show above the ocean surface
-            if (clampTop) desiredY = Mathf.Min(desiredY, topBoundY);
-
-            Vector3 desired = new Vector3(desiredX, desiredY, transform.position.z);
+            // Build the desired position from target + offset, clamped inside the level
+            Vector3 desired = ClampDesired(
+                lockX ? transform.position.x : target.position.x + offset.x,
+                target.position.y + offset.y);
 
             // Smooth lerp toward desired position
             transform.position = Vector3.Lerp(transform.position, desired, Time.deltaTime * smoothSpeed);
+        }
+
+        /**
+         * Applies whichever bounding is available: full view-rect clamping via
+         * LevelBounds when present (needs the camera for view size), else the
+         * legacy top-only clamp.
+         */
+        private Vector3 ClampDesired(float x, float y)
+        {
+            Vector3 desired = new Vector3(x, y, transform.position.z);
+
+            // Preferred path: clamp the whole view rect inside the level bounds
+            if (levelBounds != null && _cam != null && _cam.orthographic)
+                return levelBounds.ClampCameraCentre(desired, _cam.orthographicSize, _cam.aspect);
+
+            // Legacy fallback — never show above the ocean surface
+            if (clampTop) desired.y = Mathf.Min(desired.y, topBoundY);
+            return desired;
         }
 
         // -------------------------------------------------------
@@ -120,11 +154,9 @@ namespace Submachina.Core
         {
             if (target == null) return;
 
-            float snapX = lockX ? transform.position.x : target.position.x + offset.x;
-            float snapY = target.position.y + offset.y;
-            if (clampTop) snapY = Mathf.Min(snapY, topBoundY);
-
-            transform.position = new Vector3(snapX, snapY, transform.position.z);
+            transform.position = ClampDesired(
+                lockX ? transform.position.x : target.position.x + offset.x,
+                target.position.y + offset.y);
         }
 
         /** Reassigns the follow target at runtime. Call when switching control to a different object. */

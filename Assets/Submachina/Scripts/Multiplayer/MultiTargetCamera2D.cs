@@ -67,11 +67,18 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Bounds")]
-        [Tooltip("Clamp how far up the camera centre can travel (0 = ocean surface — never show above water).")]
+        [InfoBox("When a LevelBounds is assigned (or found in the scene), the FULL view rect is clamped " +
+                 "inside it — including zoom, so a narrow level can never be zoomed out past its edges. " +
+                 "The legacy clampTop fields below only apply when no LevelBounds is available.")]
+        [Tooltip("The level's authoritative extents. Auto-resolved from the scene at Awake when left empty.")]
+        [SerializeField] private LevelBounds levelBounds;
+
+        [FoldoutGroup("Bounds")]
+        [Tooltip("LEGACY (superseded by LevelBounds): clamp how far up the camera centre can travel.")]
         [SerializeField] private bool clampTop = true;
 
         [FoldoutGroup("Bounds"), ShowIf("clampTop")]
-        [Tooltip("Maximum world Y the camera centre can reach.")]
+        [Tooltip("LEGACY (superseded by LevelBounds): maximum world Y the camera centre can reach.")]
         [SerializeField] private float topBoundY = 0f;
 
         // =====================
@@ -91,6 +98,9 @@ namespace Submachina.Core
         {
             // Resolve the camera up front so framing works from the first frame
             EnsureCamera();
+
+            // Auto-resolve level bounds when not wired in the inspector
+            if (levelBounds == null) levelBounds = LevelBounds.Find();
         }
 
         private void LateUpdate()
@@ -102,14 +112,18 @@ namespace Submachina.Core
             EnsureCamera();
 
             // Ease the camera position toward the framed centre and size toward the fit zoom
-            Vector3 desiredCentre = ResolveDesiredCentre();
+            ResolveDesiredView(out Vector3 desiredCentre, out float desiredSize);
             CameraTransform.position = Vector3.Lerp(CameraTransform.position, desiredCentre, Time.unscaledDeltaTime * positionSmoothSpeed);
 
             if (cam != null && cam.orthographic)
-            {
-                float desiredSize = ResolveDesiredSize();
                 cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, desiredSize, Time.unscaledDeltaTime * zoomSmoothSpeed);
-            }
+
+            // Final hard clamp with the ACTUAL current size: the lerped position and lerped
+            // size are momentarily inconsistent, and this guarantees no transient frame ever
+            // reveals past a bounded edge (e.g. past the parallax backdrop).
+            if (levelBounds != null && cam != null && cam.orthographic)
+                CameraTransform.position = levelBounds.ClampCameraCentre(
+                    CameraTransform.position, cam.orthographicSize, Aspect);
         }
 
         /**
@@ -162,9 +176,14 @@ namespace Submachina.Core
         {
             if (!HasLiveTarget()) return;
 
-            CameraTransform.position = ResolveDesiredCentre();
+            ResolveDesiredView(out Vector3 centre, out float size);
+            CameraTransform.position = centre;
             if (cam != null && cam.orthographic)
-                cam.orthographicSize = ResolveDesiredSize();
+                cam.orthographicSize = size;
+
+            // Reposition parallax layers immediately so the snap doesn't show one frame
+            // of pre-snap parallax (layers normally update in LateUpdate order 100)
+            FindFirstObjectByType<ParallaxController>()?.ForceUpdate();
         }
 
         /**
@@ -196,8 +215,36 @@ namespace Submachina.Core
         // Internals
         // -------------------------------------------------------
 
-        /** Computes the smoothed-toward centre: average of all targets + offset, clamped to the top bound. */
-        private Vector3 ResolveDesiredCentre()
+        /** Live camera aspect with a sensible 16:9 fallback while no camera is resolved. */
+        private float Aspect => cam != null ? Mathf.Max(0.0001f, cam.aspect) : 1.7778f;
+
+        /**
+         * Resolves the target view in dependency order: raw centroid → framing size
+         * (clamped so a narrow level can't be zoomed out past its own edges) → centre
+         * clamped so the whole view rect stays inside LevelBounds. Size must be known
+         * before the centre can be rect-clamped, which is why this is one pass.
+         */
+        private void ResolveDesiredView(out Vector3 centre, out float size)
+        {
+            Vector3 raw = ResolveCentroid();
+            size = ResolveSizeFor(raw);
+
+            if (levelBounds != null)
+            {
+                // Zoom can never exceed what the bounded axes allow, then rect-clamp the centre
+                size = Mathf.Min(size, levelBounds.MaxOrthoSize(Aspect));
+                centre = levelBounds.ClampCameraCentre(raw, size, Aspect);
+                centre.z = CameraTransform.position.z;
+                return;
+            }
+
+            // Legacy fallback: top-only clamp when no LevelBounds exists in the scene
+            if (clampTop) raw.y = Mathf.Min(raw.y, topBoundY);
+            centre = raw;
+        }
+
+        /** Average of all live targets + offset, unclamped (bounds are applied by ResolveDesiredView). */
+        private Vector3 ResolveCentroid()
         {
             // Average all live target positions (skip any destroyed or deactivated — e.g. a dead player)
             Vector3 sum = Vector3.zero;
@@ -212,22 +259,20 @@ namespace Submachina.Core
             Vector3 centre = count > 0 ? sum / count : CameraTransform.position;
 
             // Apply offset and keep the existing Z (2D camera depth stays fixed)
-            float x = centre.x + offset.x;
-            float y = centre.y + offset.y;
-            if (clampTop) y = Mathf.Min(y, topBoundY);
-
-            return new Vector3(x, y, CameraTransform.position.z);
+            return new Vector3(centre.x + offset.x, centre.y + offset.y, CameraTransform.position.z);
         }
 
         /**
          * Computes the orthographic size needed to frame every target with padding.
          * Takes the max horizontal/vertical spread from the centre, converts the
          * horizontal need through the aspect ratio, and clamps to [minSize, maxSize].
+         *
+         * Note: in a bounded level with physical walls, player spread can exceed what
+         * the bounds-clamped zoom is able to frame — players at extremes may go
+         * off-screen. Pre-existing wide-spread behaviour; revisit only if it bites.
          */
-        private float ResolveDesiredSize()
+        private float ResolveSizeFor(Vector3 centre)
         {
-            Vector3 centre = ResolveDesiredCentre();
-
             // Largest distance from centre on each axis across all live targets
             float maxDx = 0f;
             float maxDy = 0f;
@@ -239,9 +284,8 @@ namespace Submachina.Core
             }
 
             // Vertical need is direct; horizontal need is divided by aspect to become a size
-            float aspect = cam != null ? Mathf.Max(0.0001f, cam.aspect) : 1.7778f;
             float sizeForHeight = maxDy + framingPadding;
-            float sizeForWidth = (maxDx + framingPadding) / aspect;
+            float sizeForWidth = (maxDx + framingPadding) / Aspect;
 
             return Mathf.Clamp(Mathf.Max(sizeForHeight, sizeForWidth), minSize, maxSize);
         }
