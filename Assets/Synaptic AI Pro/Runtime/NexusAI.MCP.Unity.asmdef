@@ -5,9 +5,7 @@
     "Unity.Mathematics",
     "Unity.Collections",
     "Unity.Burst",
-    "Unity.TextMeshPro",
-    "Unity.Nuget.Newtonsoft-Json",
-    "UnityEngine.UI"
+    "Unity.Nuget.Newtonsoft-Json"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

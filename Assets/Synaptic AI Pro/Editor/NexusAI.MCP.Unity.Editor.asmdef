@@ -6,9 +6,7 @@
     "Unity.Mathematics",
     "Unity.Collections",
     "Unity.Burst",
-    "Unity.TextMeshPro",
     "Unity.Nuget.Newtonsoft-Json",
-    "Unity.ugui",
     "Cinemachine",
     "Unity.Cinemachine",
     "Unity.Splines",
@@ -48,6 +46,16 @@
       "name": "com.unity.visualeffectgraph",
       "expression": "[10.0,)",
       "define": "VFX_GRAPH_10_PLUS"
+    },
+    {
+      "name": "com.unity.ugui",
+      "expression": "",
+      "define": "UGUI_PRESENT"
+    },
+    {
+      "name": "com.unity.textmeshpro",
+      "expression": "",
+      "define": "TMP_PRESENT"
     }
   ],
   "noEngineReferences": false

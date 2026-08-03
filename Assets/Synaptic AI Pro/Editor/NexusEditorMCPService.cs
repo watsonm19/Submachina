@@ -207,7 +207,8 @@ namespace SynapticPro
             {
                 // Fixed port 8090 for all MCP servers (index.js and hub-server.js)
                 const int mcpPort = 8090;
-                serverUrl = $"ws://localhost:{mcpPort}";
+                // ESC-0168: Win11 26200+ resolves localhost to ::1 only; pin to 127.0.0.1 to keep IPv4 path working
+                serverUrl = $"ws://127.0.0.1:{mcpPort}";
 
                 SynLog.Info($"[Nexus Editor MCP] Using MCP server at {serverUrl}");
 
@@ -231,7 +232,7 @@ namespace SynapticPro
                 // Verify MCP server existence with simple TCP connection test
                 using (var client = new System.Net.Sockets.TcpClient())
                 {
-                    var result = client.BeginConnect("localhost", port, null, null);
+                    var result = client.BeginConnect("127.0.0.1", port, null, null);
                     var success = result.AsyncWaitHandle.WaitOne(TimeSpan.FromMilliseconds(500));
 
                     if (success && client.Connected)
@@ -291,7 +292,7 @@ namespace SynapticPro
                             using (var client = new System.Net.WebClient())
                             {
                                 client.Headers.Add("User-Agent", "Unity-AutoConnect");
-                                var response = client.DownloadString($"http://localhost:{portCapture}/health");
+                                var response = client.DownloadString($"http://127.0.0.1:{portCapture}/health");
                                 if (response.Contains("ok") || response.Contains("Synaptic"))
                                 {
                                     SynLog.Info($"[Nexus MCP] HTTP Server detected on port {portCapture}, auto-connecting...");
@@ -1921,28 +1922,18 @@ If you have issues, try 'AI Reconnect'.";
         {
             try
             {
-                string configPath;
-
-                // Detect platform-specific Claude Desktop config path
-                if (UnityEngine.Application.platform == UnityEngine.RuntimePlatform.OSXEditor)
+                // 2026-06-27: AssetStore review で「MS Store 版 Claude Desktop の sandbox path
+                // (%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\) を見逃して
+                // %APPDATA%\Claude にだけ書き込むので config が反映されない、手動修正が必要」
+                // と指摘あり。NexusSetupWindow 側に既にあった検出ロジックを public static 化して
+                // ここから呼ぶ形に統一。両 call site で MS Store 検出が常に通る。
+                var configDir = NexusMCPSetupWindow.DetectClaudeConfigPath();
+                if (string.IsNullOrEmpty(configDir))
                 {
-                    configPath = System.IO.Path.Combine(
-                        System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile),
-                        "Library", "Application Support", "Claude", "claude_desktop_config.json"
-                    );
-                }
-                else if (UnityEngine.Application.platform == UnityEngine.RuntimePlatform.WindowsEditor)
-                {
-                    configPath = System.IO.Path.Combine(
-                        System.Environment.GetFolderPath(System.Environment.SpecialFolder.ApplicationData),
-                        "Claude", "claude_desktop_config.json"
-                    );
-                }
-                else
-                {
-                    SynLog.Warn("[Nexus Editor MCP] Unsupported platform for Claude Desktop config update");
+                    SynLog.Warn("[Nexus Editor MCP] Claude Desktop config path not detected (unsupported platform or no install found)");
                     return;
                 }
+                string configPath = System.IO.Path.Combine(configDir, "claude_desktop_config.json");
                 
                 if (!System.IO.File.Exists(configPath))
                 {
@@ -1953,16 +1944,22 @@ If you have issues, try 'AI Reconnect'.";
                 string configContent = System.IO.File.ReadAllText(configPath);
                 
                 // Update WebSocket port (supports multiple patterns)
+                // ESC-0168: pin to 127.0.0.1 — Win11 Insider 26200+ resolves localhost to ::1 only and breaks Claude Desktop's IPv4 connect
                 bool updated = false;
-                string newPattern = $"ws://localhost:{newPort}";
-                
-                // Check all known port patterns
+                string newPattern = $"ws://127.0.0.1:{newPort}";
+
+                // Check all known port patterns (both localhost and 127.0.0.1 variants)
                 string[] oldPatterns = {
                     "ws://localhost:8090",
-                    "ws://localhost:8081", 
+                    "ws://localhost:8081",
                     "ws://localhost:8082",
                     "ws://localhost:8083",
-                    "ws://localhost:8084"
+                    "ws://localhost:8084",
+                    "ws://127.0.0.1:8090",
+                    "ws://127.0.0.1:8081",
+                    "ws://127.0.0.1:8082",
+                    "ws://127.0.0.1:8083",
+                    "ws://127.0.0.1:8084"
                 };
                 
                 foreach (string oldPattern in oldPatterns)

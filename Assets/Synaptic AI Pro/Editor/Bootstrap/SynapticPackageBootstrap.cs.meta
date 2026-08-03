@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 90a83e19019c1400da688e2e7a7a1266
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.26
+  assetPath: Assets/Synaptic AI Pro/Editor/Bootstrap/SynapticPackageBootstrap.cs
+  uploadId: 943096

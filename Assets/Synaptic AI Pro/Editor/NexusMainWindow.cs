@@ -926,63 +926,86 @@ namespace SynapticPro
             GameObject canvas = GameObject.Find("Canvas");
             if (canvas == null)
             {
-                canvas = new GameObject("Canvas", typeof(Canvas), typeof(UnityEngine.UI.CanvasScaler), typeof(UnityEngine.UI.GraphicRaycaster));
+                canvas = new GameObject("Canvas", typeof(Canvas));
+                SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.CanvasScaler");
+                SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.GraphicRaycaster");
                 canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
             }
-            
-            var panel = new GameObject("UIPanel", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+
+            var imageType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Image");
+            var panel = imageType != null
+                ? new GameObject("UIPanel", typeof(RectTransform), imageType)
+                : new GameObject("UIPanel", typeof(RectTransform));
             panel.transform.SetParent(canvas.transform, false);
-            panel.GetComponent<UnityEngine.UI.Image>().color = new Color(0, 0, 0, 0.5f);
+            var panelImage = SynapticPro.UIReflection.GetComponent(panel, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(panelImage, "color", new Color(0, 0, 0, 0.5f));
             panel.GetComponent<RectTransform>().sizeDelta = new Vector2(300, 200);
-            
+
             Selection.activeGameObject = panel;
             AddMessage("Created UI Panel", false);
         }
-        
+
         private void CreateButtonTool()
         {
             // Create Canvas if it doesn't exist
             GameObject canvas = GameObject.Find("Canvas");
             if (canvas == null)
             {
-                canvas = new GameObject("Canvas", typeof(Canvas), typeof(UnityEngine.UI.CanvasScaler), typeof(UnityEngine.UI.GraphicRaycaster));
+                canvas = new GameObject("Canvas", typeof(Canvas));
+                SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.CanvasScaler");
+                SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.GraphicRaycaster");
                 canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
             }
-            
-            var button = new GameObject("Button", typeof(RectTransform), typeof(UnityEngine.UI.Button), typeof(UnityEngine.UI.Image));
+
+            var buttonType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Button");
+            var imageType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Image");
+            var textType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Text");
+            var buttonTypes = new List<Type> { typeof(RectTransform) };
+            if (buttonType != null) buttonTypes.Add(buttonType);
+            if (imageType != null) buttonTypes.Add(imageType);
+            var button = new GameObject("Button", buttonTypes.ToArray());
             button.transform.SetParent(canvas.transform, false);
             button.GetComponent<RectTransform>().sizeDelta = new Vector2(160, 30);
-            
-            var text = new GameObject("Text", typeof(RectTransform), typeof(UnityEngine.UI.Text));
+
+            var text = textType != null
+                ? new GameObject("Text", typeof(RectTransform), textType)
+                : new GameObject("Text", typeof(RectTransform));
             text.transform.SetParent(button.transform, false);
-            text.GetComponent<UnityEngine.UI.Text>().text = "Click Me";
-            text.GetComponent<UnityEngine.UI.Text>().alignment = TextAnchor.MiddleCenter;
-            text.GetComponent<UnityEngine.UI.Text>().color = Color.black;
+            var textComp = SynapticPro.UIReflection.GetComponent(text, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(textComp, "text", "Click Me");
+            SynapticPro.UIReflection.SetProperty(textComp, "alignment", TextAnchor.MiddleCenter);
+            SynapticPro.UIReflection.SetProperty(textComp, "color", Color.black);
             var textRect = text.GetComponent<RectTransform>();
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
             textRect.sizeDelta = Vector2.zero;
-            
+
             Selection.activeGameObject = button;
             AddMessage("Created UI Button", false);
         }
-        
+
         private void CreateTextTool()
         {
             // Create Canvas if it doesn't exist
             GameObject canvas = GameObject.Find("Canvas");
             if (canvas == null)
             {
-                canvas = new GameObject("Canvas", typeof(Canvas), typeof(UnityEngine.UI.CanvasScaler), typeof(UnityEngine.UI.GraphicRaycaster));
+                canvas = new GameObject("Canvas", typeof(Canvas));
+                SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.CanvasScaler");
+                SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.GraphicRaycaster");
                 canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
             }
-            
-            var text = new GameObject("Text", typeof(RectTransform), typeof(UnityEngine.UI.Text));
+
+            var textType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Text");
+            var text = textType != null
+                ? new GameObject("Text", typeof(RectTransform), textType)
+                : new GameObject("Text", typeof(RectTransform));
             text.transform.SetParent(canvas.transform, false);
-            text.GetComponent<UnityEngine.UI.Text>().text = "Hello World";
-            text.GetComponent<UnityEngine.UI.Text>().alignment = TextAnchor.MiddleCenter;
+            var textComp = SynapticPro.UIReflection.GetComponent(text, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(textComp, "text", "Hello World");
+            SynapticPro.UIReflection.SetProperty(textComp, "alignment", TextAnchor.MiddleCenter);
             text.GetComponent<RectTransform>().sizeDelta = new Vector2(200, 50);
-            
+
             Selection.activeGameObject = text;
             AddMessage("Created UI Text", false);
         }

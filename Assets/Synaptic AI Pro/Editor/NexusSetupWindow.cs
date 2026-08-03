@@ -1588,7 +1588,11 @@ namespace SynapticPro
                     // Windows: detached from Unity's Job Object via CreateProcessW
                     // with CREATE_BREAKAWAY_FROM_JOB. Process.Start inherits the
                     // Job and gets killed on assembly reload — see ESC-0095.
-                    string logDir = Path.Combine(mcpServerPath, "logs");
+                    // ESC-FIX (2026-06-24): write log to <Project>/Library/Synaptic AI Pro/logs/
+                    // instead of Assets/, otherwise Unity's AssetDatabase imports the live log
+                    // file repeatedly (and Hot Reload's PollAssetChanges amplifies the loop).
+                    // Reported by greatgateisland@gmail.com.
+                    string logDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Library", "Synaptic AI Pro", "logs"));
                     try { Directory.CreateDirectory(logDir); } catch { }
                     string logFile = Path.Combine(logDir, "http-server.log");
 
@@ -1643,7 +1647,10 @@ namespace SynapticPro
                     // Fix: launch via `sh -c "nohup node ... >log 2>&1 &"` so
                     // the child is fully detached from Unity's pipes and
                     // process group, mirroring the Windows detached path.
-                    string logDir = Path.Combine(mcpServerPath, "logs");
+                    // ESC-FIX (2026-06-24): write log to <Project>/Library/Synaptic AI Pro/logs/
+                    // instead of Assets/, otherwise Unity's AssetDatabase + Hot Reload trigger
+                    // an import loop on the live log file. Reported by greatgateisland@gmail.com.
+                    string logDir = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Library", "Synaptic AI Pro", "logs"));
                     try { Directory.CreateDirectory(logDir); } catch { }
                     string logFile = Path.Combine(logDir, "http-server.log");
 
@@ -2249,11 +2256,42 @@ Sandbox may block localhost connections. Use escalation if curl commands fail.
                 var parentDir = Path.GetDirectoryName(dst);
                 if (!Directory.Exists(parentDir)) Directory.CreateDirectory(parentDir);
 
-                // 既存があれば消す (古い junction や空ディレクトリの場合)
+                // 既存があれば消す。
+                // BUG FIX (2026-06-22): 旧実装は `Directory.Delete(dst, false)` のみで、
+                // 壊れた junction (target 側に中身が見える状態) を「中身あり」と判定して
+                // IOException で skip し、その後の New-Item -Force でも上書きできず、
+                // 何度 Complete MCP Setup を押しても再生成されないバグがあった。
                 if (Directory.Exists(dst))
                 {
-                    try { Directory.Delete(dst, false); }
-                    catch (IOException) { /* 中身あれば skip */ }
+                    bool isReparse = false;
+                    try { isReparse = (File.GetAttributes(dst) & FileAttributes.ReparsePoint) != 0; }
+                    catch { /* 取得失敗時は通常 dir として扱う */ }
+
+                    if (isReparse)
+                    {
+                        // junction は中身を消さず junction 本体だけ削除する必要がある。
+                        // .NET の Directory.Delete だと junction 中身を辿ろうとして失敗するケース
+                        // があるので、cmd.exe の rmdir に直接やらせる方が確実。
+                        try { Directory.Delete(dst, false); }
+                        catch
+                        {
+                            var rmPsi = new System.Diagnostics.ProcessStartInfo {
+                                FileName = "cmd.exe",
+                                Arguments = $"/c rmdir \"{dst}\"",
+                                UseShellExecute = false,
+                                CreateNoWindow = true,
+                                RedirectStandardOutput = true,
+                                RedirectStandardError = true,
+                            };
+                            using (var p = System.Diagnostics.Process.Start(rmPsi)) p.WaitForExit(5000);
+                        }
+                    }
+                    else
+                    {
+                        // 通常ディレクトリ (まれ。手動で誰かが mkdir したか、過去の事故等) は
+                        // 中身ごと消す。当 path はビルド成果物ではなく junction 専用なので安全。
+                        try { Directory.Delete(dst, true); } catch { /* best-effort */ }
+                    }
                 }
 
                 var psCmd = $"New-Item -ItemType Junction -Path '{dst}' -Target '{src}' -Force | Out-Null";
@@ -2700,7 +2738,11 @@ Sandbox may block localhost connections. Use escalation if curl commands fail.
             }
         }
         
-        private string DetectClaudeConfigPath()
+        // 2026-06-27: 公開 static 化。NexusEditorMCPService.UpdateClaudeDesktopConfigForPort
+        // が独自実装で MS Store パスを見逃していた問題 (AssetStore review 指摘) を解消するため
+        // 検出ロジックを 1 箇所に集約。class 名は `NexusMCPSetupWindow` なので外部呼出は
+        // `NexusMCPSetupWindow.DetectClaudeConfigPath()` で叩く。
+        public static string DetectClaudeConfigPath()
         {
             if (Application.platform == RuntimePlatform.OSXEditor)
             {

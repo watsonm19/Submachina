@@ -162,6 +162,50 @@ namespace SynapticPro
                 richText = true
             };
 
+            // v1.2.26
+            GUILayout.Label(L("v1.2.26 - Unity 6.4 / 6.5 compatibility overhaul (UGUI/TMP reflection + obsolete API)", "v1.2.26 - Unity 6.4 / 6.5 互換性大改修 (UGUI/TMP Reflection 化 + Obsolete API 対応)"), sectionStyle);
+            GUILayout.Space(5);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+            GUILayout.Label(L("<b>★ Critical Fix (ESC-0195〜0208): Unity 6.4 (com.unity.ugui 2.0.0) で Tools メニューが消える問題</b>", "<b>★ Critical 修正 (ESC-0195〜0208): Unity 6.4 (com.unity.ugui 2.0.0) で Tools メニューが消える問題</b>"), itemStyle);
+            GUILayout.Label(L("• Unity 6.4+ の com.unity.ugui 2.0.0 は asmdef を持たないため、Synaptic asmdef references の \"Unity.ugui\" / \"Unity.TextMeshPro\" が解決失敗し CS0234 連鎖で Editor スクリプトが全滅していた", "• Unity 6.4+ の com.unity.ugui 2.0.0 は asmdef を持たないため、Synaptic asmdef references の \"Unity.ugui\" / \"Unity.TextMeshPro\" が解決失敗し CS0234 連鎖で Editor スクリプトが全滅していた"), itemStyle);
+            GUILayout.Label(L("• Solution: 全 UnityEngine.UI / TMPro 型参照を新規 UIReflection ヘルパー経由の Reflection アクセスに置換 (260+ call site)。asmdef references から Unity.ugui / Unity.TextMeshPro を削除", "• 対応: 全 UnityEngine.UI / TMPro 型参照を新規 UIReflection ヘルパー経由の Reflection アクセスに置換 (260+ 箇所)。asmdef references から Unity.ugui / Unity.TextMeshPro を削除"), itemStyle);
+            GUILayout.Label(L("• Result: UGUI/TMP のパッケージ形式 (旧 asmdef 形式 / 新 engine 統合形式) を問わず動作。Unity 2022.3 LTS / Unity 6.0〜6.5 全互換", "• 結果: UGUI/TMP のパッケージ形式 (旧 asmdef 形式 / 新 engine 統合形式) を問わず動作。Unity 2022.3 LTS / Unity 6.0〜6.5 全互換"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ Fix (ESC-0234 周辺): Unity 6.5 obsolete InstanceID API への対応</b>", "<b>★ 修正 (ESC-0234 周辺): Unity 6.5 obsolete InstanceID API への対応</b>"), itemStyle);
+            GUILayout.Label(L("• Unity 6.5 で GetInstanceID() / EditorUtility.InstanceIDToObject() / SerializedProperty.objectReferenceInstanceIDValue が [Obsolete(IsError=true)] 化され、ハードエラー (CS0619) になっていた", "• Unity 6.5 で GetInstanceID() / EditorUtility.InstanceIDToObject() / SerializedProperty.objectReferenceInstanceIDValue が [Obsolete(IsError=true)] 化され、ハードエラー (CS0619) になっていた"), itemStyle);
+            GUILayout.Label(L("• 新規 IdCompat ヘルパーで GetEntityId() / EntityIdToObject() / objectReferenceEntityIdValue へ #if 切替。Unity 2022.3 〜 Unity 6.5 全対応", "• 新規 IdCompat ヘルパーで GetEntityId() / EntityIdToObject() / objectReferenceEntityIdValue へ #if 切替。Unity 2022.3 〜 Unity 6.5 全対応"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ Fix (ESC-0201): unity_update_component で非アクティブ GameObject が見つからない</b>", "<b>★ 修正 (ESC-0201): unity_update_component で非アクティブ GameObject が見つからない</b>"), itemStyle);
+            GUILayout.Label(L("• GameObject.Find() は非アクティブを返さないため、FindObjectsOfType(includeInactive: true) に切り替えて部分一致探索を実装", "• GameObject.Find() は非アクティブを返さないため、FindObjectsOfType(includeInactive: true) に切り替えて部分一致探索を実装"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ Improvement (ESC-0186): ログ出力先を Library/Synaptic AI Pro/logs/ に変更</b>", "<b>★ 改善 (ESC-0186): ログ出力先を Library/Synaptic AI Pro/logs/ に変更</b>"), itemStyle);
+            GUILayout.Label(L("• 旧 Assets/Synaptic AI Pro/logs/ から Library/ 配下に移動。Asset DB の余計な再インポートとリポジトリ汚染を解消", "• 旧 Assets/Synaptic AI Pro/logs/ から Library/ 配下に移動。Asset DB の余計な再インポートとリポジトリ汚染を解消"), itemStyle);
+
+            GUILayout.Space(5);
+            GUILayout.Label(L("<b>★ Improvement: Bootstrap asmdef + UGUI/TMP パッケージ自動検出</b>", "<b>★ 改善: Bootstrap asmdef + UGUI/TMP パッケージ自動検出</b>"), itemStyle);
+            GUILayout.Label(L("• 独立した Bootstrap asmdef (依存ゼロ) で本体 asmdef が壊れていてもインストール誘導ダイアログを必ず表示。UGUI / TextMeshPro 未導入環境を検知して 1-click インストール提案", "• 独立した Bootstrap asmdef (依存ゼロ) で本体 asmdef が壊れていてもインストール誘導ダイアログを必ず表示。UGUI / TextMeshPro 未導入環境を検知して 1-click インストール提案"), itemStyle);
+
+            EditorGUILayout.EndVertical();
+            GUILayout.Space(15);
+
+            // v1.2.25
+            GUILayout.Label(L("v1.2.25 - Hotfix: Windows 11 Insider IPv6 connection failure", "v1.2.25 - ホットフィックス: Windows 11 Insider IPv6 接続失敗"), sectionStyle);
+            GUILayout.Space(5);
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+            GUILayout.Label(L("<b>★ Fix (ESC-0168 / ESC-0170): MCP Disconnected on Windows 11 Insider build 26200+</b>", "<b>★ 修正 (ESC-0168 / ESC-0170): Windows 11 Insider build 26200+ で MCP Disconnected 継続する問題</b>"), itemStyle);
+            GUILayout.Label(L("• Windows 11 Insider Preview (26200番台) resolves 'localhost' to ::1 (IPv6) only, while Unity / Node servers bound to the IPv4 path. WebSocket and HTTP clients silently failed to connect", "• Windows 11 Insider Preview (26200番台) では localhost が ::1 (IPv6) のみに解決されるのに対し、Unity / Node 側サーバは IPv4 側にバインドしていたため WebSocket / HTTP クライアントが silent に接続失敗していた"), itemStyle);
+            GUILayout.Label(L("• NexusEditorMCPService now pins WebSocket URL, TcpClient port probe, /health checks and the Claude Desktop config rewrite to 127.0.0.1 explicitly", "• NexusEditorMCPService の WebSocket URL / TcpClient ポートプローブ / /health チェック / Claude Desktop config 書換 を全て 127.0.0.1 に明示固定"), itemStyle);
+            GUILayout.Label(L("• MCPServer/http-server.js now binds with server.listen(PORT, '127.0.0.1', ...) so the HTTP server on port 8086 stays on IPv4", "• MCPServer/http-server.js の listen を server.listen(PORT, '127.0.0.1', ...) に変更し、port 8086 の HTTP サーバも IPv4 側で待受"), itemStyle);
+            GUILayout.Label(L("• No action needed on the user side — just install v1.2.25 and reconnect", "• ユーザー側の追加操作は不要、v1.2.25 を入れて再接続するだけ"), itemStyle);
+
+            EditorGUILayout.EndVertical();
+            GUILayout.Space(15);
+
             // v1.2.24
             GUILayout.Label(L("v1.2.24 - Visual fixes (Rain / Bloom / Terrain) + menu reorganization", "v1.2.24 - 視覚系修正 (雨 / Bloom / Terrain) + メニュー整理"), sectionStyle);
             GUILayout.Space(5);

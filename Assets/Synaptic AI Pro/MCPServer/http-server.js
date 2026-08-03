@@ -638,7 +638,8 @@ app.post('/tool/:name', async (req, res) => {
 });
 
 // ===== Startup =====
-server.listen(PORT, () => {
+// ESC-0168: Win11 Insider 26200+ resolves localhost to ::1 only; pin to 127.0.0.1 for IPv4 path
+server.listen(PORT, '127.0.0.1', () => {
     // Setup WebSocket after server starts (attached to same port)
     setupWebSocket();
 

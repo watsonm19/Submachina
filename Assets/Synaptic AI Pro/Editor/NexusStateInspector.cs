@@ -616,15 +616,23 @@ namespace SynapticPro
                     ["canvas_count"] = canvases.Length,
                     ["canvases"] = canvases.Select(canvas =>
                     {
-                        // Aggregate UI elements
-                        var buttons = canvas.GetComponentsInChildren<UnityEngine.UI.Button>(true);
-                        var texts = canvas.GetComponentsInChildren<UnityEngine.UI.Text>(true);
-                        var images = canvas.GetComponentsInChildren<UnityEngine.UI.Image>(true);
-                        var inputFields = canvas.GetComponentsInChildren<UnityEngine.UI.InputField>(true);
-                        var sliders = canvas.GetComponentsInChildren<UnityEngine.UI.Slider>(true);
-                        var toggles = canvas.GetComponentsInChildren<UnityEngine.UI.Toggle>(true);
-                        var scrollViews = canvas.GetComponentsInChildren<UnityEngine.UI.ScrollRect>(true);
-                        
+                        // Aggregate UI elements via reflection (avoid direct UnityEngine.UI / TMPro deps)
+                        var buttonType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Button");
+                        var textType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Text");
+                        var imageType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Image");
+                        var inputFieldType = SynapticPro.UIReflection.GetType("UnityEngine.UI.InputField");
+                        var sliderType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Slider");
+                        var toggleType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Toggle");
+                        var scrollRectType = SynapticPro.UIReflection.GetType("UnityEngine.UI.ScrollRect");
+
+                        var buttons = buttonType != null ? canvas.GetComponentsInChildren(buttonType, true) : System.Array.Empty<Component>();
+                        var texts = textType != null ? canvas.GetComponentsInChildren(textType, true) : System.Array.Empty<Component>();
+                        var images = imageType != null ? canvas.GetComponentsInChildren(imageType, true) : System.Array.Empty<Component>();
+                        var inputFields = inputFieldType != null ? canvas.GetComponentsInChildren(inputFieldType, true) : System.Array.Empty<Component>();
+                        var sliders = sliderType != null ? canvas.GetComponentsInChildren(sliderType, true) : System.Array.Empty<Component>();
+                        var toggles = toggleType != null ? canvas.GetComponentsInChildren(toggleType, true) : System.Array.Empty<Component>();
+                        var scrollViews = scrollRectType != null ? canvas.GetComponentsInChildren(scrollRectType, true) : System.Array.Empty<Component>();
+
                         return new Dictionary<string, object>
                         {
                             ["name"] = canvas.name,
@@ -639,12 +647,12 @@ namespace SynapticPro
                                 {
                                     ["count"] = buttons.Length,
                                     ["items"] = buttons.Take(5).Select(btn => {
-                                        var btnText = btn.GetComponentInChildren<UnityEngine.UI.Text>();
+                                        var btnText = textType != null ? btn.GetComponentInChildren(textType) : null;
                                         return new Dictionary<string, object>
                                         {
                                             ["name"] = btn.name,
-                                            ["text"] = btnText != null ? btnText.text : null,
-                                            ["interactable"] = btn.interactable,
+                                            ["text"] = btnText != null ? SynapticPro.UIReflection.GetProperty(btnText, "text") as string : null,
+                                            ["interactable"] = SynapticPro.UIReflection.GetProperty(btn, "interactable"),
                                             ["active"] = btn.gameObject.activeInHierarchy
                                         };
                                     }).ToList()
@@ -652,37 +660,45 @@ namespace SynapticPro
                                 ["texts"] = new Dictionary<string, object>
                                 {
                                     ["count"] = texts.Length,
-                                    ["items"] = texts.Take(5).Select(txt => new Dictionary<string, object>
-                                    {
-                                        ["name"] = txt.name,
-                                        ["text"] = txt.text,
-                                        ["font"] = txt.font != null ? txt.font.name : null,
-                                        ["font_size"] = txt.fontSize,
-                                        ["color"] = new Dictionary<string, float>
+                                    ["items"] = texts.Take(5).Select(txt => {
+                                        var font = SynapticPro.UIReflection.GetProperty(txt, "font") as UnityEngine.Object;
+                                        var color = SynapticPro.UIReflection.GetProperty(txt, "color") is Color c ? c : Color.white;
+                                        return new Dictionary<string, object>
                                         {
-                                            ["r"] = txt.color.r,
-                                            ["g"] = txt.color.g,
-                                            ["b"] = txt.color.b,
-                                            ["a"] = txt.color.a
-                                        }
+                                            ["name"] = txt.name,
+                                            ["text"] = SynapticPro.UIReflection.GetProperty(txt, "text") as string,
+                                            ["font"] = font != null ? font.name : null,
+                                            ["font_size"] = SynapticPro.UIReflection.GetProperty(txt, "fontSize"),
+                                            ["color"] = new Dictionary<string, float>
+                                            {
+                                                ["r"] = color.r,
+                                                ["g"] = color.g,
+                                                ["b"] = color.b,
+                                                ["a"] = color.a
+                                            }
+                                        };
                                     }).ToList()
                                 },
                                 ["images"] = new Dictionary<string, object>
                                 {
                                     ["count"] = images.Length,
-                                    ["items"] = images.Take(5).Select(img => new Dictionary<string, object>
-                                    {
-                                        ["name"] = img.name,
-                                        ["sprite_name"] = img.sprite != null ? img.sprite.name : "(none)",
-                                        ["color"] = new Dictionary<string, float>
+                                    ["items"] = images.Take(5).Select(img => {
+                                        var sprite = SynapticPro.UIReflection.GetProperty(img, "sprite") as UnityEngine.Object;
+                                        var color = SynapticPro.UIReflection.GetProperty(img, "color") is Color c ? c : Color.white;
+                                        return new Dictionary<string, object>
                                         {
-                                            ["r"] = img.color.r,
-                                            ["g"] = img.color.g,
-                                            ["b"] = img.color.b,
-                                            ["a"] = img.color.a
-                                        },
-                                        ["raycast_target"] = img.raycastTarget,
-                                        ["active"] = img.gameObject.activeInHierarchy
+                                            ["name"] = img.name,
+                                            ["sprite_name"] = sprite != null ? sprite.name : "(none)",
+                                            ["color"] = new Dictionary<string, float>
+                                            {
+                                                ["r"] = color.r,
+                                                ["g"] = color.g,
+                                                ["b"] = color.b,
+                                                ["a"] = color.a
+                                            },
+                                            ["raycast_target"] = SynapticPro.UIReflection.GetProperty(img, "raycastTarget"),
+                                            ["active"] = img.gameObject.activeInHierarchy
+                                        };
                                     }).ToList()
                                 },
                                 ["input_fields"] = inputFields.Length,
@@ -819,9 +835,12 @@ namespace SynapticPro
             info.AppendLine($"  ✓ Canvas: {(canvas != null ? "Present" : "None")}");
             if (canvas != null)
             {
-                var buttons = canvas.GetComponentsInChildren<UnityEngine.UI.Button>();
-                var texts = canvas.GetComponentsInChildren<UnityEngine.UI.Text>();
-                var images = canvas.GetComponentsInChildren<UnityEngine.UI.Image>();
+                var buttonType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Button");
+                var textType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Text");
+                var imageType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Image");
+                var buttons = buttonType != null ? canvas.GetComponentsInChildren(buttonType) : System.Array.Empty<Component>();
+                var texts = textType != null ? canvas.GetComponentsInChildren(textType) : System.Array.Empty<Component>();
+                var images = imageType != null ? canvas.GetComponentsInChildren(imageType) : System.Array.Empty<Component>();
 
                 info.AppendLine($"  ✓ Buttons: {buttons.Length}");
                 info.AppendLine($"  ✓ Texts: {texts.Length}");

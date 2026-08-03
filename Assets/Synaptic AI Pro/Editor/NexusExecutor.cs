@@ -1,3 +1,10 @@
+// 2026-06-28: Unity 6.5 (6000.5+) で GetInstanceID / EditorUtility.InstanceIDToObject /
+// SerializedProperty.objectReferenceInstanceIDValue が CS0619 (obsolete=error) に昇格。
+// 後継 API (GetEntityId / EntityIdToObject / objectReferenceEntityIdValue) は 6.5+ 限定で、
+// 2022.3 LTS / 6.0-6.4 LTS には存在しない。後方互換維持のため obsolete 警告を file 単位で抑制
+// (旧 API は 6.5 でも引き続き動作する。将来 GetEntityId 等が正式 GA したら一括置換予定)。
+#pragma warning disable 0618
+#pragma warning disable 0619
 using System;
 using Random = UnityEngine.Random;
 using System.Collections.Generic;
@@ -7,9 +14,7 @@ using System.Reflection;
 using System.Text;
 using UnityEngine;
 using SynapticAIPro;
-using UnityEngine.UI;
 using UnityEngine.EventSystems;
-using TMPro;
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.Rendering;
@@ -2180,9 +2185,9 @@ namespace SynapticPro
                 var canvasGO = new GameObject("Canvas");
                 canvas = canvasGO.AddComponent<Canvas>();
                 canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvasGO.AddComponent<CanvasScaler>();
-                canvasGO.AddComponent<GraphicRaycaster>();
-                
+                SynapticPro.UIReflection.AddComponent(canvasGO, "UnityEngine.UI.CanvasScaler");
+                SynapticPro.UIReflection.AddComponent(canvasGO, "UnityEngine.UI.GraphicRaycaster");
+
                 // Add EventSystem
                 if (GameObject.FindObjectOfType<EventSystem>() == null)
                 {
@@ -2284,8 +2289,8 @@ namespace SynapticPro
                 {
                     canvasGO = new GameObject(canvasName);
                     canvas = canvasGO.AddComponent<Canvas>();
-                    canvasGO.AddComponent<CanvasScaler>();
-                    canvasGO.AddComponent<GraphicRaycaster>();
+                    SynapticPro.UIReflection.AddComponent(canvasGO, "UnityEngine.UI.CanvasScaler");
+                    SynapticPro.UIReflection.AddComponent(canvasGO, "UnityEngine.UI.GraphicRaycaster");
                     
                     // Register Undo when creating new
                     UnityEditor.Undo.RegisterCreatedObjectUndo(canvasGO, "Create UI Canvas");
@@ -2373,29 +2378,34 @@ namespace SynapticPro
                 }
                 
                 // Canvas Scaler settings
-                var canvasScaler = canvasGO.GetComponent<CanvasScaler>();
+                var canvasScaler = SynapticPro.UIReflection.GetComponent(canvasGO, "UnityEngine.UI.CanvasScaler");
                 if (canvasScaler != null && canvas.renderMode != RenderMode.WorldSpace)
                 {
                     var scaleMode = parameters.GetValueOrDefault("scaleMode", "scale-with-screen");
-                    
+
                     switch (scaleMode.ToLower())
                     {
                         case "constant-pixel":
-                            canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
-                            canvasScaler.scaleFactor = float.Parse(parameters.GetValueOrDefault("scaleFactor", "1"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "uiScaleMode",
+                                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScaleMode", "ConstantPixelSize"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "scaleFactor", float.Parse(parameters.GetValueOrDefault("scaleFactor", "1")));
                             break;
-                            
+
                         case "scale-with-screen":
-                            canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                            canvasScaler.referenceResolution = ParseVector2(parameters.GetValueOrDefault("referenceResolution", "1920,1080"));
-                            canvasScaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-                            canvasScaler.matchWidthOrHeight = float.Parse(parameters.GetValueOrDefault("match", "0.5"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "uiScaleMode",
+                                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScaleMode", "ScaleWithScreenSize"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "referenceResolution", ParseVector2(parameters.GetValueOrDefault("referenceResolution", "1920,1080")));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "screenMatchMode",
+                                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScreenMatchMode", "MatchWidthOrHeight"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "matchWidthOrHeight", float.Parse(parameters.GetValueOrDefault("match", "0.5")));
                             break;
-                            
+
                         case "constant-physical":
-                            canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPhysicalSize;
-                            canvasScaler.physicalUnit = CanvasScaler.Unit.Points;
-                            canvasScaler.referencePixelsPerUnit = float.Parse(parameters.GetValueOrDefault("pixelsPerUnit", "100"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "uiScaleMode",
+                                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScaleMode", "ConstantPhysicalSize"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "physicalUnit",
+                                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+Unit", "Points"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "referencePixelsPerUnit", float.Parse(parameters.GetValueOrDefault("pixelsPerUnit", "100")));
                             break;
                     }
                 }
@@ -2668,22 +2678,22 @@ namespace SynapticPro
             var rt = button.AddComponent<RectTransform>();
             rt.sizeDelta = new Vector2(160, 40);
             
-            var image = button.AddComponent<Image>();
-            image.color = new Color(0.9f, 0.9f, 0.9f);
-            
-            var btn = button.AddComponent<Button>();
-            btn.targetGraphic = image;
+            var image = SynapticPro.UIReflection.AddComponent(button, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(image, "color", new Color(0.9f, 0.9f, 0.9f));
+
+            var btn = SynapticPro.UIReflection.AddComponent(button, "UnityEngine.UI.Button");
+            SynapticPro.UIReflection.SetProperty(btn, "targetGraphic", image);
             
             // Add text
             var textGO = new GameObject("Text");
             textGO.transform.SetParent(button.transform, false);
-            var text = textGO.AddComponent<Text>();
-            text.text = parameters.GetValueOrDefault("text", name);
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = 16;
-            text.color = Color.black;
-            text.alignment = TextAnchor.MiddleCenter;
-            
+            var text = SynapticPro.UIReflection.AddComponent(textGO, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(text, "text", parameters.GetValueOrDefault("text", name));
+            SynapticPro.UIReflection.SetProperty(text, "font", Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            SynapticPro.UIReflection.SetProperty(text, "fontSize", 16);
+            SynapticPro.UIReflection.SetProperty(text, "color", Color.black);
+            SynapticPro.UIReflection.SetProperty(text, "alignment", TextAnchor.MiddleCenter);
+
             var textRT = textGO.GetComponent<RectTransform>();
             textRT.anchorMin = Vector2.zero;
             textRT.anchorMax = Vector2.one;
@@ -2699,35 +2709,35 @@ namespace SynapticPro
             var rt = textGO.AddComponent<RectTransform>();
             rt.sizeDelta = new Vector2(200, 50);
             
-            var text = textGO.AddComponent<Text>();
-            text.text = parameters.GetValueOrDefault("text", "Text");
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.fontSize = int.Parse(parameters.GetValueOrDefault("fontSize", "16"));
-            text.color = ParseColor(parameters.GetValueOrDefault("color", "black"));
-            text.alignment = TextAnchor.MiddleCenter;
-            
+            var text = SynapticPro.UIReflection.AddComponent(textGO, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(text, "text", parameters.GetValueOrDefault("text", "Text"));
+            SynapticPro.UIReflection.SetProperty(text, "font", Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            SynapticPro.UIReflection.SetProperty(text, "fontSize", int.Parse(parameters.GetValueOrDefault("fontSize", "16")));
+            SynapticPro.UIReflection.SetProperty(text, "color", ParseColor(parameters.GetValueOrDefault("color", "black")));
+            SynapticPro.UIReflection.SetProperty(text, "alignment", TextAnchor.MiddleCenter);
+
             return textGO;
         }
-        
+
         private GameObject CreateInputField(string name, Dictionary<string, string> parameters)
         {
             var inputGO = new GameObject(name);
             var rt = inputGO.AddComponent<RectTransform>();
             rt.sizeDelta = new Vector2(300, 40);
             
-            var image = inputGO.AddComponent<Image>();
-            image.color = Color.white;
-            
-            var input = inputGO.AddComponent<InputField>();
+            var image = SynapticPro.UIReflection.AddComponent(inputGO, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(image, "color", Color.white);
+
+            var input = SynapticPro.UIReflection.AddComponent(inputGO, "UnityEngine.UI.InputField");
             
             // Create text components
             var textGO = new GameObject("Text");
             textGO.transform.SetParent(inputGO.transform, false);
-            var text = textGO.AddComponent<Text>();
-            text.supportRichText = false;
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            text.color = Color.black;
-            input.textComponent = text;
+            var text = SynapticPro.UIReflection.AddComponent(textGO, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(text, "supportRichText", false);
+            SynapticPro.UIReflection.SetProperty(text, "font", Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            SynapticPro.UIReflection.SetProperty(text, "color", Color.black);
+            SynapticPro.UIReflection.SetProperty(input, "textComponent", text);
             
             var textRT = textGO.GetComponent<RectTransform>();
             textRT.anchorMin = Vector2.zero;
@@ -2738,12 +2748,12 @@ namespace SynapticPro
             // Placeholder
             var placeholderGO = new GameObject("Placeholder");
             placeholderGO.transform.SetParent(inputGO.transform, false);
-            var placeholder = placeholderGO.AddComponent<Text>();
-            placeholder.text = parameters.GetValueOrDefault("placeholder", "Enter text...");
-            placeholder.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            placeholder.fontStyle = FontStyle.Italic;
-            placeholder.color = new Color(0.5f, 0.5f, 0.5f, 0.5f);
-            input.placeholder = placeholder;
+            var placeholder = SynapticPro.UIReflection.AddComponent(placeholderGO, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(placeholder, "text", parameters.GetValueOrDefault("placeholder", "Enter text..."));
+            SynapticPro.UIReflection.SetProperty(placeholder, "font", Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            SynapticPro.UIReflection.SetProperty(placeholder, "fontStyle", FontStyle.Italic);
+            SynapticPro.UIReflection.SetProperty(placeholder, "color", new Color(0.5f, 0.5f, 0.5f, 0.5f));
+            SynapticPro.UIReflection.SetProperty(input, "placeholder", placeholder);
             
             var placeholderRT = placeholderGO.GetComponent<RectTransform>();
             placeholderRT.anchorMin = Vector2.zero;
@@ -2760,9 +2770,9 @@ namespace SynapticPro
             var rt = panel.AddComponent<RectTransform>();
             rt.sizeDelta = new Vector2(400, 300);
             
-            var image = panel.AddComponent<Image>();
-            image.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
-            
+            var image = SynapticPro.UIReflection.AddComponent(panel, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(image, "color", new Color(0.2f, 0.2f, 0.2f, 0.8f));
+
             return panel;
         }
         
@@ -2772,9 +2782,9 @@ namespace SynapticPro
             var rt = imageGO.AddComponent<RectTransform>();
             rt.sizeDelta = new Vector2(100, 100);
             
-            var image = imageGO.AddComponent<Image>();
-            image.color = ParseColor(parameters.GetValueOrDefault("color", "white"));
-            
+            var image = SynapticPro.UIReflection.AddComponent(imageGO, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(image, "color", ParseColor(parameters.GetValueOrDefault("color", "white")));
+
             return imageGO;
         }
         
@@ -2784,13 +2794,13 @@ namespace SynapticPro
             var rt = slider.AddComponent<RectTransform>();
             rt.sizeDelta = new Vector2(200, 20);
             
-            var sliderComp = slider.AddComponent<Slider>();
+            var sliderComp = SynapticPro.UIReflection.AddComponent(slider, "UnityEngine.UI.Slider");
             
             // Background
             var background = new GameObject("Background");
             background.transform.SetParent(slider.transform, false);
-            var bgImage = background.AddComponent<Image>();
-            bgImage.color = new Color(0.3f, 0.3f, 0.3f);
+            var bgImage = SynapticPro.UIReflection.AddComponent(background, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(bgImage, "color", new Color(0.3f, 0.3f, 0.3f));
             var bgRT = background.GetComponent<RectTransform>();
             bgRT.anchorMin = new Vector2(0, 0.25f);
             bgRT.anchorMax = new Vector2(1, 0.75f);
@@ -2805,13 +2815,13 @@ namespace SynapticPro
             fillAreaRT.anchorMax = new Vector2(1, 0.75f);
             fillAreaRT.offsetMin = new Vector2(5, 0);
             fillAreaRT.offsetMax = new Vector2(-15, 0);
-            sliderComp.fillRect = fillAreaRT;
+            SynapticPro.UIReflection.SetProperty(sliderComp, "fillRect", fillAreaRT);
             
             // Fill
             var fill = new GameObject("Fill");
             fill.transform.SetParent(fillArea.transform, false);
-            var fillImage = fill.AddComponent<Image>();
-            fillImage.color = new Color(0.3f, 0.6f, 1f);
+            var fillImage = SynapticPro.UIReflection.AddComponent(fill, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(fillImage, "color", new Color(0.3f, 0.6f, 1f));
             var fillRT = fill.GetComponent<RectTransform>();
             fillRT.anchorMin = Vector2.zero;
             fillRT.anchorMax = new Vector2(1, 1);
@@ -2821,12 +2831,12 @@ namespace SynapticPro
             // Handle
             var handle = new GameObject("Handle");
             handle.transform.SetParent(slider.transform, false);
-            var handleImage = handle.AddComponent<Image>();
-            handleImage.color = Color.white;
+            var handleImage = SynapticPro.UIReflection.AddComponent(handle, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(handleImage, "color", Color.white);
             var handleRT = handle.GetComponent<RectTransform>();
             handleRT.sizeDelta = new Vector2(20, 20);
-            sliderComp.handleRect = handleRT;
-            sliderComp.targetGraphic = handleImage;
+            SynapticPro.UIReflection.SetProperty(sliderComp, "handleRect", handleRT);
+            SynapticPro.UIReflection.SetProperty(sliderComp, "targetGraphic", handleImage);
             
             return slider;
         }
@@ -2837,39 +2847,39 @@ namespace SynapticPro
             var rt = toggle.AddComponent<RectTransform>();
             rt.sizeDelta = new Vector2(200, 30);
             
-            var toggleComp = toggle.AddComponent<Toggle>();
+            var toggleComp = SynapticPro.UIReflection.AddComponent(toggle, "UnityEngine.UI.Toggle");
             
             // Background
             var background = new GameObject("Background");
             background.transform.SetParent(toggle.transform, false);
-            var bgImage = background.AddComponent<Image>();
-            bgImage.color = Color.white;
+            var bgImage = SynapticPro.UIReflection.AddComponent(background, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(bgImage, "color", Color.white);
             var bgRT = background.GetComponent<RectTransform>();
             bgRT.anchorMin = new Vector2(0, 0.5f);
             bgRT.anchorMax = new Vector2(0, 0.5f);
             bgRT.anchoredPosition = new Vector2(10, 0);
             bgRT.sizeDelta = new Vector2(20, 20);
-            toggleComp.targetGraphic = bgImage;
+            SynapticPro.UIReflection.SetProperty(toggleComp, "targetGraphic", bgImage);
             
             // Checkmark
             var checkmark = new GameObject("Checkmark");
             checkmark.transform.SetParent(background.transform, false);
-            var checkImage = checkmark.AddComponent<Image>();
-            checkImage.color = new Color(0.3f, 0.6f, 1f);
+            var checkImage = SynapticPro.UIReflection.AddComponent(checkmark, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(checkImage, "color", new Color(0.3f, 0.6f, 1f));
             var checkRT = checkmark.GetComponent<RectTransform>();
             checkRT.anchorMin = Vector2.zero;
             checkRT.anchorMax = Vector2.one;
             checkRT.offsetMin = new Vector2(2, 2);
             checkRT.offsetMax = new Vector2(-2, -2);
-            toggleComp.graphic = checkImage;
+            SynapticPro.UIReflection.SetProperty(toggleComp, "graphic", checkImage);
             
             // Label
             var label = new GameObject("Label");
             label.transform.SetParent(toggle.transform, false);
-            var labelText = label.AddComponent<Text>();
-            labelText.text = parameters.GetValueOrDefault("text", name);
-            labelText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            labelText.color = Color.black;
+            var labelText = SynapticPro.UIReflection.AddComponent(label, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(labelText, "text", parameters.GetValueOrDefault("text", name));
+            SynapticPro.UIReflection.SetProperty(labelText, "font", Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+            SynapticPro.UIReflection.SetProperty(labelText, "color", Color.black);
             var labelRT = label.GetComponent<RectTransform>();
             labelRT.anchorMin = new Vector2(0, 0.5f);
             labelRT.anchorMax = new Vector2(1, 0.5f);
@@ -2885,11 +2895,11 @@ namespace SynapticPro
             var rt = dropdown.AddComponent<RectTransform>();
             rt.sizeDelta = new Vector2(200, 30);
             
-            var image = dropdown.AddComponent<Image>();
-            image.color = Color.white;
-            
-            var dropdownComp = dropdown.AddComponent<Dropdown>();
-            dropdownComp.targetGraphic = image;
+            var image = SynapticPro.UIReflection.AddComponent(dropdown, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(image, "color", Color.white);
+
+            var dropdownComp = SynapticPro.UIReflection.AddComponent(dropdown, "UnityEngine.UI.Dropdown");
+            SynapticPro.UIReflection.SetProperty(dropdownComp, "targetGraphic", image);
             
             // Template (hidden by default)
             var template = new GameObject("Template");
@@ -2900,10 +2910,15 @@ namespace SynapticPro
             if (parameters.TryGetValue("options", out var optionsStr))
             {
                 var options = optionsStr.Split(',');
-                dropdownComp.options.Clear();
-                foreach (var option in options)
+                var optionDataType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Dropdown+OptionData");
+                var optionsList = SynapticPro.UIReflection.GetProperty<System.Collections.IList>(dropdownComp, "options");
+                if (optionsList != null && optionDataType != null)
                 {
-                    dropdownComp.options.Add(new Dropdown.OptionData(option.Trim()));
+                    optionsList.Clear();
+                    foreach (var option in options)
+                    {
+                        optionsList.Add(System.Activator.CreateInstance(optionDataType, option.Trim()));
+                    }
                 }
             }
             
@@ -5160,10 +5175,14 @@ public class {className} : MonoBehaviour
             foreach (var canvas in canvases)
             {
                 // Canvas GraphicRaycaster is unnecessarily enabled
-                var raycaster = canvas.GetComponent<UnityEngine.UI.GraphicRaycaster>();
-                if (raycaster != null && raycaster.enabled)
+                var raycaster = SynapticPro.UIReflection.GetComponent(canvas.gameObject, "UnityEngine.UI.GraphicRaycaster");
+                var raycasterBehaviour = raycaster as Behaviour;
+                if (raycaster != null && raycasterBehaviour != null && raycasterBehaviour.enabled)
                 {
-                    var interactableComponents = canvas.GetComponentsInChildren<UnityEngine.UI.Selectable>();
+                    var selectableType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Selectable");
+                    var interactableComponents = selectableType != null
+                        ? canvas.GetComponentsInChildren(selectableType, true)
+                        : Array.Empty<Component>();
                     if (interactableComponents.Length == 0)
                     {
                         issues.Add(new
@@ -7220,8 +7239,8 @@ public class {className} : MonoBehaviour
                         mass = rigidbody.mass,
                         useGravity = rigidbody.useGravity,
                         isKinematic = rigidbody.isKinematic,
-                        drag = rigidbody.linearDamping,
-                        angularDrag = rigidbody.angularDamping
+                        drag = rigidbody.drag,
+                        angularDrag = rigidbody.angularDrag
                     };
                 }
                 
@@ -8993,10 +9012,10 @@ public class {className} : MonoBehaviour
                 // Apply button scaling
                 if (features.Contains("LargeButtons"))
                 {
-                    var buttons = GameObject.FindObjectsOfType<UnityEngine.UI.Button>();
+                    var buttons = SynapticPro.UIReflection.FindObjectsOfType("UnityEngine.UI.Button");
                     foreach (var button in buttons)
                     {
-                        var rectTransform = button.GetComponent<RectTransform>();
+                        var rectTransform = ((Component)button).GetComponent<RectTransform>();
                         if (rectTransform != null)
                         {
                             rectTransform.localScale *= buttonScaling;
@@ -9184,10 +9203,10 @@ public class {className} : MonoBehaviour
                 dragHandler.showGhost = showGhost;
                 
                 // Enable Raycast Target for objects within Canvas
-                var graphic = dragObj.GetComponent<UnityEngine.UI.Graphic>();
+                var graphic = SynapticPro.UIReflection.GetComponent(dragObj, "UnityEngine.UI.Graphic");
                 if (graphic != null)
                 {
-                    graphic.raycastTarget = true;
+                    SynapticPro.UIReflection.SetProperty(graphic, "raycastTarget", true);
                 }
                 
                 return $"[NexusInput] Drag & Drop functionality added to '{dragObj.name}'!\n" +
@@ -12427,10 +12446,11 @@ public class {className} : MonoBehaviour
                     canvas.renderMode = RenderMode.ScreenSpaceOverlay;
                     canvas.sortingOrder = 9999;
                     
-                    var canvasScaler = fadeCanvas.AddComponent<UnityEngine.UI.CanvasScaler>();
-                    canvasScaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                    
-                    fadeCanvas.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+                    var canvasScaler = SynapticPro.UIReflection.AddComponent(fadeCanvas, "UnityEngine.UI.CanvasScaler");
+                    SynapticPro.UIReflection.SetProperty(canvasScaler, "uiScaleMode",
+                        SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScaleMode", "ScaleWithScreenSize"));
+
+                    SynapticPro.UIReflection.AddComponent(fadeCanvas, "UnityEngine.UI.GraphicRaycaster");
                 }
                 
                 // Fade image
@@ -12442,10 +12462,10 @@ public class {className} : MonoBehaviour
                 rectTransform.offsetMin = Vector2.zero;
                 rectTransform.offsetMax = Vector2.zero;
                 
-                var image = fadeImage.AddComponent<UnityEngine.UI.Image>();
+                var image = SynapticPro.UIReflection.AddComponent(fadeImage, "UnityEngine.UI.Image");
                 if (ColorUtility.TryParseHtmlString(color, out Color fadeColor))
                 {
-                    image.color = fadeColor;
+                    SynapticPro.UIReflection.SetProperty(image, "color", fadeColor);
                 }
                 
                 var fadeController = fadeImage.AddComponent<ScreenFadeController>();
@@ -12482,8 +12502,9 @@ public class {className} : MonoBehaviour
                     canvas.renderMode = RenderMode.ScreenSpaceOverlay;
                     canvas.sortingOrder = 9998;
                     
-                    var canvasScaler = vignetteCanvas.AddComponent<UnityEngine.UI.CanvasScaler>();
-                    canvasScaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                    var canvasScaler = SynapticPro.UIReflection.AddComponent(vignetteCanvas, "UnityEngine.UI.CanvasScaler");
+                    SynapticPro.UIReflection.SetProperty(canvasScaler, "uiScaleMode",
+                        SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScaleMode", "ScaleWithScreenSize"));
                 }
                 
                 // Create vignette image
@@ -12495,7 +12516,7 @@ public class {className} : MonoBehaviour
                 rectTransform.offsetMin = Vector2.zero;
                 rectTransform.offsetMax = Vector2.zero;
                 
-                var image = vignetteImage.AddComponent<UnityEngine.UI.Image>();
+                var image = SynapticPro.UIReflection.AddComponent(vignetteImage, "UnityEngine.UI.Image");
                 var vignetteController = vignetteImage.AddComponent<VignetteController>();
                 vignetteController.intensity = intensity;
                 vignetteController.smoothness = smoothness;
@@ -27018,7 +27039,7 @@ Shader ""NexusGenerated/VolumetricFog""
                     .Select(go => new Dictionary<string, object>
                     {
                         ["name"] = go.name,
-                        ["instance_id"] = go.GetInstanceID(),
+                        ["instance_id"] = go.GetIdCompat(),
                         ["path"] = GetGameObjectPath(go),
                         ["active"] = go.activeInHierarchy,
                         ["layer"] = LayerMask.LayerToName(go.layer),
@@ -27055,7 +27076,7 @@ Shader ""NexusGenerated/VolumetricFog""
                 // Try by instanceId first
                 if (int.TryParse(nameOrId, out int id))
                 {
-                    target = EditorUtility.InstanceIDToObject(id) as GameObject;
+                    target = IdCompat.IdToObjectCompat(id) as GameObject;
                 }
 
                 // Try by name
@@ -27079,7 +27100,7 @@ Shader ""NexusGenerated/VolumetricFog""
                 var detail = new Dictionary<string, object>
                 {
                     ["name"] = target.name,
-                    ["instance_id"] = target.GetInstanceID(),
+                    ["instance_id"] = target.GetIdCompat(),
                     ["path"] = GetGameObjectPath(target),
                     ["active"] = target.activeInHierarchy,
                     ["layer"] = LayerMask.LayerToName(target.layer),
@@ -27108,7 +27129,7 @@ Shader ""NexusGenerated/VolumetricFog""
                         .Select(child => new Dictionary<string, object>
                         {
                             ["name"] = child.name,
-                            ["instance_id"] = child.gameObject.GetInstanceID(),
+                            ["instance_id"] = child.gameObject.GetIdCompat(),
                             ["active"] = child.gameObject.activeInHierarchy
                         })
                         .ToList(),
@@ -27116,7 +27137,7 @@ Shader ""NexusGenerated/VolumetricFog""
                     ["parent"] = target.transform.parent != null ? new Dictionary<string, object>
                     {
                         ["name"] = target.transform.parent.name,
-                        ["instance_id"] = target.transform.parent.gameObject.GetInstanceID()
+                        ["instance_id"] = target.transform.parent.gameObject.GetIdCompat()
                     } : null
                 };
 
@@ -27210,9 +27231,9 @@ Shader ""NexusGenerated/VolumetricFog""
                 var currentSnapshot = new SceneSnapshot
                 {
                     timestamp = DateTime.Now,
-                    gameObjectIds = new HashSet<int>(currentObjects.Select(go => go.GetInstanceID())),
+                    gameObjectIds = new HashSet<int>(currentObjects.Select(go => go.GetIdCompat())),
                     gameObjectHashes = currentObjects.ToDictionary(
-                        go => go.GetInstanceID(),
+                        go => go.GetIdCompat(),
                         go => GetGameObjectHash(go)
                     )
                 };
@@ -27242,14 +27263,14 @@ Shader ""NexusGenerated/VolumetricFog""
                     now = DateTime.Now,
                     changes = new
                     {
-                        added = added.Select(id => EditorUtility.InstanceIDToObject(id) as GameObject)
+                        added = added.Select(id => IdCompat.IdToObjectCompat(id) as GameObject)
                                     .Where(go => go != null)
-                                    .Select(go => new { name = go.name, instance_id = go.GetInstanceID() })
+                                    .Select(go => new { name = go.name, instance_id = go.GetIdCompat() })
                                     .ToList(),
                         removed = removed,
-                        modified = modified.Select(id => EditorUtility.InstanceIDToObject(id) as GameObject)
+                        modified = modified.Select(id => IdCompat.IdToObjectCompat(id) as GameObject)
                                           .Where(go => go != null)
-                                          .Select(go => new { name = go.name, instance_id = go.GetInstanceID() })
+                                          .Select(go => new { name = go.name, instance_id = go.GetIdCompat() })
                                           .ToList()
                     }
                 }, Formatting.Indented);
@@ -28993,10 +29014,10 @@ Shader ""NexusGenerated/VolumetricFog""
                         rigidbody.useGravity = bool.Parse(value);
                         return true;
                     case "drag":
-                        rigidbody.linearDamping = float.Parse(value);
+                        rigidbody.drag = float.Parse(value);
                         return true;
                     case "angulardrag":
-                        rigidbody.angularDamping = float.Parse(value);
+                        rigidbody.angularDrag = float.Parse(value);
                         return true;
                     case "iskinematic":
                         rigidbody.isKinematic = bool.Parse(value);
@@ -30414,11 +30435,11 @@ Shader ""NexusGenerated/VolumetricFog""
                     {
                         ["name"] = rb.name,
                         ["mass"] = rb.mass,
-                        ["drag"] = rb.linearDamping,
-                        ["angularDrag"] = rb.angularDamping,
+                        ["drag"] = rb.drag,
+                        ["angularDrag"] = rb.angularDrag,
                         ["useGravity"] = rb.useGravity,
                         ["isKinematic"] = rb.isKinematic,
-                        ["velocity"] = Vector3ToString(rb.linearVelocity),
+                        ["velocity"] = Vector3ToString(rb.velocity),
                         ["angularVelocity"] = Vector3ToString(rb.angularVelocity),
                         ["constraints"] = rb.constraints.ToString()
                     }).ToList();
@@ -31528,7 +31549,7 @@ Shader ""NexusGenerated/VolumetricFog""
                                 {
                                     if (sp.propertyType == SerializedPropertyType.ObjectReference)
                                     {
-                                        if (sp.objectReferenceValue == null && sp.objectReferenceInstanceIDValue != 0)
+                                        if (sp.objectReferenceValue == null && sp.GetObjectReferenceIdCompat() != 0)
                                         {
                                             missingList.Add(new
                                             {
@@ -31584,7 +31605,7 @@ Shader ""NexusGenerated/VolumetricFog""
                                 {
                                     if (sp.propertyType == SerializedPropertyType.ObjectReference)
                                     {
-                                        if (sp.objectReferenceValue == null && sp.objectReferenceInstanceIDValue != 0)
+                                        if (sp.objectReferenceValue == null && sp.GetObjectReferenceIdCompat() != 0)
                                         {
                                             missingList.Add(new
                                             {
@@ -31799,44 +31820,54 @@ Shader ""NexusGenerated/VolumetricFog""
         private List<Dictionary<string, object>> GetUIElementsInCanvas(Canvas canvas)
         {
             var elements = new List<Dictionary<string, object>>();
-            var uiComponents = canvas.GetComponentsInChildren<Graphic>();
-            
+            var graphicType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Graphic");
+            var uiComponents = graphicType != null
+                ? canvas.GetComponentsInChildren(graphicType)
+                : Array.Empty<Component>();
+
             foreach (var component in uiComponents.Take(50)) // Max 50 items
             {
                 var elem = new Dictionary<string, object>
                 {
                     ["name"] = component.name,
                     ["type"] = component.GetType().Name,
-                    ["enabled"] = component.enabled,
-                    ["raycastTarget"] = component.raycastTarget,
-                    ["color"] = ColorToHex(component.color)
+                    ["enabled"] = SynapticPro.UIReflection.GetProperty<bool>(component, "enabled"),
+                    ["raycastTarget"] = SynapticPro.UIReflection.GetProperty<bool>(component, "raycastTarget"),
+                    ["color"] = ColorToHex(SynapticPro.UIReflection.GetProperty<Color>(component, "color"))
                 };
                 
                 // For text elements
-                if (component is Text text)
+                if (SynapticPro.UIReflection.IsInstanceOf(component, "UnityEngine.UI.Text"))
                 {
-                    elem["text"] = text.text.Length > 100 ? text.text.Substring(0, 100) + "..." : text.text;
-                    elem["fontSize"] = text.fontSize;
-                    elem["font"] = text.font?.name ?? "None";
+                    var textValue = SynapticPro.UIReflection.GetProperty<string>(component, "text") ?? "";
+                    elem["text"] = textValue.Length > 100 ? textValue.Substring(0, 100) + "..." : textValue;
+                    elem["fontSize"] = SynapticPro.UIReflection.GetProperty<int>(component, "fontSize");
+                    var textFont = SynapticPro.UIReflection.GetProperty<UnityEngine.Object>(component, "font");
+                    elem["font"] = textFont != null ? textFont.name : "None";
                 }
-                else if (component is TMP_Text tmpText)
+                else if (SynapticPro.UIReflection.IsInstanceOf(component, "TMPro.TMP_Text"))
                 {
-                    elem["text"] = tmpText.text.Length > 100 ? tmpText.text.Substring(0, 100) + "..." : tmpText.text;
-                    elem["fontSize"] = tmpText.fontSize;
-                    elem["font"] = tmpText.font?.name ?? "None";
+                    var tmpTextValue = SynapticPro.UIReflection.GetProperty<string>(component, "text") ?? "";
+                    elem["text"] = tmpTextValue.Length > 100 ? tmpTextValue.Substring(0, 100) + "..." : tmpTextValue;
+                    elem["fontSize"] = SynapticPro.UIReflection.GetProperty<float>(component, "fontSize");
+                    var tmpFont = SynapticPro.UIReflection.GetProperty<UnityEngine.Object>(component, "font");
+                    elem["font"] = tmpFont != null ? tmpFont.name : "None";
                 }
                 // For buttons
-                else if (component.GetComponent<Button>() != null)
+                else if (SynapticPro.UIReflection.GetComponent(component.gameObject, "UnityEngine.UI.Button") != null)
                 {
+                    var buttonComp = SynapticPro.UIReflection.GetComponent(component.gameObject, "UnityEngine.UI.Button");
                     elem["isButton"] = true;
-                    elem["interactable"] = component.GetComponent<Button>().interactable;
+                    elem["interactable"] = SynapticPro.UIReflection.GetProperty<bool>(buttonComp, "interactable");
                 }
                 // For images
-                else if (component is Image image)
+                else if (SynapticPro.UIReflection.IsInstanceOf(component, "UnityEngine.UI.Image"))
                 {
-                    elem["sprite"] = image.sprite?.name ?? "None";
-                    elem["imageType"] = image.type.ToString();
-                    elem["fillCenter"] = image.fillCenter;
+                    var imageSprite = SynapticPro.UIReflection.GetProperty<UnityEngine.Object>(component, "sprite");
+                    elem["sprite"] = imageSprite != null ? imageSprite.name : "None";
+                    var imageTypeVal = SynapticPro.UIReflection.GetProperty<object>(component, "type");
+                    elem["imageType"] = imageTypeVal != null ? imageTypeVal.ToString() : "";
+                    elem["fillCenter"] = SynapticPro.UIReflection.GetProperty<bool>(component, "fillCenter");
                 }
                 
                 elements.Add(elem);
@@ -35000,48 +35031,43 @@ Shader ""NexusGenerated/VolumetricFog""
                 {
                     var uiTexts = new List<Dictionary<string, object>>();
                     
-                    // Text component
-                    var textComponents = UnityEngine.Object.FindObjectsOfType<UnityEngine.UI.Text>(true);
-                    foreach (var text in textComponents)
+                    // Text component (via UIReflection)
+                    var textComponents = SynapticPro.UIReflection.FindObjectsOfType("UnityEngine.UI.Text", true);
+                    foreach (var textObj in textComponents)
                     {
-                        if (!string.IsNullOrEmpty(text.text))
+                        var textValue = SynapticPro.UIReflection.GetProperty<string>(textObj, "text");
+                        if (!string.IsNullOrEmpty(textValue))
                         {
+                            var textComp = textObj as Component;
+                            var textFont = SynapticPro.UIReflection.GetProperty<UnityEngine.Object>(textObj, "font");
                             uiTexts.Add(new Dictionary<string, object>
                             {
-                                ["gameObject"] = text.gameObject.name,
-                                ["path"] = GetFullPath(text.gameObject),
-                                ["text"] = text.text,
-                                ["font"] = text.font != null ? text.font.name : "None",
-                                ["fontSize"] = text.fontSize
+                                ["gameObject"] = textComp != null ? textComp.gameObject.name : "",
+                                ["path"] = textComp != null ? GetFullPath(textComp.gameObject) : "",
+                                ["text"] = textValue,
+                                ["font"] = textFont != null ? textFont.name : "None",
+                                ["fontSize"] = SynapticPro.UIReflection.GetProperty<int>(textObj, "fontSize")
                             });
-                            allTexts.Add(text.text);
+                            allTexts.Add(textValue);
                         }
                     }
 
-                    // TextMeshPro component (obtained via reflection)
-                    var tmpType = System.Type.GetType("TMPro.TextMeshProUGUI, Unity.TextMeshPro");
-                    if (tmpType != null)
+                    // TextMeshPro component (via UIReflection)
+                    var tmpComponents = SynapticPro.UIReflection.FindObjectsOfType("TMPro.TextMeshProUGUI", true);
+                    foreach (var tmp in tmpComponents)
                     {
-                        var tmpComponents = UnityEngine.Object.FindObjectsOfType(tmpType, true);
-                        foreach (var tmp in tmpComponents)
+                        var textValue = SynapticPro.UIReflection.GetProperty<string>(tmp, "text");
+                        if (!string.IsNullOrEmpty(textValue))
                         {
-                            var textProperty = tmpType.GetProperty("text");
-                            if (textProperty != null)
+                            var go = (tmp as Component).gameObject;
+                            uiTexts.Add(new Dictionary<string, object>
                             {
-                                var textValue = textProperty.GetValue(tmp) as string;
-                                if (!string.IsNullOrEmpty(textValue))
-                                {
-                                    var go = (tmp as Component).gameObject;
-                                    uiTexts.Add(new Dictionary<string, object>
-                                    {
-                                        ["gameObject"] = go.name,
-                                        ["path"] = GetFullPath(go),
-                                        ["text"] = textValue,
-                                        ["type"] = "TextMeshPro"
-                                    });
-                                    allTexts.Add(textValue);
-                                }
-                            }
+                                ["gameObject"] = go.name,
+                                ["path"] = GetFullPath(go),
+                                ["text"] = textValue,
+                                ["type"] = "TextMeshPro"
+                            });
+                            allTexts.Add(textValue);
                         }
                     }
                     
@@ -37392,8 +37418,8 @@ public class {className} : MonoBehaviour
                     {
                         canvas = new GameObject("Canvas");
                         canvas.AddComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
-                        canvas.AddComponent<UnityEngine.UI.CanvasScaler>();
-                        canvas.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+                        SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.CanvasScaler");
+                        SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.GraphicRaycaster");
                     }
                     
                     // InventoryPanel
@@ -37403,8 +37429,8 @@ public class {className} : MonoBehaviour
                     rect.sizeDelta = new Vector2(400, 400);
                     rect.anchoredPosition = Vector2.zero;
                     
-                    var image = inventoryUI.AddComponent<UnityEngine.UI.Image>();
-                    image.color = new Color(0.2f, 0.2f, 0.2f, 0.9f);
+                    var image = SynapticPro.UIReflection.AddComponent(inventoryUI, "UnityEngine.UI.Image");
+                    SynapticPro.UIReflection.SetProperty(image, "color", new Color(0.2f, 0.2f, 0.2f, 0.9f));
                     
                     // GridLayout
                     var gridContainer = new GameObject("GridContainer");
@@ -37413,16 +37439,16 @@ public class {className} : MonoBehaviour
                     gridRect.sizeDelta = new Vector2(380, 380);
                     gridRect.anchoredPosition = Vector2.zero;
                     
-                    var gridLayout = gridContainer.AddComponent<UnityEngine.UI.GridLayoutGroup>();
-                    gridLayout.cellSize = new Vector2(60, 60);
-                    gridLayout.spacing = new Vector2(5, 5);
-                    gridLayout.padding = new RectOffset(10, 10, 10, 10);
+                    var gridLayout = SynapticPro.UIReflection.AddComponent(gridContainer, "UnityEngine.UI.GridLayoutGroup");
+                    SynapticPro.UIReflection.SetProperty(gridLayout, "cellSize", new Vector2(60, 60));
+                    SynapticPro.UIReflection.SetProperty(gridLayout, "spacing", new Vector2(5, 5));
+                    SynapticPro.UIReflection.SetProperty(gridLayout, "padding", new RectOffset(10, 10, 10, 10));
                     
                     // InventorySlotPrefab
                     var slotPrefab = new GameObject("SlotPrefab");
                     slotPrefab.AddComponent<RectTransform>();
-                    var slotImage = slotPrefab.AddComponent<UnityEngine.UI.Image>();
-                    slotImage.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+                    var slotImage = SynapticPro.UIReflection.AddComponent(slotPrefab, "UnityEngine.UI.Image");
+                    SynapticPro.UIReflection.SetProperty(slotImage, "color", new Color(0.3f, 0.3f, 0.3f, 1f));
                     
                     // SlotCreate
                     for (int i = 0; i < inventorySize; i++)
@@ -39345,8 +39371,8 @@ public class Inventory : MonoBehaviour
             {
                 canvas = new GameObject("Canvas");
                 canvas.AddComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
-                canvas.AddComponent<UnityEngine.UI.CanvasScaler>();
-                canvas.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+                SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.CanvasScaler");
+                SynapticPro.UIReflection.AddComponent(canvas, "UnityEngine.UI.GraphicRaycaster");
                 
                 // EventSystemalso Create
                 if (!GameObject.Find("EventSystem"))
@@ -39401,8 +39427,8 @@ public class Inventory : MonoBehaviour
             healthRect.sizeDelta = new Vector2(200, 30);
             healthRect.anchoredPosition = new Vector2(110, 50);
             
-            var healthBG = healthBar.AddComponent<UnityEngine.UI.Image>();
-            healthBG.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+            var healthBG = SynapticPro.UIReflection.AddComponent(healthBar, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(healthBG, "color", new Color(0.2f, 0.2f, 0.2f, 0.8f));
             
             var healthFill = new GameObject("Fill");
             healthFill.transform.parent = healthBar.transform;
@@ -39412,8 +39438,8 @@ public class Inventory : MonoBehaviour
             fillRect.sizeDelta = Vector2.zero;
             fillRect.anchoredPosition = Vector2.zero;
             
-            var fillImage = healthFill.AddComponent<UnityEngine.UI.Image>();
-            fillImage.color = Color.red;
+            var fillImage = SynapticPro.UIReflection.AddComponent(healthFill, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(fillImage, "color", Color.red);
             
             // Ammo counter
             var ammoText = new GameObject("AmmoCounter");
@@ -39424,12 +39450,12 @@ public class Inventory : MonoBehaviour
             ammoRect.sizeDelta = new Vector2(150, 50);
             ammoRect.anchoredPosition = new Vector2(-85, 50);
             
-            var text = ammoText.AddComponent<UnityEngine.UI.Text>();
-            text.text = "30 / 120";
-            text.font = Font.CreateDynamicFontFromOSFont("Arial", 24);
-            text.fontSize = 24;
-            text.color = Color.white;
-            text.alignment = TextAnchor.MiddleRight;
+            var text = SynapticPro.UIReflection.AddComponent(ammoText, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(text, "text", "30 / 120");
+            SynapticPro.UIReflection.SetProperty(text, "font", Font.CreateDynamicFontFromOSFont("Arial", 24));
+            SynapticPro.UIReflection.SetProperty(text, "fontSize", 24);
+            SynapticPro.UIReflection.SetProperty(text, "color", Color.white);
+            SynapticPro.UIReflection.SetProperty(text, "alignment", TextAnchor.MiddleRight);
             
             // Crosshair
             var crosshair = new GameObject("Crosshair");
@@ -39440,9 +39466,9 @@ public class Inventory : MonoBehaviour
             crossRect.sizeDelta = new Vector2(50, 50);
             crossRect.anchoredPosition = Vector2.zero;
             
-            var crossImage = crosshair.AddComponent<UnityEngine.UI.Image>();
-            crossImage.color = new Color(1, 1, 1, 0.5f);
-            crossImage.sprite = null; // CrosshairSpriteSettings
+            var crossImage = SynapticPro.UIReflection.AddComponent(crosshair, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(crossImage, "color", new Color(1, 1, 1, 0.5f));
+            SynapticPro.UIReflection.SetProperty(crossImage, "sprite", null); // CrosshairSpriteSettings
         }
         
         private void CreateRPGUI(GameObject parent)
@@ -39456,8 +39482,8 @@ public class Inventory : MonoBehaviour
             statusRect.sizeDelta = new Vector2(250, 100);
             statusRect.anchoredPosition = new Vector2(135, -60);
             
-            var bg = statusBar.AddComponent<UnityEngine.UI.Image>();
-            bg.color = new Color(0.1f, 0.1f, 0.1f, 0.9f);
+            var bg = SynapticPro.UIReflection.AddComponent(statusBar, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(bg, "color", new Color(0.1f, 0.1f, 0.1f, 0.9f));
             
             // HP/MP bars
             string[] barTypes = { "HP", "MP" };
@@ -39472,8 +39498,8 @@ public class Inventory : MonoBehaviour
                 barRect.anchorMax = new Vector2(0.9f, 0.8f - i * 0.4f);
                 barRect.sizeDelta = Vector2.zero;
                 
-                var barBG = bar.AddComponent<UnityEngine.UI.Image>();
-                barBG.color = Color.gray;
+                var barBG = SynapticPro.UIReflection.AddComponent(bar, "UnityEngine.UI.Image");
+                SynapticPro.UIReflection.SetProperty(barBG, "color", Color.gray);
                 
                 var fill = new GameObject("Fill");
                 fill.transform.parent = bar.transform;
@@ -39482,8 +39508,8 @@ public class Inventory : MonoBehaviour
                 fillRect.anchorMax = new Vector2(0.8f, 1);
                 fillRect.sizeDelta = Vector2.zero;
                 
-                var fillImage = fill.AddComponent<UnityEngine.UI.Image>();
-                fillImage.color = barColors[i];
+                var fillImage = SynapticPro.UIReflection.AddComponent(fill, "UnityEngine.UI.Image");
+                SynapticPro.UIReflection.SetProperty(fillImage, "color", barColors[i]);
             }
             
             // Quest log
@@ -39495,8 +39521,8 @@ public class Inventory : MonoBehaviour
             questRect.sizeDelta = new Vector2(300, 150);
             questRect.anchoredPosition = new Vector2(-160, -85);
             
-            var questBG = questLog.AddComponent<UnityEngine.UI.Image>();
-            questBG.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+            var questBG = SynapticPro.UIReflection.AddComponent(questLog, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(questBG, "color", new Color(0.2f, 0.2f, 0.2f, 0.8f));
             
             var questText = new GameObject("QuestText");
             questText.transform.parent = questLog.transform;
@@ -39506,11 +39532,11 @@ public class Inventory : MonoBehaviour
             textRect.sizeDelta = new Vector2(-20, -20);
             textRect.anchoredPosition = Vector2.zero;
             
-            var text = questText.AddComponent<UnityEngine.UI.Text>();
-            text.text = "Current Quest:\n- Talk to the Village Elder\n- Collect 10 herbs";
-            text.font = Font.CreateDynamicFontFromOSFont("Arial", 14);
-            text.fontSize = 14;
-            text.color = Color.white;
+            var text = SynapticPro.UIReflection.AddComponent(questText, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(text, "text", "Current Quest:\n- Talk to the Village Elder\n- Collect 10 herbs");
+            SynapticPro.UIReflection.SetProperty(text, "font", Font.CreateDynamicFontFromOSFont("Arial", 14));
+            SynapticPro.UIReflection.SetProperty(text, "fontSize", 14);
+            SynapticPro.UIReflection.SetProperty(text, "color", Color.white);
         }
         
         private void CreatePlatformerUI(GameObject parent)
@@ -39524,12 +39550,12 @@ public class Inventory : MonoBehaviour
             scoreRect.sizeDelta = new Vector2(200, 50);
             scoreRect.anchoredPosition = new Vector2(110, -35);
             
-            var score = scoreText.AddComponent<UnityEngine.UI.Text>();
-            score.text = "Score: 0";
-            score.font = Font.CreateDynamicFontFromOSFont("Arial", 28);
-            score.fontSize = 28;
-            score.color = Color.white;
-            score.alignment = TextAnchor.MiddleLeft;
+            var score = SynapticPro.UIReflection.AddComponent(scoreText, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(score, "text", "Score: 0");
+            SynapticPro.UIReflection.SetProperty(score, "font", Font.CreateDynamicFontFromOSFont("Arial", 28));
+            SynapticPro.UIReflection.SetProperty(score, "fontSize", 28);
+            SynapticPro.UIReflection.SetProperty(score, "color", Color.white);
+            SynapticPro.UIReflection.SetProperty(score, "alignment", TextAnchor.MiddleLeft);
             
             // Lives
             var livesContainer = new GameObject("Lives");
@@ -39550,8 +39576,8 @@ public class Inventory : MonoBehaviour
                 lifeRect.sizeDelta = new Vector2(30, 30);
                 lifeRect.anchoredPosition = new Vector2(35 + i * 40, 0);
                 
-                var lifeImage = life.AddComponent<UnityEngine.UI.Image>();
-                lifeImage.color = Color.red;
+                var lifeImage = SynapticPro.UIReflection.AddComponent(life, "UnityEngine.UI.Image");
+                SynapticPro.UIReflection.SetProperty(lifeImage, "color", Color.red);
             }
         }
         
@@ -39566,8 +39592,8 @@ public class Inventory : MonoBehaviour
             speedRect.sizeDelta = new Vector2(200, 200);
             speedRect.anchoredPosition = new Vector2(-110, 110);
             
-            var speedBG = speedometer.AddComponent<UnityEngine.UI.Image>();
-            speedBG.color = new Color(0.1f, 0.1f, 0.1f, 0.8f);
+            var speedBG = SynapticPro.UIReflection.AddComponent(speedometer, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(speedBG, "color", new Color(0.1f, 0.1f, 0.1f, 0.8f));
             
             var speedText = new GameObject("SpeedText");
             speedText.transform.parent = speedometer.transform;
@@ -39577,12 +39603,12 @@ public class Inventory : MonoBehaviour
             textRect.sizeDelta = new Vector2(180, 60);
             textRect.anchoredPosition = Vector2.zero;
             
-            var text = speedText.AddComponent<UnityEngine.UI.Text>();
-            text.text = "0 km/h";
-            text.font = Font.CreateDynamicFontFromOSFont("Arial", 32);
-            text.fontSize = 32;
-            text.color = Color.white;
-            text.alignment = TextAnchor.MiddleCenter;
+            var text = SynapticPro.UIReflection.AddComponent(speedText, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(text, "text", "0 km/h");
+            SynapticPro.UIReflection.SetProperty(text, "font", Font.CreateDynamicFontFromOSFont("Arial", 32));
+            SynapticPro.UIReflection.SetProperty(text, "fontSize", 32);
+            SynapticPro.UIReflection.SetProperty(text, "color", Color.white);
+            SynapticPro.UIReflection.SetProperty(text, "alignment", TextAnchor.MiddleCenter);
             
             // Lap time
             var lapTime = new GameObject("LapTime");
@@ -39593,12 +39619,12 @@ public class Inventory : MonoBehaviour
             lapRect.sizeDelta = new Vector2(300, 60);
             lapRect.anchoredPosition = new Vector2(0, -40);
             
-            var lapText = lapTime.AddComponent<UnityEngine.UI.Text>();
-            lapText.text = "Lap 1/3 - 00:00.000";
-            lapText.font = Font.CreateDynamicFontFromOSFont("Arial", 24);
-            lapText.fontSize = 24;
-            lapText.color = Color.white;
-            lapText.alignment = TextAnchor.MiddleCenter;
+            var lapText = SynapticPro.UIReflection.AddComponent(lapTime, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(lapText, "text", "Lap 1/3 - 00:00.000");
+            SynapticPro.UIReflection.SetProperty(lapText, "font", Font.CreateDynamicFontFromOSFont("Arial", 24));
+            SynapticPro.UIReflection.SetProperty(lapText, "fontSize", 24);
+            SynapticPro.UIReflection.SetProperty(lapText, "color", Color.white);
+            SynapticPro.UIReflection.SetProperty(lapText, "alignment", TextAnchor.MiddleCenter);
             
             // Position
             var position = new GameObject("Position");
@@ -39609,8 +39635,8 @@ public class Inventory : MonoBehaviour
             posRect.sizeDelta = new Vector2(150, 100);
             posRect.anchoredPosition = new Vector2(85, -60);
             
-            var posBG = position.AddComponent<UnityEngine.UI.Image>();
-            posBG.color = new Color(0.8f, 0.8f, 0.8f, 0.9f);
+            var posBG = SynapticPro.UIReflection.AddComponent(position, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(posBG, "color", new Color(0.8f, 0.8f, 0.8f, 0.9f));
             
             var posText = new GameObject("PosText");
             posText.transform.parent = position.transform;
@@ -39619,12 +39645,12 @@ public class Inventory : MonoBehaviour
             posTextRect.anchorMax = Vector2.one;
             posTextRect.sizeDelta = Vector2.zero;
             
-            var positionText = posText.AddComponent<UnityEngine.UI.Text>();
-            positionText.text = "1st";
-            positionText.font = Font.CreateDynamicFontFromOSFont("Arial", 48);
-            positionText.fontSize = 48;
-            positionText.color = Color.black;
-            positionText.alignment = TextAnchor.MiddleCenter;
+            var positionText = SynapticPro.UIReflection.AddComponent(posText, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(positionText, "text", "1st");
+            SynapticPro.UIReflection.SetProperty(positionText, "font", Font.CreateDynamicFontFromOSFont("Arial", 48));
+            SynapticPro.UIReflection.SetProperty(positionText, "fontSize", 48);
+            SynapticPro.UIReflection.SetProperty(positionText, "color", Color.black);
+            SynapticPro.UIReflection.SetProperty(positionText, "alignment", TextAnchor.MiddleCenter);
         }
         
         private void CreatePuzzleUI(GameObject parent)
@@ -39638,8 +39664,8 @@ public class Inventory : MonoBehaviour
             timerRect.sizeDelta = new Vector2(200, 60);
             timerRect.anchoredPosition = new Vector2(0, -40);
             
-            var timerBG = timer.AddComponent<UnityEngine.UI.Image>();
-            timerBG.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+            var timerBG = SynapticPro.UIReflection.AddComponent(timer, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(timerBG, "color", new Color(0.2f, 0.2f, 0.2f, 0.8f));
             
             var timerText = new GameObject("TimerText");
             timerText.transform.parent = timer.transform;
@@ -39648,12 +39674,12 @@ public class Inventory : MonoBehaviour
             textRect.anchorMax = Vector2.one;
             textRect.sizeDelta = Vector2.zero;
             
-            var text = timerText.AddComponent<UnityEngine.UI.Text>();
-            text.text = "00:00";
-            text.font = Font.CreateDynamicFontFromOSFont("Arial", 32);
-            text.fontSize = 32;
-            text.color = Color.white;
-            text.alignment = TextAnchor.MiddleCenter;
+            var text = SynapticPro.UIReflection.AddComponent(timerText, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(text, "text", "00:00");
+            SynapticPro.UIReflection.SetProperty(text, "font", Font.CreateDynamicFontFromOSFont("Arial", 32));
+            SynapticPro.UIReflection.SetProperty(text, "fontSize", 32);
+            SynapticPro.UIReflection.SetProperty(text, "color", Color.white);
+            SynapticPro.UIReflection.SetProperty(text, "alignment", TextAnchor.MiddleCenter);
             
             // Move counter
             var moves = new GameObject("Moves");
@@ -39664,11 +39690,11 @@ public class Inventory : MonoBehaviour
             movesRect.sizeDelta = new Vector2(150, 50);
             movesRect.anchoredPosition = new Vector2(85, -35);
             
-            var movesText = moves.AddComponent<UnityEngine.UI.Text>();
-            movesText.text = "Moves: 0";
-            movesText.font = Font.CreateDynamicFontFromOSFont("Arial", 20);
-            movesText.fontSize = 20;
-            movesText.color = Color.white;
+            var movesText = SynapticPro.UIReflection.AddComponent(moves, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(movesText, "text", "Moves: 0");
+            SynapticPro.UIReflection.SetProperty(movesText, "font", Font.CreateDynamicFontFromOSFont("Arial", 20));
+            SynapticPro.UIReflection.SetProperty(movesText, "fontSize", 20);
+            SynapticPro.UIReflection.SetProperty(movesText, "color", Color.white);
             
             // Hint button
             var hintButton = new GameObject("HintButton");
@@ -39679,9 +39705,9 @@ public class Inventory : MonoBehaviour
             hintRect.sizeDelta = new Vector2(100, 40);
             hintRect.anchoredPosition = new Vector2(-60, -30);
             
-            var button = hintButton.AddComponent<UnityEngine.UI.Button>();
-            var buttonImage = hintButton.AddComponent<UnityEngine.UI.Image>();
-            buttonImage.color = Color.yellow;
+            var button = SynapticPro.UIReflection.AddComponent(hintButton, "UnityEngine.UI.Button");
+            var buttonImage = SynapticPro.UIReflection.AddComponent(hintButton, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(buttonImage, "color", Color.yellow);
             
             var buttonText = new GameObject("Text");
             buttonText.transform.parent = hintButton.transform;
@@ -39690,12 +39716,12 @@ public class Inventory : MonoBehaviour
             btnTextRect.anchorMax = Vector2.one;
             btnTextRect.sizeDelta = Vector2.zero;
             
-            var btnText = buttonText.AddComponent<UnityEngine.UI.Text>();
-            btnText.text = "Hint";
-            btnText.font = Font.CreateDynamicFontFromOSFont("Arial", 16);
-            btnText.fontSize = 16;
-            btnText.color = Color.black;
-            btnText.alignment = TextAnchor.MiddleCenter;
+            var btnText = SynapticPro.UIReflection.AddComponent(buttonText, "UnityEngine.UI.Text");
+            SynapticPro.UIReflection.SetProperty(btnText, "text", "Hint");
+            SynapticPro.UIReflection.SetProperty(btnText, "font", Font.CreateDynamicFontFromOSFont("Arial", 16));
+            SynapticPro.UIReflection.SetProperty(btnText, "fontSize", 16);
+            SynapticPro.UIReflection.SetProperty(btnText, "color", Color.black);
+            SynapticPro.UIReflection.SetProperty(btnText, "alignment", TextAnchor.MiddleCenter);
         }
         
         private void CreateStrategyUI(GameObject parent)
@@ -39709,8 +39735,8 @@ public class Inventory : MonoBehaviour
             resRect.sizeDelta = new Vector2(0, 80);
             resRect.anchoredPosition = new Vector2(0, -40);
             
-            var resBG = resourcePanel.AddComponent<UnityEngine.UI.Image>();
-            resBG.color = new Color(0.1f, 0.1f, 0.1f, 0.9f);
+            var resBG = SynapticPro.UIReflection.AddComponent(resourcePanel, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(resBG, "color", new Color(0.1f, 0.1f, 0.1f, 0.9f));
             
             // Resource display
             string[] resources = { "Gold: 1000", "Food: 500", "Wood: 300", "Stone: 200" };
@@ -39724,12 +39750,12 @@ public class Inventory : MonoBehaviour
                 resourceRect.sizeDelta = new Vector2(150, 40);
                 resourceRect.anchoredPosition = Vector2.zero;
                 
-                var text = resource.AddComponent<UnityEngine.UI.Text>();
-                text.text = resources[i];
-                text.font = Font.CreateDynamicFontFromOSFont("Arial", 18);
-                text.fontSize = 18;
-                text.color = Color.white;
-                text.alignment = TextAnchor.MiddleLeft;
+                var text = SynapticPro.UIReflection.AddComponent(resource, "UnityEngine.UI.Text");
+                SynapticPro.UIReflection.SetProperty(text, "text", resources[i]);
+                SynapticPro.UIReflection.SetProperty(text, "font", Font.CreateDynamicFontFromOSFont("Arial", 18));
+                SynapticPro.UIReflection.SetProperty(text, "fontSize", 18);
+                SynapticPro.UIReflection.SetProperty(text, "color", Color.white);
+                SynapticPro.UIReflection.SetProperty(text, "alignment", TextAnchor.MiddleLeft);
             }
             
             // Minimap
@@ -39741,8 +39767,8 @@ public class Inventory : MonoBehaviour
             mapRect.sizeDelta = new Vector2(200, 200);
             mapRect.anchoredPosition = new Vector2(-110, 110);
             
-            var mapBG = minimap.AddComponent<UnityEngine.UI.Image>();
-            mapBG.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+            var mapBG = SynapticPro.UIReflection.AddComponent(minimap, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(mapBG, "color", new Color(0.2f, 0.2f, 0.2f, 0.8f));
             
             var mapBorder = new GameObject("Border");
             mapBorder.transform.parent = minimap.transform;
@@ -39751,9 +39777,9 @@ public class Inventory : MonoBehaviour
             borderRect.anchorMax = Vector2.one;
             borderRect.sizeDelta = new Vector2(10, 10);
             
-            var outline = mapBorder.AddComponent<UnityEngine.UI.Outline>();
-            outline.effectColor = Color.white;
-            outline.effectDistance = new Vector2(2, 2);
+            var outline = SynapticPro.UIReflection.AddComponent(mapBorder, "UnityEngine.UI.Outline");
+            SynapticPro.UIReflection.SetProperty(outline, "effectColor", Color.white);
+            SynapticPro.UIReflection.SetProperty(outline, "effectDistance", new Vector2(2, 2));
             
             // ActionButton
             var actionPanel = new GameObject("ActionPanel");
@@ -39775,9 +39801,9 @@ public class Inventory : MonoBehaviour
                 btnRect.sizeDelta = new Vector2(80, 80);
                 btnRect.anchoredPosition = Vector2.zero;
                 
-                var btn = actionButton.AddComponent<UnityEngine.UI.Button>();
-                var btnImage = actionButton.AddComponent<UnityEngine.UI.Image>();
-                btnImage.color = new Color(0.3f, 0.3f, 0.3f);
+                var btn = SynapticPro.UIReflection.AddComponent(actionButton, "UnityEngine.UI.Button");
+                var btnImage = SynapticPro.UIReflection.AddComponent(actionButton, "UnityEngine.UI.Image");
+                SynapticPro.UIReflection.SetProperty(btnImage, "color", new Color(0.3f, 0.3f, 0.3f));
                 
                 var btnText = new GameObject("Text");
                 btnText.transform.parent = actionButton.transform;
@@ -39786,12 +39812,12 @@ public class Inventory : MonoBehaviour
                 textRect.anchorMax = Vector2.one;
                 textRect.sizeDelta = Vector2.zero;
                 
-                var text = btnText.AddComponent<UnityEngine.UI.Text>();
-                text.text = actions[i];
-                text.font = Font.CreateDynamicFontFromOSFont("Arial", 14);
-                text.fontSize = 14;
-                text.color = Color.white;
-                text.alignment = TextAnchor.MiddleCenter;
+                var text = SynapticPro.UIReflection.AddComponent(btnText, "UnityEngine.UI.Text");
+                SynapticPro.UIReflection.SetProperty(text, "text", actions[i]);
+                SynapticPro.UIReflection.SetProperty(text, "font", Font.CreateDynamicFontFromOSFont("Arial", 14));
+                SynapticPro.UIReflection.SetProperty(text, "fontSize", 14);
+                SynapticPro.UIReflection.SetProperty(text, "color", Color.white);
+                SynapticPro.UIReflection.SetProperty(text, "alignment", TextAnchor.MiddleCenter);
             }
         }
         
@@ -40305,7 +40331,7 @@ public class SimpleMove : MonoBehaviour {
                 {
                     success = true,
                     message = $"Created GOAP agent: {name}",
-                    agentId = agent.GetInstanceID(),
+                    agentId = agent.GetIdCompat(),
                     agentName = name,
                     position = new { x = position.x, y = position.y, z = position.z },
                     metadata = metadata,
@@ -40890,7 +40916,7 @@ public class SimpleMove : MonoBehaviour {
                 {
                     success = true,
                     message = $"Created {templateType} GOAP template",
-                    agentId = agent.GetInstanceID(),
+                    agentId = agent.GetIdCompat(),
                     template = template
                 });
             }
@@ -44306,64 +44332,49 @@ public class {treeName} : MonoBehaviour
                 var rectTransform = container.AddComponent<RectTransform>();
                 
                 // Add layout group
-                LayoutGroup layoutGroup;
+                Component layoutGroup;
                 if (layoutType.ToLower() == "vertical")
                 {
-                    var verticalLayout = container.AddComponent<VerticalLayoutGroup>();
-                    verticalLayout.spacing = spacing;
-                    verticalLayout.padding = new RectOffset((int)padding, (int)padding, (int)padding, (int)padding);
+                    var verticalLayout = SynapticPro.UIReflection.AddComponent(container, "UnityEngine.UI.VerticalLayoutGroup");
+                    SynapticPro.UIReflection.SetProperty(verticalLayout, "spacing", spacing);
+                    SynapticPro.UIReflection.SetProperty(verticalLayout, "padding", new RectOffset((int)padding, (int)padding, (int)padding, (int)padding));
                     layoutGroup = verticalLayout;
                 }
                 else
                 {
-                    var horizontalLayout = container.AddComponent<HorizontalLayoutGroup>();
-                    horizontalLayout.spacing = spacing;
-                    horizontalLayout.padding = new RectOffset((int)padding, (int)padding, (int)padding, (int)padding);
+                    var horizontalLayout = SynapticPro.UIReflection.AddComponent(container, "UnityEngine.UI.HorizontalLayoutGroup");
+                    SynapticPro.UIReflection.SetProperty(horizontalLayout, "spacing", spacing);
+                    SynapticPro.UIReflection.SetProperty(horizontalLayout, "padding", new RectOffset((int)padding, (int)padding, (int)padding, (int)padding));
                     layoutGroup = horizontalLayout;
                 }
-                
+
                 // Child element alignment settings
+                TextAnchor anchor;
                 switch (childAlignment.ToLower())
                 {
-                    case "upper-left":
-                        layoutGroup.childAlignment = TextAnchor.UpperLeft;
-                        break;
-                    case "upper-center":
-                        layoutGroup.childAlignment = TextAnchor.UpperCenter;
-                        break;
-                    case "upper-right":
-                        layoutGroup.childAlignment = TextAnchor.UpperRight;
-                        break;
-                    case "middle-left":
-                        layoutGroup.childAlignment = TextAnchor.MiddleLeft;
-                        break;
-                    case "middle-center":
-                        layoutGroup.childAlignment = TextAnchor.MiddleCenter;
-                        break;
-                    case "middle-right":
-                        layoutGroup.childAlignment = TextAnchor.MiddleRight;
-                        break;
-                    case "lower-left":
-                        layoutGroup.childAlignment = TextAnchor.LowerLeft;
-                        break;
-                    case "lower-center":
-                        layoutGroup.childAlignment = TextAnchor.LowerCenter;
-                        break;
-                    case "lower-right":
-                        layoutGroup.childAlignment = TextAnchor.LowerRight;
-                        break;
+                    case "upper-left":    anchor = TextAnchor.UpperLeft;    break;
+                    case "upper-center":  anchor = TextAnchor.UpperCenter;  break;
+                    case "upper-right":   anchor = TextAnchor.UpperRight;   break;
+                    case "middle-left":   anchor = TextAnchor.MiddleLeft;   break;
+                    case "middle-center": anchor = TextAnchor.MiddleCenter; break;
+                    case "middle-right":  anchor = TextAnchor.MiddleRight;  break;
+                    case "lower-left":    anchor = TextAnchor.LowerLeft;    break;
+                    case "lower-center":  anchor = TextAnchor.LowerCenter;  break;
+                    case "lower-right":   anchor = TextAnchor.LowerRight;   break;
+                    default:              anchor = TextAnchor.MiddleCenter; break;
                 }
-                
+                SynapticPro.UIReflection.SetProperty(layoutGroup, "childAlignment", anchor);
+
                 // Content Size FitterAdd
                 if (useContentSizeFitter)
                 {
-                    var sizeFitter = container.AddComponent<ContentSizeFitter>();
-                    sizeFitter.horizontalFit = layoutType.ToLower() == "horizontal" ? 
-                        ContentSizeFitter.FitMode.PreferredSize : 
-                        ContentSizeFitter.FitMode.Unconstrained;
-                    sizeFitter.verticalFit = layoutType.ToLower() == "vertical" ? 
-                        ContentSizeFitter.FitMode.PreferredSize : 
-                        ContentSizeFitter.FitMode.Unconstrained;
+                    var sizeFitter = SynapticPro.UIReflection.AddComponent(container, "UnityEngine.UI.ContentSizeFitter");
+                    var fitModePreferred = SynapticPro.UIReflection.GetEnum("UnityEngine.UI.ContentSizeFitter+FitMode", "PreferredSize");
+                    var fitModeUnconstrained = SynapticPro.UIReflection.GetEnum("UnityEngine.UI.ContentSizeFitter+FitMode", "Unconstrained");
+                    SynapticPro.UIReflection.SetProperty(sizeFitter, "horizontalFit",
+                        layoutType.ToLower() == "horizontal" ? fitModePreferred : fitModeUnconstrained);
+                    SynapticPro.UIReflection.SetProperty(sizeFitter, "verticalFit",
+                        layoutType.ToLower() == "vertical" ? fitModePreferred : fitModeUnconstrained);
                 }
                 
                 // Default anchor settings (stretch)
@@ -44382,11 +44393,11 @@ public class {treeName} : MonoBehaviour
                     childButton.transform.SetParent(container.transform, false);
                     
                     // Layout ElementAdd
-                    var layoutElement = childButton.AddComponent<LayoutElement>();
-                    layoutElement.minWidth = 100;
-                    layoutElement.minHeight = 40;
-                    layoutElement.preferredWidth = 150;
-                    layoutElement.preferredHeight = 50;
+                    var layoutElement = SynapticPro.UIReflection.AddComponent(childButton, "UnityEngine.UI.LayoutElement");
+                    SynapticPro.UIReflection.SetProperty(layoutElement, "minWidth", 100f);
+                    SynapticPro.UIReflection.SetProperty(layoutElement, "minHeight", 40f);
+                    SynapticPro.UIReflection.SetProperty(layoutElement, "preferredWidth", 150f);
+                    SynapticPro.UIReflection.SetProperty(layoutElement, "preferredHeight", 50f);
                 }
                 
                 Selection.activeGameObject = container;
@@ -44579,28 +44590,30 @@ public class {treeName} : MonoBehaviour
                 var rectTransform = gridContainer.AddComponent<RectTransform>();
                 
                 // Grid Layout GroupAdd
-                var gridLayout = gridContainer.AddComponent<GridLayoutGroup>();
-                gridLayout.cellSize = cellSize;
-                gridLayout.spacing = spacing;
-                gridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-                gridLayout.constraintCount = columns;
-                
+                var gridLayout = SynapticPro.UIReflection.AddComponent(gridContainer, "UnityEngine.UI.GridLayoutGroup");
+                SynapticPro.UIReflection.SetProperty(gridLayout, "cellSize", cellSize);
+                SynapticPro.UIReflection.SetProperty(gridLayout, "spacing", spacing);
+                SynapticPro.UIReflection.SetProperty(gridLayout, "constraint",
+                    SynapticPro.UIReflection.GetEnum("UnityEngine.UI.GridLayoutGroup+Constraint", "FixedColumnCount"));
+                SynapticPro.UIReflection.SetProperty(gridLayout, "constraintCount", columns);
+
                 // Padding settings
                 var paddingValues = padding.Split(',');
                 if (paddingValues.Length >= 4)
                 {
-                    gridLayout.padding = new RectOffset(
+                    SynapticPro.UIReflection.SetProperty(gridLayout, "padding", new RectOffset(
                         int.Parse(paddingValues[0]),  // left
                         int.Parse(paddingValues[1]),  // right
                         int.Parse(paddingValues[2]),  // top
                         int.Parse(paddingValues[3])   // bottom
-                    );
+                    ));
                 }
-                
+
                 // Content Size FitterAdd
-                var sizeFitter = gridContainer.AddComponent<ContentSizeFitter>();
-                sizeFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-                sizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+                var sizeFitter = SynapticPro.UIReflection.AddComponent(gridContainer, "UnityEngine.UI.ContentSizeFitter");
+                var gridFitMode = SynapticPro.UIReflection.GetEnum("UnityEngine.UI.ContentSizeFitter+FitMode", "PreferredSize");
+                SynapticPro.UIReflection.SetProperty(sizeFitter, "horizontalFit", gridFitMode);
+                SynapticPro.UIReflection.SetProperty(sizeFitter, "verticalFit", gridFitMode);
                 
                 // GridElementCreate
                 var createdElements = new List<GameObject>();
@@ -44619,8 +44632,8 @@ public class {treeName} : MonoBehaviour
                             
                         case "image":
                             element = CreateImage($"GridImage_{i}", new Dictionary<string, string>());
-                            var image = element.GetComponent<Image>();
-                            image.color = new Color(Random.Range(0.3f, 1f), Random.Range(0.3f, 1f), Random.Range(0.3f, 1f));
+                            var image = SynapticPro.UIReflection.GetComponent(element, "UnityEngine.UI.Image");
+                            SynapticPro.UIReflection.SetProperty(image, "color", new Color(Random.Range(0.3f, 1f), Random.Range(0.3f, 1f), Random.Range(0.3f, 1f)));
                             break;
                             
                         case "text":
@@ -44637,8 +44650,8 @@ public class {treeName} : MonoBehaviour
                         default:
                             element = new GameObject($"GridItem_{i}");
                             element.AddComponent<RectTransform>();
-                            var img = element.AddComponent<Image>();
-                            img.color = Color.gray;
+                            var img = SynapticPro.UIReflection.AddComponent(element, "UnityEngine.UI.Image");
+                            SynapticPro.UIReflection.SetProperty(img, "color", Color.gray);
                             break;
                     }
                     
@@ -44697,7 +44710,7 @@ public class {treeName} : MonoBehaviour
                 var scrollView = new GameObject(scrollViewName);
                 scrollView.transform.SetParent(canvas.transform, false);
                 
-                var scrollRect = scrollView.AddComponent<ScrollRect>();
+                var scrollRect = SynapticPro.UIReflection.AddComponent(scrollView, "UnityEngine.UI.ScrollRect");
                 var scrollRectTransform = scrollView.GetComponent<RectTransform>();
                 
                 // Anchor settings (occupies large part of screen)
@@ -44707,8 +44720,8 @@ public class {treeName} : MonoBehaviour
                 scrollRectTransform.offsetMax = Vector2.zero;
                 
                 // Add background image
-                var scrollImage = scrollView.AddComponent<Image>();
-                scrollImage.color = new Color(1f, 1f, 1f, 0.1f);
+                var scrollImage = SynapticPro.UIReflection.AddComponent(scrollView, "UnityEngine.UI.Image");
+                SynapticPro.UIReflection.SetProperty(scrollImage, "color", new Color(1f, 1f, 1f, 0.1f));
                 
                 // ViewportCreate
                 var viewport = new GameObject("Viewport");
@@ -44719,10 +44732,10 @@ public class {treeName} : MonoBehaviour
                 viewportRect.offsetMin = Vector2.zero;
                 viewportRect.offsetMax = Vector2.zero;
                 
-                var viewportMask = viewport.AddComponent<Mask>();
-                viewportMask.showMaskGraphic = false;
-                var viewportImage = viewport.AddComponent<Image>();
-                viewportImage.color = Color.clear;
+                var viewportMask = SynapticPro.UIReflection.AddComponent(viewport, "UnityEngine.UI.Mask");
+                SynapticPro.UIReflection.SetProperty(viewportMask, "showMaskGraphic", false);
+                var viewportImage = SynapticPro.UIReflection.AddComponent(viewport, "UnityEngine.UI.Image");
+                SynapticPro.UIReflection.SetProperty(viewportImage, "color", Color.clear);
                 
                 // ContentCreate
                 var content = new GameObject("Content");
@@ -44736,16 +44749,16 @@ public class {treeName} : MonoBehaviour
                     contentRect.anchorMax = new Vector2(1, 1);
                     contentRect.pivot = new Vector2(0.5f, 1);
                     
-                    scrollRect.horizontal = false;
-                    scrollRect.vertical = true;
+                    SynapticPro.UIReflection.SetProperty(scrollRect, "horizontal", false);
+                    SynapticPro.UIReflection.SetProperty(scrollRect, "vertical", true);
                     
                     // Vertical Layout GroupAdd
-                    var verticalLayout = content.AddComponent<VerticalLayoutGroup>();
-                    verticalLayout.childControlHeight = false;
-                    verticalLayout.childControlWidth = true;
-                    verticalLayout.childForceExpandHeight = false;
-                    verticalLayout.childForceExpandWidth = true;
-                    verticalLayout.spacing = 5;
+                    var verticalLayout = SynapticPro.UIReflection.AddComponent(content, "UnityEngine.UI.VerticalLayoutGroup");
+                    SynapticPro.UIReflection.SetProperty(verticalLayout, "childControlHeight", false);
+                    SynapticPro.UIReflection.SetProperty(verticalLayout, "childControlWidth", true);
+                    SynapticPro.UIReflection.SetProperty(verticalLayout, "childForceExpandHeight", false);
+                    SynapticPro.UIReflection.SetProperty(verticalLayout, "childForceExpandWidth", true);
+                    SynapticPro.UIReflection.SetProperty(verticalLayout, "spacing", 5f);
                 }
                 else
                 {
@@ -44753,27 +44766,28 @@ public class {treeName} : MonoBehaviour
                     contentRect.anchorMax = new Vector2(0, 1);
                     contentRect.pivot = new Vector2(0, 0.5f);
                     
-                    scrollRect.horizontal = true;
-                    scrollRect.vertical = false;
+                    SynapticPro.UIReflection.SetProperty(scrollRect, "horizontal", true);
+                    SynapticPro.UIReflection.SetProperty(scrollRect, "vertical", false);
                     
                     // Horizontal Layout GroupAdd
-                    var horizontalLayout = content.AddComponent<HorizontalLayoutGroup>();
-                    horizontalLayout.childControlHeight = true;
-                    horizontalLayout.childControlWidth = false;
-                    horizontalLayout.childForceExpandHeight = true;
-                    horizontalLayout.childForceExpandWidth = false;
-                    horizontalLayout.spacing = 5;
+                    var horizontalLayout = SynapticPro.UIReflection.AddComponent(content, "UnityEngine.UI.HorizontalLayoutGroup");
+                    SynapticPro.UIReflection.SetProperty(horizontalLayout, "childControlHeight", true);
+                    SynapticPro.UIReflection.SetProperty(horizontalLayout, "childControlWidth", false);
+                    SynapticPro.UIReflection.SetProperty(horizontalLayout, "childForceExpandHeight", true);
+                    SynapticPro.UIReflection.SetProperty(horizontalLayout, "childForceExpandWidth", false);
+                    SynapticPro.UIReflection.SetProperty(horizontalLayout, "spacing", 5f);
                 }
-                
+
                 // Content Size FitterAdd
-                var contentSizeFitter = content.AddComponent<ContentSizeFitter>();
+                var contentSizeFitter = SynapticPro.UIReflection.AddComponent(content, "UnityEngine.UI.ContentSizeFitter");
+                var scrollFitMode = SynapticPro.UIReflection.GetEnum("UnityEngine.UI.ContentSizeFitter+FitMode", "PreferredSize");
                 if (scrollDirection.ToLower() == "vertical")
                 {
-                    contentSizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+                    SynapticPro.UIReflection.SetProperty(contentSizeFitter, "verticalFit", scrollFitMode);
                 }
                 else
                 {
-                    contentSizeFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+                    SynapticPro.UIReflection.SetProperty(contentSizeFitter, "horizontalFit", scrollFitMode);
                 }
                 
                 // Create scrollbar
@@ -44783,21 +44797,24 @@ public class {treeName} : MonoBehaviour
                     {
                         var verticalScrollbar = CreateScrollbar("Scrollbar Vertical", true);
                         verticalScrollbar.transform.SetParent(scrollView.transform, false);
-                        scrollRect.verticalScrollbar = verticalScrollbar.GetComponent<Scrollbar>();
+                        SynapticPro.UIReflection.SetProperty(scrollRect, "verticalScrollbar",
+                            SynapticPro.UIReflection.GetComponent(verticalScrollbar, "UnityEngine.UI.Scrollbar"));
                     }
                     else
                     {
                         var horizontalScrollbar = CreateScrollbar("Scrollbar Horizontal", false);
                         horizontalScrollbar.transform.SetParent(scrollView.transform, false);
-                        scrollRect.horizontalScrollbar = horizontalScrollbar.GetComponent<Scrollbar>();
+                        SynapticPro.UIReflection.SetProperty(scrollRect, "horizontalScrollbar",
+                            SynapticPro.UIReflection.GetComponent(horizontalScrollbar, "UnityEngine.UI.Scrollbar"));
                     }
                 }
                 
                 // ScrollRectSettings
-                scrollRect.content = contentRect;
-                scrollRect.viewport = viewportRect;
-                scrollRect.elasticity = elasticity;
-                scrollRect.movementType = ScrollRect.MovementType.Elastic;
+                SynapticPro.UIReflection.SetProperty(scrollRect, "content", contentRect);
+                SynapticPro.UIReflection.SetProperty(scrollRect, "viewport", viewportRect);
+                SynapticPro.UIReflection.SetProperty(scrollRect, "elasticity", elasticity);
+                SynapticPro.UIReflection.SetProperty(scrollRect, "movementType",
+                    SynapticPro.UIReflection.GetEnum("UnityEngine.UI.ScrollRect+MovementType", "Elastic"));
                 
                 // Create content items
                 for (int i = 0; i < itemCount; i++)
@@ -44822,24 +44839,24 @@ public class {treeName} : MonoBehaviour
                             
                         case "image":
                             item = CreateImage($"Item_{i}", new Dictionary<string, string>());
-                            var img = item.GetComponent<Image>();
-                            img.color = new Color(Random.Range(0.3f, 1f), Random.Range(0.3f, 1f), Random.Range(0.3f, 1f));
+                            var img = SynapticPro.UIReflection.GetComponent(item, "UnityEngine.UI.Image");
+                            SynapticPro.UIReflection.SetProperty(img, "color", new Color(Random.Range(0.3f, 1f), Random.Range(0.3f, 1f), Random.Range(0.3f, 1f)));
                             break;
                             
                         default:
                             item = new GameObject($"Item_{i}");
                             item.AddComponent<RectTransform>();
-                            var defaultImg = item.AddComponent<Image>();
-                            defaultImg.color = Color.gray;
+                            var defaultImg = SynapticPro.UIReflection.AddComponent(item, "UnityEngine.UI.Image");
+                            SynapticPro.UIReflection.SetProperty(defaultImg, "color", Color.gray);
                             break;
                     }
                     
                     item.transform.SetParent(content.transform, false);
                     
                     // Layout ElementAdd
-                    var layoutElement = item.AddComponent<LayoutElement>();
-                    layoutElement.preferredWidth = itemSize.x;
-                    layoutElement.preferredHeight = itemSize.y;
+                    var layoutElement = SynapticPro.UIReflection.AddComponent(item, "UnityEngine.UI.LayoutElement");
+                    SynapticPro.UIReflection.SetProperty(layoutElement, "preferredWidth", itemSize.x);
+                    SynapticPro.UIReflection.SetProperty(layoutElement, "preferredHeight", itemSize.y);
                 }
                 
                 Selection.activeGameObject = scrollView;
@@ -44881,11 +44898,13 @@ public class {treeName} : MonoBehaviour
                 scrollbarRect.offsetMax = new Vector2(0, 0);
             }
             
-            var scrollbarImage = scrollbar.AddComponent<Image>();
-            scrollbarImage.color = new Color(0.5f, 0.5f, 0.5f, 0.3f);
+            var scrollbarImage = SynapticPro.UIReflection.AddComponent(scrollbar, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(scrollbarImage, "color", new Color(0.5f, 0.5f, 0.5f, 0.3f));
             
-            var scrollbarComponent = scrollbar.AddComponent<Scrollbar>();
-            scrollbarComponent.direction = isVertical ? Scrollbar.Direction.BottomToTop : Scrollbar.Direction.LeftToRight;
+            var scrollbarComponent = SynapticPro.UIReflection.AddComponent(scrollbar, "UnityEngine.UI.Scrollbar");
+            SynapticPro.UIReflection.SetProperty(scrollbarComponent, "direction",
+                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.Scrollbar+Direction",
+                    isVertical ? "BottomToTop" : "LeftToRight"));
             
             // HandleCreate
             var handle = new GameObject("Handle");
@@ -44896,11 +44915,11 @@ public class {treeName} : MonoBehaviour
             handleRect.offsetMin = Vector2.zero;
             handleRect.offsetMax = Vector2.zero;
             
-            var handleImage = handle.AddComponent<Image>();
-            handleImage.color = new Color(0.8f, 0.8f, 0.8f, 0.8f);
-            
-            scrollbarComponent.handleRect = handleRect;
-            scrollbarComponent.targetGraphic = handleImage;
+            var handleImage = SynapticPro.UIReflection.AddComponent(handle, "UnityEngine.UI.Image");
+            SynapticPro.UIReflection.SetProperty(handleImage, "color", new Color(0.8f, 0.8f, 0.8f, 0.8f));
+
+            SynapticPro.UIReflection.SetProperty(scrollbarComponent, "handleRect", handleRect);
+            SynapticPro.UIReflection.SetProperty(scrollbarComponent, "targetGraphic", handleImage);
             
             return scrollbar;
         }
@@ -44968,15 +44987,16 @@ public class {treeName} : MonoBehaviour
                 }
                 
                 // Vertical Layout GroupAdd
-                var layoutGroup = notificationContainer.AddComponent<VerticalLayoutGroup>();
-                layoutGroup.childAlignment = TextAnchor.UpperCenter;
-                layoutGroup.spacing = 10;
-                layoutGroup.padding = new RectOffset(10, 10, 10, 10);
-                
+                var layoutGroup = SynapticPro.UIReflection.AddComponent(notificationContainer, "UnityEngine.UI.VerticalLayoutGroup");
+                SynapticPro.UIReflection.SetProperty(layoutGroup, "childAlignment", TextAnchor.UpperCenter);
+                SynapticPro.UIReflection.SetProperty(layoutGroup, "spacing", 10f);
+                SynapticPro.UIReflection.SetProperty(layoutGroup, "padding", new RectOffset(10, 10, 10, 10));
+
                 // Content Size FitterAdd
-                var sizeFitter = notificationContainer.AddComponent<ContentSizeFitter>();
-                sizeFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-                sizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+                var sizeFitter = SynapticPro.UIReflection.AddComponent(notificationContainer, "UnityEngine.UI.ContentSizeFitter");
+                var notifFitMode = SynapticPro.UIReflection.GetEnum("UnityEngine.UI.ContentSizeFitter+FitMode", "PreferredSize");
+                SynapticPro.UIReflection.SetProperty(sizeFitter, "horizontalFit", notifFitMode);
+                SynapticPro.UIReflection.SetProperty(sizeFitter, "verticalFit", notifFitMode);
                 
                 // Create sample notification
                 for (int i = 0; i < 2; i++)
@@ -45029,20 +45049,20 @@ public class {treeName} : MonoBehaviour
             rect.sizeDelta = new Vector2(300, 80);
             
             // Background
-            var background = notification.AddComponent<Image>();
+            var background = SynapticPro.UIReflection.AddComponent(notification, "UnityEngine.UI.Image");
             switch (type.ToLower())
             {
                 case "success":
-                    background.color = new Color(0.2f, 0.8f, 0.2f, 0.9f);
+                    SynapticPro.UIReflection.SetProperty(background, "color", new Color(0.2f, 0.8f, 0.2f, 0.9f));
                     break;
                 case "warning":
-                    background.color = new Color(1f, 0.8f, 0.2f, 0.9f);
+                    SynapticPro.UIReflection.SetProperty(background, "color", new Color(1f, 0.8f, 0.2f, 0.9f));
                     break;
                 case "error":
-                    background.color = new Color(0.8f, 0.2f, 0.2f, 0.9f);
+                    SynapticPro.UIReflection.SetProperty(background, "color", new Color(0.8f, 0.2f, 0.2f, 0.9f));
                     break;
                 default:
-                    background.color = new Color(0.2f, 0.2f, 0.2f, 0.9f);
+                    SynapticPro.UIReflection.SetProperty(background, "color", new Color(0.2f, 0.2f, 0.2f, 0.9f));
                     break;
             }
             
@@ -45136,36 +45156,28 @@ public class {treeName} : MonoBehaviour
                 containerRect.offsetMax = Vector2.zero;
                 
                 // Add layout group
-                LayoutGroup layoutGroup;
+                Component layoutGroup;
                 if (orientation.ToLower() == "vertical")
                 {
-                    layoutGroup = navContainer.AddComponent<VerticalLayoutGroup>();
+                    layoutGroup = SynapticPro.UIReflection.AddComponent(navContainer, "UnityEngine.UI.VerticalLayoutGroup");
                 }
                 else
                 {
-                    layoutGroup = navContainer.AddComponent<HorizontalLayoutGroup>();
+                    layoutGroup = SynapticPro.UIReflection.AddComponent(navContainer, "UnityEngine.UI.HorizontalLayoutGroup");
                 }
-                
-                if (layoutGroup is HorizontalLayoutGroup horizontalGroup)
+
+                if (SynapticPro.UIReflection.IsInstanceOf(layoutGroup, "UnityEngine.UI.HorizontalOrVerticalLayoutGroup"))
                 {
-                    horizontalGroup.childControlWidth = true;
-                    horizontalGroup.childControlHeight = true;
-                    horizontalGroup.childForceExpandWidth = true;
-                    horizontalGroup.childForceExpandHeight = true;
-                    horizontalGroup.spacing = 5;
+                    SynapticPro.UIReflection.SetProperty(layoutGroup, "childControlWidth", true);
+                    SynapticPro.UIReflection.SetProperty(layoutGroup, "childControlHeight", true);
+                    SynapticPro.UIReflection.SetProperty(layoutGroup, "childForceExpandWidth", true);
+                    SynapticPro.UIReflection.SetProperty(layoutGroup, "childForceExpandHeight", true);
+                    SynapticPro.UIReflection.SetProperty(layoutGroup, "spacing", 5f);
                 }
-                else if (layoutGroup is VerticalLayoutGroup verticalGroup)
-                {
-                    verticalGroup.childControlWidth = true;
-                    verticalGroup.childControlHeight = true;
-                    verticalGroup.childForceExpandWidth = true;
-                    verticalGroup.childForceExpandHeight = true;
-                    verticalGroup.spacing = 5;
-                }
-                
+
                 // Add toggle group (radio button-style operation)
-                var toggleGroup = navContainer.AddComponent<ToggleGroup>();
-                toggleGroup.allowSwitchOff = false;
+                var toggleGroup = SynapticPro.UIReflection.AddComponent(navContainer, "UnityEngine.UI.ToggleGroup");
+                SynapticPro.UIReflection.SetProperty(toggleGroup, "allowSwitchOff", false);
                 
                 // Create navigation item
                 var createdItems = new List<GameObject>();
@@ -45186,9 +45198,9 @@ public class {treeName} : MonoBehaviour
                             break;
                         case "toggle":
                             navItem = CreateToggle($"NavToggle_{i}", new Dictionary<string, string>());
-                            var toggle = navItem.GetComponent<Toggle>();
-                            toggle.group = toggleGroup;
-                            toggle.isOn = i == selectedIndex;
+                            var toggle = SynapticPro.UIReflection.GetComponent(navItem, "UnityEngine.UI.Toggle");
+                            SynapticPro.UIReflection.SetProperty(toggle, "group", toggleGroup);
+                            SynapticPro.UIReflection.SetProperty(toggle, "isOn", i == selectedIndex);
                             break;
                         default:
                             navItem = CreateButton($"NavItem_{i}", new Dictionary<string, string>
@@ -45229,16 +45241,16 @@ public class {treeName} : MonoBehaviour
             });
             
             // Selected state styling
-            var button = tab.GetComponent<Button>();
-            var image = tab.GetComponent<Image>();
-            
+            var button = SynapticPro.UIReflection.GetComponent(tab, "UnityEngine.UI.Button");
+            var image = SynapticPro.UIReflection.GetComponent(tab, "UnityEngine.UI.Image");
+
             if (isSelected)
             {
-                image.color = new Color(0.8f, 0.8f, 0.8f);
+                SynapticPro.UIReflection.SetProperty(image, "color", new Color(0.8f, 0.8f, 0.8f));
             }
             else
             {
-                image.color = new Color(0.6f, 0.6f, 0.6f);
+                SynapticPro.UIReflection.SetProperty(image, "color", new Color(0.6f, 0.6f, 0.6f));
             }
             
             return tab;
@@ -45278,13 +45290,13 @@ public class {treeName} : MonoBehaviour
                     overlayRect.offsetMin = Vector2.zero;
                     overlayRect.offsetMax = Vector2.zero;
                     
-                    var overlayImage = overlay.AddComponent<Image>();
-                    overlayImage.color = new Color(0, 0, 0, 0.5f);
+                    var overlayImage = SynapticPro.UIReflection.AddComponent(overlay, "UnityEngine.UI.Image");
+                    SynapticPro.UIReflection.SetProperty(overlayImage, "color", new Color(0, 0, 0, 0.5f));
                     
                     if (isModal)
                     {
-                        var overlayButton = overlay.AddComponent<Button>();
-                        overlayButton.onClick.AddListener(() => {
+                        var overlayButton = SynapticPro.UIReflection.AddComponent(overlay, "UnityEngine.UI.Button");
+                        SynapticPro.UIReflection.AddUnityEventListener(overlayButton, "onClick", () => {
                             if (overlay != null) GameObject.Destroy(overlay.transform.parent.gameObject);
                         });
                     }
@@ -45302,8 +45314,8 @@ public class {treeName} : MonoBehaviour
                 dialogRect.anchoredPosition = Vector2.zero;
                 
                 // Background
-                var dialogImage = dialog.AddComponent<Image>();
-                dialogImage.color = Color.white;
+                var dialogImage = SynapticPro.UIReflection.AddComponent(dialog, "UnityEngine.UI.Image");
+                SynapticPro.UIReflection.SetProperty(dialogImage, "color", Color.white);
                 
                 // Title area
                 var titleArea = new GameObject("TitleArea");
@@ -45314,8 +45326,8 @@ public class {treeName} : MonoBehaviour
                 titleAreaRect.offsetMin = Vector2.zero;
                 titleAreaRect.offsetMax = Vector2.zero;
                 
-                var titleBg = titleArea.AddComponent<Image>();
-                titleBg.color = new Color(0.9f, 0.9f, 0.9f);
+                var titleBg = SynapticPro.UIReflection.AddComponent(titleArea, "UnityEngine.UI.Image");
+                SynapticPro.UIReflection.SetProperty(titleBg, "color", new Color(0.9f, 0.9f, 0.9f));
                 
                 var titleText = CreateText("Title", new Dictionary<string, string>
                 {
@@ -45359,13 +45371,13 @@ public class {treeName} : MonoBehaviour
                 buttonAreaRect.offsetMin = Vector2.zero;
                 buttonAreaRect.offsetMax = Vector2.zero;
                 
-                var buttonLayout = buttonArea.AddComponent<HorizontalLayoutGroup>();
-                buttonLayout.spacing = 10;
-                buttonLayout.padding = new RectOffset(20, 20, 20, 20);
-                buttonLayout.childControlWidth = true;
-                buttonLayout.childControlHeight = true;
-                buttonLayout.childForceExpandWidth = true;
-                buttonLayout.childForceExpandHeight = true;
+                var buttonLayout = SynapticPro.UIReflection.AddComponent(buttonArea, "UnityEngine.UI.HorizontalLayoutGroup");
+                SynapticPro.UIReflection.SetProperty(buttonLayout, "spacing", 10f);
+                SynapticPro.UIReflection.SetProperty(buttonLayout, "padding", new RectOffset(20, 20, 20, 20));
+                SynapticPro.UIReflection.SetProperty(buttonLayout, "childControlWidth", true);
+                SynapticPro.UIReflection.SetProperty(buttonLayout, "childControlHeight", true);
+                SynapticPro.UIReflection.SetProperty(buttonLayout, "childForceExpandWidth", true);
+                SynapticPro.UIReflection.SetProperty(buttonLayout, "childForceExpandHeight", true);
                 
                 // Create buttons according to dialog type
                 switch (dialogType.ToLower())
@@ -45449,16 +45461,18 @@ public class {treeName} : MonoBehaviour
                 {
                     case "performance":
                         // Performance optimization
-                        var canvasScaler = targetCanvas.GetComponent<CanvasScaler>();
+                        var canvasScaler = SynapticPro.UIReflection.GetComponent(targetCanvas.gameObject, "UnityEngine.UI.CanvasScaler");
                         if (canvasScaler != null)
                         {
-                            canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                            canvasScaler.referenceResolution = new Vector2(1920, 1080);
-                            canvasScaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-                            canvasScaler.matchWidthOrHeight = 0.5f;
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "uiScaleMode",
+                                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScaleMode", "ScaleWithScreenSize"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "referenceResolution", new Vector2(1920, 1080));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "screenMatchMode",
+                                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScreenMatchMode", "MatchWidthOrHeight"));
+                            SynapticPro.UIReflection.SetProperty(canvasScaler, "matchWidthOrHeight", 0.5f);
                             optimizations.Add("Canvas Scaler optimized");
                         }
-                        
+
                         // Canvas GroupOptimize
                         var canvasGroups = targetCanvas.GetComponentsInChildren<CanvasGroup>();
                         foreach (var group in canvasGroups)
@@ -45470,9 +45484,12 @@ public class {treeName} : MonoBehaviour
                             }
                         }
                         optimizations.Add($"Optimized {canvasGroups.Length} Canvas Groups");
-                        
+
                         // Remove unnecessary Graphic Raycasters
-                        var graphicRaycasters = targetCanvas.GetComponentsInChildren<GraphicRaycaster>();
+                        var graphicRaycasterType = SynapticPro.UIReflection.GetType("UnityEngine.UI.GraphicRaycaster");
+                        var graphicRaycasters = graphicRaycasterType != null
+                            ? targetCanvas.GetComponentsInChildren(graphicRaycasterType)
+                            : Array.Empty<Component>();
                         for (int i = 1; i < graphicRaycasters.Length; i++) // Keep the first one
                         {
                             GameObject.Destroy(graphicRaycasters[i]);
@@ -45492,13 +45509,17 @@ public class {treeName} : MonoBehaviour
                         }
                         
                         // High quality text settings
-                        var texts = targetCanvas.GetComponentsInChildren<Text>();
+                        var textType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Text");
+                        var texts = textType != null
+                            ? targetCanvas.GetComponentsInChildren(textType)
+                            : Array.Empty<Component>();
                         foreach (var text in texts)
                         {
-                            text.supportRichText = false; // For performance
-                            if (text.fontSize < 24)
+                            SynapticPro.UIReflection.SetProperty(text, "supportRichText", false); // For performance
+                            int textFontSize = SynapticPro.UIReflection.GetProperty<int>(text, "fontSize");
+                            if (textFontSize < 24)
                             {
-                                text.material = Resources.GetBuiltinResource<Material>("UI/Default Font Material");
+                                SynapticPro.UIReflection.SetProperty(text, "material", Resources.GetBuiltinResource<Material>("UI/Default Font Material"));
                             }
                         }
                         optimizations.Add($"Optimized {texts.Length} Text components");
@@ -45508,17 +45529,22 @@ public class {treeName} : MonoBehaviour
                         // Mobile optimization
                         targetCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
                         
-                        var mobileCanvasScaler = targetCanvas.GetComponent<CanvasScaler>();
+                        var mobileCanvasScaler = SynapticPro.UIReflection.GetComponent(targetCanvas.gameObject, "UnityEngine.UI.CanvasScaler");
                         if (mobileCanvasScaler != null)
                         {
-                            mobileCanvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                            mobileCanvasScaler.referenceResolution = new Vector2(1080, 1920); // Portrait orientation
-                            mobileCanvasScaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-                            mobileCanvasScaler.matchWidthOrHeight = 1f; // Height-based
+                            SynapticPro.UIReflection.SetProperty(mobileCanvasScaler, "uiScaleMode",
+                                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScaleMode", "ScaleWithScreenSize"));
+                            SynapticPro.UIReflection.SetProperty(mobileCanvasScaler, "referenceResolution", new Vector2(1080, 1920)); // Portrait orientation
+                            SynapticPro.UIReflection.SetProperty(mobileCanvasScaler, "screenMatchMode",
+                                SynapticPro.UIReflection.GetEnum("UnityEngine.UI.CanvasScaler+ScreenMatchMode", "MatchWidthOrHeight"));
+                            SynapticPro.UIReflection.SetProperty(mobileCanvasScaler, "matchWidthOrHeight", 1f); // Height-based
                         }
                         
                         // Adjust touch-enabled UI element sizes
-                        var buttons = targetCanvas.GetComponentsInChildren<Button>();
+                        var buttonType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Button");
+                        var buttons = buttonType != null
+                            ? targetCanvas.GetComponentsInChildren(buttonType, true)
+                            : Array.Empty<Component>();
                         foreach (var button in buttons)
                         {
                             var buttonRect = button.GetComponent<RectTransform>();
@@ -45938,9 +45964,10 @@ public class {systemName} : MonoBehaviour
             // First, try by InstanceID or direct name search
             var found = FindGameObjectByNameOrId(targetName);
             if (found != null) return found;
-            
+
             // If not found, partial match search
-            var allObjects = GameObject.FindObjectsOfType<GameObject>();
+            // ESC-0201 fix (2026-06-28): includeInactive=true で非アクティブも候補に含める
+            var allObjects = GameObject.FindObjectsOfType<GameObject>(true);
             foreach (var obj in allObjects)
             {
                 if (obj.name.Contains(targetName))
@@ -46118,40 +46145,46 @@ public class {systemName} : MonoBehaviour
                 
                 foreach (var target in targets)
                 {
-                    var textComponents = target.GetComponentsInChildren<TextMeshProUGUI>(true);
-                    var legacyTextComponents = target.GetComponentsInChildren<Text>(true);
-                    
+                    var tmpType = SynapticPro.UIReflection.GetType("TMPro.TextMeshProUGUI");
+                    var textType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Text");
+                    var textComponents = tmpType != null
+                        ? target.GetComponentsInChildren(tmpType, true)
+                        : Array.Empty<Component>();
+                    var legacyTextComponents = textType != null
+                        ? target.GetComponentsInChildren(textType, true)
+                        : Array.Empty<Component>();
+
                     foreach (var textComp in textComponents)
                     {
                         if (fontFamily != null)
                         {
                             var font = GetTMPFont(fontFamily);
-                            if (font != null) textComp.font = font;
+                            if (font != null) SynapticPro.UIReflection.SetProperty(textComp, "font", font);
                         }
-                        
-                        textComp.fontSize = fontSize;
-                        textComp.color = ParseColor(textColor);
-                        
+
+                        SynapticPro.UIReflection.SetProperty(textComp, "fontSize", fontSize);
+                        SynapticPro.UIReflection.SetProperty(textComp, "color", ParseColor(textColor));
+
                         // Apply font weight
                         ApplyFontWeight(textComp, fontWeight);
-                        
+
                         updatedCount++;
                     }
-                    
+
                     foreach (var textComp in legacyTextComponents)
                     {
                         if (fontFamily != null)
                         {
                             var font = GetLegacyFont(fontFamily);
-                            if (font != null) textComp.font = font;
+                            if (font != null) SynapticPro.UIReflection.SetProperty(textComp, "font", font);
                         }
-                        
-                        textComp.fontSize = Mathf.RoundToInt(fontSize);
-                        textComp.color = ParseColor(textColor);
-                        
+
+                        SynapticPro.UIReflection.SetProperty(textComp, "fontSize", Mathf.RoundToInt(fontSize));
+                        SynapticPro.UIReflection.SetProperty(textComp, "color", ParseColor(textColor));
+
                         // Legacy text font style
                         ApplyLegacyFontWeight(textComp, fontWeight);
-                        
+
                         updatedCount++;
                     }
                 }
@@ -46240,61 +46273,76 @@ public class {systemName} : MonoBehaviour
         private void ApplyThemeToGameObject(GameObject target, Dictionary<string, Color> theme)
         {
             // Image components
-            var images = target.GetComponentsInChildren<Image>(true);
+            var imageType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Image");
+            var images = imageType != null
+                ? target.GetComponentsInChildren(imageType, true)
+                : Array.Empty<Component>();
             foreach (var image in images)
             {
                 if (image.gameObject.name.ToLower().Contains("background"))
                 {
-                    image.color = theme["background"];
+                    SynapticPro.UIReflection.SetProperty(image, "color", theme["background"]);
                 }
                 else if (image.gameObject.name.ToLower().Contains("button"))
                 {
-                    image.color = theme["primary"];
+                    SynapticPro.UIReflection.SetProperty(image, "color", theme["primary"]);
                 }
                 else
                 {
-                    image.color = theme["secondary"];
+                    SynapticPro.UIReflection.SetProperty(image, "color", theme["secondary"]);
                 }
             }
             
-            // Text components
-            var texts = target.GetComponentsInChildren<TextMeshProUGUI>(true);
+            // Text components (via UIReflection)
+            var tmpTextType = SynapticPro.UIReflection.GetType("TMPro.TextMeshProUGUI");
+            var legacyTextType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Text");
+            var texts = tmpTextType != null
+                ? target.GetComponentsInChildren(tmpTextType, true)
+                : Array.Empty<Component>();
             foreach (var text in texts)
             {
-                text.color = theme["text"];
+                SynapticPro.UIReflection.SetProperty(text, "color", theme["text"]);
             }
-            
-            var legacyTexts = target.GetComponentsInChildren<Text>(true);
+
+            var legacyTexts = legacyTextType != null
+                ? target.GetComponentsInChildren(legacyTextType, true)
+                : Array.Empty<Component>();
             foreach (var text in legacyTexts)
             {
-                text.color = theme["text"];
+                SynapticPro.UIReflection.SetProperty(text, "color", theme["text"]);
             }
         }
         
         private void ApplyColorsToGameObject(GameObject target, Dictionary<string, Color> colorMap)
         {
-            var images = target.GetComponentsInChildren<Image>(true);
-            var buttons = target.GetComponentsInChildren<Button>(true);
-            
+            var imageType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Image");
+            var images = imageType != null
+                ? target.GetComponentsInChildren(imageType, true)
+                : Array.Empty<Component>();
+            var buttonType = SynapticPro.UIReflection.GetType("UnityEngine.UI.Button");
+            var buttons = buttonType != null
+                ? target.GetComponentsInChildren(buttonType, true)
+                : Array.Empty<Component>();
+
             foreach (var image in images)
             {
                 var objName = image.gameObject.name.ToLower();
-                
+
                 if (objName.Contains("primary") || objName.Contains("button"))
                 {
-                    image.color = colorMap["primary"];
+                    SynapticPro.UIReflection.SetProperty(image, "color", colorMap["primary"]);
                 }
                 else if (objName.Contains("secondary"))
                 {
-                    image.color = colorMap["secondary"];
+                    SynapticPro.UIReflection.SetProperty(image, "color", colorMap["secondary"]);
                 }
                 else if (objName.Contains("accent"))
                 {
-                    image.color = colorMap["accent"];
+                    SynapticPro.UIReflection.SetProperty(image, "color", colorMap["accent"]);
                 }
                 else if (objName.Contains("background"))
                 {
-                    image.color = colorMap["background"];
+                    SynapticPro.UIReflection.SetProperty(image, "color", colorMap["background"]);
                 }
             }
         }
@@ -46340,22 +46388,22 @@ public class {systemName} : MonoBehaviour
         
         private void AddShadowEffect(GameObject target, Dictionary<string, object> parameters)
         {
-            var shadow = target.GetComponent<Shadow>();
+            var shadow = SynapticPro.UIReflection.GetComponent(target, "UnityEngine.UI.Shadow");
             if (shadow == null)
             {
-                shadow = target.AddComponent<Shadow>();
+                shadow = SynapticPro.UIReflection.AddComponent(target, "UnityEngine.UI.Shadow");
             }
-            
+
             // Apply shadow settings from parameters
             if (parameters.ContainsKey("shadowColor"))
             {
-                shadow.effectColor = ParseColor(parameters["shadowColor"].ToString());
+                SynapticPro.UIReflection.SetProperty(shadow, "effectColor", ParseColor(parameters["shadowColor"].ToString()));
             }
-            
+
             if (parameters.ContainsKey("shadowDistance"))
             {
                 var distance = Convert.ToSingle(parameters["shadowDistance"]);
-                shadow.effectDistance = new Vector2(distance, -distance);
+                SynapticPro.UIReflection.SetProperty(shadow, "effectDistance", new Vector2(distance, -distance));
             }
         }
         
@@ -46373,29 +46421,31 @@ public class {systemName} : MonoBehaviour
         
         private void AddOutlineEffect(GameObject target, Dictionary<string, object> parameters)
         {
-            var outline = target.GetComponent<Outline>();
+            var outline = SynapticPro.UIReflection.GetComponent(target, "UnityEngine.UI.Outline");
             if (outline == null)
             {
-                outline = target.AddComponent<Outline>();
+                outline = SynapticPro.UIReflection.AddComponent(target, "UnityEngine.UI.Outline");
             }
-            
+
             if (parameters.ContainsKey("outlineColor"))
             {
-                outline.effectColor = ParseColor(parameters["outlineColor"].ToString());
+                SynapticPro.UIReflection.SetProperty(outline, "effectColor", ParseColor(parameters["outlineColor"].ToString()));
             }
-            
+
             if (parameters.ContainsKey("outlineDistance"))
             {
                 var distance = Convert.ToSingle(parameters["outlineDistance"]);
-                outline.effectDistance = new Vector2(distance, distance);
+                SynapticPro.UIReflection.SetProperty(outline, "effectDistance", new Vector2(distance, distance));
             }
         }
-        
-        private TMP_FontAsset GetTMPFont(string fontName)
+
+        private UnityEngine.Object GetTMPFont(string fontName)
         {
-            // Search and get font asset
-            var fonts = Resources.FindObjectsOfTypeAll<TMP_FontAsset>();
-            return fonts.FirstOrDefault(f => f.name.ToLower().Contains(fontName.ToLower()));
+            // Search and get font asset via reflection (avoids hard TMPro dependency)
+            var fontType = SynapticPro.UIReflection.GetType("TMPro.TMP_FontAsset");
+            if (fontType == null) return null;
+            var fonts = Resources.FindObjectsOfTypeAll(fontType);
+            return fonts.FirstOrDefault(f => f != null && f.name.ToLower().Contains(fontName.ToLower()));
         }
         
         private Font GetLegacyFont(string fontName)
@@ -46405,34 +46455,51 @@ public class {systemName} : MonoBehaviour
             return fonts.FirstOrDefault(f => f.name.ToLower().Contains(fontName.ToLower()));
         }
         
-        private void ApplyFontWeight(TextMeshProUGUI textComp, string weight)
+        private void ApplyFontWeight(UnityEngine.Object textComp, string weight)
         {
+            // Resolve TMPro.FontStyles values via reflection; combine with existing flags via int.
+            int current = 0;
+            var currentRaw = SynapticPro.UIReflection.GetProperty(textComp, "fontStyle");
+            if (currentRaw != null)
+            {
+                try { current = Convert.ToInt32(currentRaw); } catch { current = 0; }
+            }
+
             switch (weight.ToLower())
             {
                 case "bold":
-                    textComp.fontStyle |= FontStyles.Bold;
+                {
+                    var bold = SynapticPro.UIReflection.GetEnum("TMPro.FontStyles", "Bold");
+                    if (bold != null) SynapticPro.UIReflection.SetProperty(textComp, "fontStyle", current | Convert.ToInt32(bold));
                     break;
+                }
                 case "italic":
-                    textComp.fontStyle |= FontStyles.Italic;
+                {
+                    var italic = SynapticPro.UIReflection.GetEnum("TMPro.FontStyles", "Italic");
+                    if (italic != null) SynapticPro.UIReflection.SetProperty(textComp, "fontStyle", current | Convert.ToInt32(italic));
                     break;
+                }
                 case "normal":
-                    textComp.fontStyle = FontStyles.Normal;
+                {
+                    var normal = SynapticPro.UIReflection.GetEnum("TMPro.FontStyles", "Normal");
+                    if (normal != null) SynapticPro.UIReflection.SetProperty(textComp, "fontStyle", Convert.ToInt32(normal));
                     break;
+                }
             }
         }
-        
-        private void ApplyLegacyFontWeight(Text textComp, string weight)
+
+        private void ApplyLegacyFontWeight(UnityEngine.Object textComp, string weight)
         {
             switch (weight.ToLower())
             {
                 case "bold":
-                    textComp.fontStyle = FontStyle.Bold;
+                    SynapticPro.UIReflection.SetProperty(textComp, "fontStyle", FontStyle.Bold);
                     break;
                 case "italic":
-                    textComp.fontStyle = FontStyle.Italic;
+                    SynapticPro.UIReflection.SetProperty(textComp, "fontStyle", FontStyle.Italic);
                     break;
                 case "normal":
-                    textComp.fontStyle = FontStyle.Normal;
+                    SynapticPro.UIReflection.SetProperty(textComp, "fontStyle", FontStyle.Normal);
                     break;
             }
         }
@@ -46901,13 +46968,13 @@ public class {systemName} : MonoBehaviour
             // GameObjectArrayPrevent circular references
             if (value is GameObject[] gameObjects)
             {
-                return gameObjects.Select(go => go != null ? new { name = go.name, instanceId = go.GetInstanceID() } : null).ToArray();
+                return gameObjects.Select(go => go != null ? new { name = go.name, instanceId = go.GetIdCompat() } : null).ToArray();
             }
             
             // Single GameObject to prevent circular references
             if (value is GameObject gameObject)
             {
-                return gameObject != null ? new { name = gameObject.name, instanceId = gameObject.GetInstanceID() } : null;
+                return gameObject != null ? new { name = gameObject.name, instanceId = gameObject.GetIdCompat() } : null;
             }
             
             // TransformPrevent circular references
@@ -46925,7 +46992,7 @@ public class {systemName} : MonoBehaviour
                     name = material.name,
                     shader = material.shader != null ? material.shader.name : null,
                     assetPath = !string.IsNullOrEmpty(assetPath) ? assetPath : null,
-                    instanceId = material.GetInstanceID()
+                    instanceId = material.GetIdCompat()
                 };
             }
 
@@ -46939,7 +47006,7 @@ public class {systemName} : MonoBehaviour
                     width = texture.width,
                     height = texture.height,
                     assetPath = !string.IsNullOrEmpty(assetPath) ? assetPath : null,
-                    instanceId = texture.GetInstanceID()
+                    instanceId = texture.GetIdCompat()
                 };
             }
 
@@ -46952,7 +47019,7 @@ public class {systemName} : MonoBehaviour
                     name = unityObj.name,
                     type = unityObj.GetType().Name,
                     assetPath = !string.IsNullOrEmpty(assetPath) ? assetPath : null,
-                    instanceId = unityObj.GetInstanceID()
+                    instanceId = unityObj.GetIdCompat()
                 };
             }
 
@@ -47192,19 +47259,19 @@ public class {systemName} : MonoBehaviour
         [System.Serializable]
         public class ScreenFadeController : MonoBehaviour
         {
-            private UnityEngine.UI.Image fadeImage;
+            private Component fadeImage;
             private float fadeDuration;
             private float fadeDelay;
             private string fadeType;
             private string fadeCurve;
             private float fadeTimer = 0f;
             private bool isFading = false;
-            
+
             void Awake()
             {
-                fadeImage = GetComponent<UnityEngine.UI.Image>();
+                fadeImage = SynapticPro.UIReflection.GetComponent(gameObject, "UnityEngine.UI.Image");
             }
-            
+
             public void StartFade(string type, float duration, float delay, string curve)
             {
                 fadeType = type;
@@ -47213,11 +47280,11 @@ public class {systemName} : MonoBehaviour
                 fadeCurve = curve;
                 fadeTimer = -delay;
                 isFading = true;
-                
+
                 // Set initial alpha
-                Color c = fadeImage.color;
+                Color c = SynapticPro.UIReflection.GetProperty<Color>(fadeImage, "color");
                 c.a = (fadeType == "FadeIn") ? 1f : 0f;
-                fadeImage.color = c;
+                SynapticPro.UIReflection.SetProperty(fadeImage, "color", c);
             }
             
             void Update()
@@ -47245,7 +47312,7 @@ public class {systemName} : MonoBehaviour
                                 break;
                         }
                         
-                        Color c = fadeImage.color;
+                        Color c = SynapticPro.UIReflection.GetProperty<Color>(fadeImage, "color");
                         if (fadeType == "FadeIn")
                         {
                             c.a = 1f - progress;
@@ -47254,7 +47321,7 @@ public class {systemName} : MonoBehaviour
                         {
                             c.a = progress;
                         }
-                        fadeImage.color = c;
+                        SynapticPro.UIReflection.SetProperty(fadeImage, "color", c);
                         
                         if (fadeTimer >= fadeDuration)
                         {
@@ -47276,12 +47343,12 @@ public class {systemName} : MonoBehaviour
             public float smoothness = 0.5f;
             public bool rounded = true;
             public Color vignetteColor = Color.black;
-            private UnityEngine.UI.Image vignetteImage;
+            private Component vignetteImage;
             private Material vignetteMaterial;
-            
+
             void Start()
             {
-                vignetteImage = GetComponent<UnityEngine.UI.Image>();
+                vignetteImage = SynapticPro.UIReflection.GetComponent(gameObject, "UnityEngine.UI.Image");
                 CreateVignetteMaterial();
                 UpdateVignette();
             }
@@ -47304,9 +47371,9 @@ public class {systemName} : MonoBehaviour
                 texture.Apply();
                 
                 var sprite = Sprite.Create(texture, new Rect(0, 0, 256, 256), Vector2.one * 0.5f);
-                vignetteImage.sprite = sprite;
-                vignetteImage.type = UnityEngine.UI.Image.Type.Sliced;
-                vignetteImage.color = vignetteColor;
+                SynapticPro.UIReflection.SetProperty(vignetteImage, "sprite", sprite);
+                SynapticPro.UIReflection.SetProperty(vignetteImage, "type", SynapticPro.UIReflection.GetEnum("UnityEngine.UI.Image+Type", "Sliced"));
+                SynapticPro.UIReflection.SetProperty(vignetteImage, "color", vignetteColor);
             }
             
             public void UpdateVignette()
@@ -49004,7 +49071,7 @@ public class {systemName} : MonoBehaviour
             report.AppendLine($"Layer: {LayerMask.LayerToName(gameObject.layer)} ({gameObject.layer})");
             report.AppendLine($"Active: {gameObject.activeInHierarchy}");
             report.AppendLine($"Static: {gameObject.isStatic}");
-            report.AppendLine($"Instance ID: {gameObject.GetInstanceID()}");
+            report.AppendLine($"Instance ID: {gameObject.GetIdCompat()}");
             report.AppendLine();
             
             // TransformInfo
@@ -49303,13 +49370,32 @@ public class {systemName} : MonoBehaviour
             // Try by InstanceID first (if it's a number)
             if (int.TryParse(nameOrId, out int id))
             {
-                var obj = EditorUtility.InstanceIDToObject(id) as GameObject;
+                var obj = IdCompat.IdToObjectCompat(id) as GameObject;
                 if (obj != null)
                     return obj;
             }
 
-            // Try by name
-            return GameObject.Find(nameOrId);
+            // Try by name — active first (fast path)
+            var active = GameObject.Find(nameOrId);
+            if (active != null) return active;
+
+            // ESC-0201 fix (2026-06-28): GameObject.Find は inactive を返さない。
+            // Codex / Synaptic Code 等で非アクティブオブジェクトの set_active や
+            // update_component を要求された時に fallback として inactive 含む全 GameObject から
+            // name 一致を探す。Resources.FindObjectsOfTypeAll は prefab asset も拾うので
+            // scene/hideflags filter を掛ける。
+            var all = Resources.FindObjectsOfTypeAll<GameObject>();
+            for (int i = 0; i < all.Length; i++)
+            {
+                var go = all[i];
+                if (go == null) continue;
+                if (go.name != nameOrId) continue;
+                if (go.hideFlags == HideFlags.NotEditable || go.hideFlags == HideFlags.HideAndDontSave) continue;
+                // scene に属するもののみ (prefab asset を除外)
+                if (string.IsNullOrEmpty(go.scene.name)) continue;
+                return go;
+            }
+            return null;
         }
 
         /// <summary>

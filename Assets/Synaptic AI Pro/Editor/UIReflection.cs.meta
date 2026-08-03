@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: ca06b5bb43bdc4405add63974ad03356
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 336030
+  packageName: Synaptic AI Pro - Natural Language Control for Unity
+  packageVersion: 1.2.26
+  assetPath: Assets/Synaptic AI Pro/Editor/UIReflection.cs
+  uploadId: 943096
