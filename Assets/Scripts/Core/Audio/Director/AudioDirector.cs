@@ -437,6 +437,52 @@ namespace Core.Audio
             return Mathf.Min(Time.time - last, 99999f);
         }
 
+        // ------------------------------------------------------------------ introspection (editor tooling)
+
+        /// <summary>Read-only view of one ambience voice for editor tools and debug panels.</summary>
+        public struct AmbienceSnapshot
+        {
+            public AmbienceLayerDef Def;
+            public float Influence;
+            public float Volume;
+            public bool IsPlaying;
+        }
+
+        /// <summary>Fills the buffer with a snapshot of every ambience voice (callers reuse the list to stay allocation-free).</summary>
+        public void GetAmbienceSnapshots(List<AmbienceSnapshot> buffer)
+        {
+            buffer.Clear();
+            foreach (var pair in _ambienceVoices)
+            {
+                var voice = pair.Value;
+                float combined = 0f;
+                foreach (var influence in voice.Influences.Values)
+                    if (influence > combined) combined = influence;
+                buffer.Add(new AmbienceSnapshot
+                {
+                    Def = voice.Def,
+                    Influence = combined,
+                    Volume = voice.CurrentVolume,
+                    IsPlaying = voice.Source != null && voice.Source.isPlaying
+                });
+            }
+        }
+
+        /// <summary>Current stinger duck multiplier applied to all ambience (1 = no ducking).</summary>
+        public float DuckMultiplier => _duckMultiplier;
+
+        /// <summary>Number of pooled one-shot voices currently playing.</summary>
+        public int ActiveOneShotCount
+        {
+            get
+            {
+                int active = 0;
+                for (int i = 0; i < _oneShotPool.Count; i++)
+                    if (_oneShotPool[i].isPlaying) active++;
+                return active;
+            }
+        }
+
         // ------------------------------------------------------------------ debugging
 
 #if ODIN_INSPECTOR

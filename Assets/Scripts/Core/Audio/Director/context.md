@@ -20,9 +20,9 @@ directly on AudioSources the director owns. Not a singleton — resolve via `Aud
     `TriggerStinger`/`TriggerOneShot` are void wrappers for UnityEvent wiring.
 - **AmbienceLayerDef / AudioOneShotDef / AudioStingerDef** (SOs, `Submachina/Audio/...` menus) —
   pure authoring data; all runtime state (cooldowns, bags, volumes) lives in the director.
-- **AmbienceInfluenceTarget** (`ModulatedFloatTarget`) — bridge from the modulation system: a
-  FloatRoute writes its Baseline and the composited value becomes one ambience layer's influence.
-  Pushes influence 0 on disable so layers fade out when their driver goes away.
+- **AmbienceInfluenceTarget** (`ModulatedFloatTarget`) — bridge from the modulation system: its
+  built-in parameter binding drives Baseline and the composited value becomes one ambience
+  layer's influence. Pushes influence 0 on disable so layers fade out when their driver goes away.
 - **StingerTimerSignal** (`FloatSignal`) — exposes seconds-since-last-stinger (optionally per
   category) back to the modulation layer for pacing rules.
 

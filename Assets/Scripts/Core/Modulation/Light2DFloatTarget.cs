@@ -14,6 +14,8 @@ namespace Core.Modulation
         [Tooltip("Light to drive. Defaults to a Light2D on this GameObject.")]
         [SerializeField] private Light2D light2D;
 
+        public override string TargetDescription => "Light2D · " + (light2D != null ? light2D.name : name);
+
         private void Awake()
         {
             if (light2D == null) light2D = GetComponent<Light2D>();

@@ -39,7 +39,8 @@ Dread rules: 0.35 flicker+bell (cd 22s) · 0.5 waterphone stinger (cd 55s) · 0.
 encounter → Intensity ramps (Add modifier, 25s attack) → red global light 0..0.8 + pulser,
             BuildSwells ambience 0..1, drone one-shot; skitters active from Dread ≥ 0.6
 wreck reached → riser one-shot + finale (bang at 4.6s): explosion + shake + StopAllAmbience(2.5)
-                + darkness ceiling + light multiplier → 0; routes/rules/skitters/red light disabled
+                + darkness ceiling + light multiplier → 0; ambience outputs/rules/skitters/red
+                light disabled (output targets carry their own parameter bindings — no routes)
 ```
 
 Repeating DirectorRules on monotonic depth use resetThreshold 2 (above param max) so they re-arm

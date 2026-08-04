@@ -17,13 +17,20 @@ namespace Core.Audio
         [Tooltip("Ambience layer this target drives the influence of.")]
         [SerializeField] private AmbienceLayerDef layer;
 
+        // Read-only wiring accessors for editor tooling (Director Graph window).
+        public AmbienceLayerDef Layer => layer;
+        public AudioDirector Director => audioDirector;
+
+        public override string TargetDescription => "Ambience · " + (layer != null ? layer.name : "(no layer)");
+
         private void Awake()
         {
             if (audioDirector == null) audioDirector = AudioDirector.FindFor(this);
         }
 
-        private void OnEnable()
+        protected override void OnEnable()
         {
+            base.OnEnable(); // resolve the parameter binding in the base class
             if (audioDirector == null) audioDirector = AudioDirector.FindFor(this);
         }
 

@@ -110,7 +110,7 @@ namespace Submachina.EditorTools
                 new Vector2(dreadStartDepth, dreadFullDepth), AnimationCurve.Linear(0f, 0f, 1f, 1f), new Vector2(0f, 1f));
 
             // ---------------------------------------------------------------- lights
-            var lightRoutesGo = Child(root, "Light Routes");
+            // Each light's ModulatedFloatTarget carries its own parameter binding — no routes.
             var mainLightGo = GameObject.Find("GlobalLight2D_OceanAmbient");
             var transpLightGo = GameObject.Find("TranspFX GlobalLight2D_OceanAmbient (1)");
             Light2DFloatTarget mainLightTarget = null;
@@ -119,18 +119,18 @@ namespace Submachina.EditorTools
             {
                 float origMain = mainLightGo.GetComponent<Light2D>().intensity;
                 mainLightTarget = EnsureLightTarget(mainLightGo);
-                AddRoute(lightRoutesGo, "Route_MainLight", envDirector, darkness,
-                    new Vector2(0f, 1f), AnimationCurve.Linear(0f, 0f, 1f, 1f), new Vector2(0.30f, 0.015f), mainLightTarget);
+                BindTarget(mainLightTarget, envDirector, darkness,
+                    new Vector2(0f, 1f), AnimationCurve.Linear(0f, 0f, 1f, 1f), new Vector2(0.30f, 0.015f));
 
                 if (transpLightGo != null)
                 {
                     float scale = origMain > 0.0001f ? transpLightGo.GetComponent<Light2D>().intensity / origMain : 1f;
                     var transpTarget = EnsureLightTarget(transpLightGo);
-                    AddRoute(lightRoutesGo, "Route_TranspLight", envDirector, darkness,
-                        new Vector2(0f, 1f), AnimationCurve.Linear(0f, 0f, 1f, 1f), new Vector2(0.30f * scale, 0.015f * scale), transpTarget);
+                    BindTarget(transpTarget, envDirector, darkness,
+                        new Vector2(0f, 1f), AnimationCurve.Linear(0f, 0f, 1f, 1f), new Vector2(0.30f * scale, 0.015f * scale));
                 }
             }
-            else Debug.LogWarning("[DescentSequence] GlobalLight2D_OceanAmbient not found — light routes skipped.");
+            else Debug.LogWarning("[DescentSequence] GlobalLight2D_OceanAmbient not found — light bindings skipped.");
 
             // Red pulse light: global red glow that ramps with Intensity during the encounter.
             var redGo = Child(root, "Red Pulse Light");
@@ -140,20 +140,20 @@ namespace Submachina.EditorTools
             redLight.intensity = 0f;
             var redTarget = redGo.AddComponent<Light2DFloatTarget>();
             SetObj(redTarget, "light2D", redLight);
-            AddRoute(lightRoutesGo, "Route_RedLight", envDirector, intensity,
-                new Vector2(0f, 1f), AnimationCurve.EaseInOut(0f, 0f, 1f, 1f), new Vector2(0f, 0.8f), redTarget);
+            BindTarget(redTarget, envDirector, intensity,
+                new Vector2(0f, 1f), AnimationCurve.EaseInOut(0f, 0f, 1f, 1f), new Vector2(0f, 0.8f));
             var redPulser = redGo.AddComponent<FloatTargetPulser>();
             SetObj(redPulser, "target", redTarget);
             SetFloat(redPulser, "amplitude", 0.3f);
             SetFloat(redPulser, "frequency", 0.7f);
 
-            // ---------------------------------------------------------------- ambience routes
-            var ambRoutesGo = Child(root, "Ambience Routes");
-            AddAmbienceRoute(ambRoutesGo, "Route_BaseUnderwater", envDirector, audioDirector, ambBase, dread, new Vector2(0f, 1f), new Vector2(1f, 0.35f));
-            AddAmbienceRoute(ambRoutesGo, "Route_DeepDark", envDirector, audioDirector, ambDeep, darkness, new Vector2(0.15f, 0.9f), new Vector2(0f, 1f));
-            AddAmbienceRoute(ambRoutesGo, "Route_EerieGurgle", envDirector, audioDirector, ambEerie, dread, new Vector2(0.15f, 0.7f), new Vector2(0f, 0.9f));
-            AddAmbienceRoute(ambRoutesGo, "Route_BassyPressure", envDirector, audioDirector, ambBassy, dread, new Vector2(0.45f, 0.9f), new Vector2(0f, 0.85f));
-            AddAmbienceRoute(ambRoutesGo, "Route_BuildSwells", envDirector, audioDirector, ambSwells, intensity, new Vector2(0f, 1f), new Vector2(0f, 1f));
+            // ---------------------------------------------------------------- ambience bindings
+            var ambRoutesGo = Child(root, "Ambience Outputs");
+            AddAmbienceBinding(ambRoutesGo, "Amb_BaseUnderwater", envDirector, audioDirector, ambBase, dread, new Vector2(0f, 1f), new Vector2(1f, 0.35f));
+            AddAmbienceBinding(ambRoutesGo, "Amb_DeepDark", envDirector, audioDirector, ambDeep, darkness, new Vector2(0.15f, 0.9f), new Vector2(0f, 1f));
+            AddAmbienceBinding(ambRoutesGo, "Amb_EerieGurgle", envDirector, audioDirector, ambEerie, dread, new Vector2(0.15f, 0.7f), new Vector2(0f, 0.9f));
+            AddAmbienceBinding(ambRoutesGo, "Amb_BassyPressure", envDirector, audioDirector, ambBassy, dread, new Vector2(0.45f, 0.9f), new Vector2(0f, 0.85f));
+            AddAmbienceBinding(ambRoutesGo, "Amb_BuildSwells", envDirector, audioDirector, ambSwells, intensity, new Vector2(0f, 1f), new Vector2(0f, 1f));
 
             // ---------------------------------------------------------------- flicker + skitters
             var flickerGo = Child(root, "Light Flicker");
@@ -352,29 +352,26 @@ namespace Submachina.EditorTools
             SetVec2(c, "outputRange", output);
         }
 
-        private static FloatRoute AddRoute(GameObject parent, string name, EnvironmentDirector director,
-            DirectorParameterDef parameter, Vector2 input, AnimationCurve curve, Vector2 output, ModulatedFloatTarget target)
+        /** Configures a target's built-in parameter binding: parameter → inputRange → curve → outputRange → Baseline. */
+        private static void BindTarget(ModulatedFloatTarget target, EnvironmentDirector director,
+            DirectorParameterDef parameter, Vector2 input, AnimationCurve curve, Vector2 output)
         {
-            var go = Child(parent, name);
-            var route = go.AddComponent<FloatRoute>();
-            SetObj(route, "director", director);
-            SetObj(route, "parameter", parameter);
-            SetVec2(route, "inputRange", input);
-            SetCurve(route, "responseCurve", curve);
-            SetVec2(route, "outputRange", output);
-            SetObj(route, "target", target);
-            return route;
+            SetObj(target, "director", director);
+            SetObj(target, "parameter", parameter);
+            SetVec2(target, "inputRange", input);
+            SetCurve(target, "responseCurve", curve);
+            SetVec2(target, "outputRange", output);
         }
 
-        /** One ambience layer = one child GO carrying the influence target + the route that feeds it. */
-        private static void AddAmbienceRoute(GameObject parent, string name, EnvironmentDirector envDirector,
+        /** One ambience layer = one child GO carrying an influence target bound directly to its parameter. */
+        private static void AddAmbienceBinding(GameObject parent, string name, EnvironmentDirector envDirector,
             AudioDirector audioDirector, AmbienceLayerDef layer, DirectorParameterDef parameter, Vector2 input, Vector2 output)
         {
             var go = Child(parent, name);
             var target = go.AddComponent<AmbienceInfluenceTarget>();
             SetObj(target, "audioDirector", audioDirector);
             SetObj(target, "layer", layer);
-            AddRoute(go, name + "_Route", envDirector, parameter, input, AnimationCurve.Linear(0f, 0f, 1f, 1f), output, target);
+            BindTarget(target, envDirector, parameter, input, AnimationCurve.Linear(0f, 0f, 1f, 1f), output);
         }
 
         private static DirectorRule AddRule(GameObject parent, string name, EnvironmentDirector director,

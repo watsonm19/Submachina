@@ -39,6 +39,11 @@ namespace Core.Modulation
 
         private ParameterModifier _active;
 
+        // Read-only wiring accessors for editor tooling (Director Graph window).
+        public DirectorParameterDef Parameter => parameter;
+        public ParameterBlendMode Blend => blendMode;
+        public bool HasActiveModifier => _active != null && _active.IsActive;
+
         /**
          * Applies the configured modifier. Re-applying while one is live releases the old
          * one first so influences never stack accidentally from repeated event firings.

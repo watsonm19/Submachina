@@ -18,6 +18,8 @@ namespace Core.Modulation
         private MaterialPropertyBlock _block;
         private int _propertyId;
 
+        public override string TargetDescription => "Material · " + propertyName;
+
         private void Awake()
         {
             if (targetRenderer == null) targetRenderer = GetComponent<Renderer>();

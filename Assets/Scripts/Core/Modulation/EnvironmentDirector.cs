@@ -183,6 +183,72 @@ namespace Core.Modulation
             return runtime;
         }
 
+        // ------------------------------------------------------------------ introspection (editor tooling)
+
+        /// <summary>Read-only view of one tracked parameter for editor tools and debug panels.</summary>
+        public struct ParameterSnapshot
+        {
+            public DirectorParameterDef Def;
+            public float Current;
+            public float Target;
+            public int ContributionCount;
+            public int ModifierCount;
+        }
+
+        /// <summary>Fills the buffer with a snapshot of every tracked parameter (allocation-free for callers that reuse the list).</summary>
+        public void GetParameterSnapshots(List<ParameterSnapshot> buffer)
+        {
+            buffer.Clear();
+            foreach (var pair in _params)
+            {
+                int modifiers = 0;
+                foreach (var c in pair.Value.Contributions)
+                    if (c is ParameterModifier) modifiers++;
+                buffer.Add(new ParameterSnapshot
+                {
+                    Def = pair.Key,
+                    Current = pair.Value.Current,
+                    Target = pair.Value.Target,
+                    ContributionCount = pair.Value.Contributions.Count,
+                    ModifierCount = modifiers
+                });
+            }
+        }
+
+        /// <summary>Copies the live contribution list for one parameter into the buffer (empty if untracked).</summary>
+        public void GetContributions(DirectorParameterDef parameter, List<IParameterContribution> buffer)
+        {
+            buffer.Clear();
+            if (parameter != null && _params.TryGetValue(parameter, out var runtime)) buffer.AddRange(runtime.Contributions);
+        }
+
+        // ------------------------------------------------------------------ debug overrides (editor tooling)
+
+        private readonly Dictionary<DirectorParameterDef, ParameterModifier> _debugOverrides =
+            new Dictionary<DirectorParameterDef, ParameterModifier>();
+
+        /**
+         * Forces a parameter to an exact value via a top-priority Override modifier — used by the
+         * Director Graph window's test sliders. Re-applying just moves the value; ClearDebugOverride
+         * releases the parameter back to its normal composition.
+         */
+        public void SetDebugOverride(DirectorParameterDef parameter, float value)
+        {
+            if (parameter == null) return;
+            ClearDebugOverride(parameter);
+            _debugOverrides[parameter] = AddModifier(parameter, ParameterBlendMode.Override, value, 0f, -1f, 0f, int.MaxValue, this);
+        }
+
+        public void ClearDebugOverride(DirectorParameterDef parameter)
+        {
+            if (parameter == null || !_debugOverrides.TryGetValue(parameter, out var modifier)) return;
+            modifier.CancelImmediate();
+            _debugOverrides.Remove(parameter);
+        }
+
+        public bool HasDebugOverride(DirectorParameterDef parameter) =>
+            parameter != null && _debugOverrides.TryGetValue(parameter, out var m) && m.IsActive;
+
         // ------------------------------------------------------------------ debugging
 
 #if ODIN_INSPECTOR

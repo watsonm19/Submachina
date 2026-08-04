@@ -47,6 +47,12 @@ namespace Core.Modulation
         public float Weight => weight;
         public bool IsActive => isActiveAndEnabled && signal != null && signal.IsValid;
 
+        // Read-only wiring accessors for editor tooling (Director Graph window).
+        public FloatSignal Signal => signal;
+        public EnvironmentDirector Director => director;
+        public Vector2 InputRange => inputRange;
+        public Vector2 OutputRange => outputRange;
+
         /// <summary>Raw signal pushed through normalize → curve → remap. Weight is applied by the director.</summary>
         public float Evaluate(float deltaTime)
         {

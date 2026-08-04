@@ -72,6 +72,18 @@ namespace Core.Modulation
         public bool IsArmed => _armed;
         public bool CooldownReady => Time.time - _lastFireTime >= cooldownSeconds;
 
+        // Read-only wiring accessors for editor tooling (Director Graph window).
+        public DirectorParameterDef Parameter => parameter;
+        public EnvironmentDirector Director => director;
+        public TriggerDirection Direction => direction;
+        public float TriggerThreshold => triggerThreshold;
+        public float ResetThreshold => resetThreshold;
+        public float CooldownSeconds => cooldownSeconds;
+        public float Probability => probability;
+        public bool OneShot => oneShot;
+        public bool IsSpent => _spent;
+        public float CooldownRemaining => Mathf.Max(0f, cooldownSeconds - (Time.time - _lastFireTime));
+
         private void OnEnable()
         {
             if (director == null) director = EnvironmentDirector.FindFor(this);
