@@ -53,6 +53,15 @@ namespace Core.Editor
         private readonly Dictionary<DirectorParameterDef, float> _overrideValues = new Dictionary<DirectorParameterDef, float>();
         private readonly List<EnvironmentDirector.ParameterSnapshot> _snapshotBuffer = new List<EnvironmentDirector.ParameterSnapshot>();
         private readonly List<AudioDirector.AmbienceSnapshot> _ambienceBuffer = new List<AudioDirector.AmbienceSnapshot>();
+        // Solo: restrict the graph to one node's upstream chain (Input) or its full
+        // upstream + downstream chain (Output). Siblings disappear in both modes.
+        private enum SoloSide { None, Input, Output }
+        private Object _soloKey;
+        private SoloSide _soloSide = SoloSide.None;
+        private readonly HashSet<Object> _soloVisible = new HashSet<Object>();
+        private readonly Dictionary<Object, List<Object>> _edgesForward = new Dictionary<Object, List<Object>>();
+        private readonly Dictionary<Object, List<Object>> _edgesReverse = new Dictionary<Object, List<Object>>();
+
         private Vector2 _pan;
         private float _zoom = 1f;
         private Matrix4x4 _prevGuiMatrix;
@@ -153,13 +162,121 @@ namespace Core.Editor
             foreach (var guid in AssetDatabase.FindAssets("t:AudioOneShotDef"))
                 _oneShotDefs.Add(AssetDatabase.LoadAssetAtPath<AudioOneShotDef>(AssetDatabase.GUIDToAssetPath(guid)));
 
+            RebuildSolo();
             Repaint();
+        }
+
+        // ------------------------------------------------------------------ solo
+
+        private bool SoloActive => _soloSide != SoloSide.None && _soloKey != null;
+
+        private void SetSolo(Object key, SoloSide side)
+        {
+            // Clicking the active handle again un-solos.
+            if (_soloKey == key && _soloSide == side) { ClearSolo(); return; }
+            _soloKey = key;
+            _soloSide = side;
+            RebuildSolo();
+            Repaint();
+        }
+
+        private void ClearSolo()
+        {
+            _soloKey = null;
+            _soloSide = SoloSide.None;
+            _soloVisible.Clear();
+            Repaint();
+        }
+
+        /**
+         * Rebuilds the visible-node set from the wiring graph:
+         *   Input solo  → solo node + transitive upstream.
+         *   Output solo → solo node + transitive upstream + transitive downstream.
+         * Runs on scan and solo changes only — value changes never alter topology.
+         */
+        private void RebuildSolo()
+        {
+            _soloVisible.Clear();
+            if (!SoloActive) return;
+
+            // Adjacency from the same relations the edge pass draws.
+            _edgesForward.Clear();
+            _edgesReverse.Clear();
+            void Edge(Object from, Object to)
+            {
+                if (from == null || to == null) return;
+                if (!_edgesForward.TryGetValue(from, out var f)) { f = new List<Object>(); _edgesForward[from] = f; }
+                f.Add(to);
+                if (!_edgesReverse.TryGetValue(to, out var r)) { r = new List<Object>(); _edgesReverse[to] = r; }
+                r.Add(from);
+            }
+            foreach (var c in _contributions) if (c != null) Edge(c.Signal, c.Parameter);
+            foreach (var m in _modTriggers) if (m != null) Edge(m, m.Parameter);
+            foreach (var t in _targets) if (t != null && t.BoundParameter != null) Edge(t.BoundParameter, t);
+            foreach (var r in _rules) if (r != null) Edge(r.Parameter, r);
+
+            _soloVisible.Add(_soloKey);
+            Traverse(_soloKey, _edgesReverse);                                // upstream, always
+            if (_soloSide == SoloSide.Output) Traverse(_soloKey, _edgesForward); // downstream, output solo only
+        }
+
+        private void Traverse(Object start, Dictionary<Object, List<Object>> adjacency)
+        {
+            var stack = new Stack<Object>();
+            stack.Push(start);
+            while (stack.Count > 0)
+            {
+                var node = stack.Pop();
+                if (!adjacency.TryGetValue(node, out var next)) continue;
+                foreach (var n in next)
+                    if (_soloVisible.Add(n)) stack.Push(n);
+            }
+        }
+
+        private bool IsVisible(Object node) => !SoloActive || _soloVisible.Contains(node);
+
+        /**
+         * Draws the per-side solo handles on a node's title row and returns the title rect
+         * shrunk to fit. ◄ solos the input side, ► the output side; the active handle is tinted.
+         */
+        private Rect SoloHandles(Rect titleRect, Object key, bool canSoloInput, bool canSoloOutput)
+        {
+            var title = titleRect;
+            var previousColor = GUI.backgroundColor;
+
+            if (canSoloInput)
+            {
+                bool active = _soloKey == key && _soloSide == SoloSide.Input;
+                GUI.backgroundColor = active ? new Color(1f, 0.85f, 0.3f) : previousColor;
+                if (GUI.Button(new Rect(titleRect.x, titleRect.y + 1f, 18f, 14f), "◄", EditorStyles.miniButton)) SetSolo(key, SoloSide.Input);
+                GUI.backgroundColor = previousColor;
+                title.x += 21f;
+                title.width -= 21f;
+            }
+
+            if (canSoloOutput)
+            {
+                bool active = _soloKey == key && _soloSide == SoloSide.Output;
+                GUI.backgroundColor = active ? new Color(1f, 0.85f, 0.3f) : previousColor;
+                if (GUI.Button(new Rect(titleRect.xMax - 18f, titleRect.y + 1f, 18f, 14f), "►", EditorStyles.miniButton)) SetSolo(key, SoloSide.Output);
+                GUI.backgroundColor = previousColor;
+                title.width -= 21f;
+            }
+
+            return title;
         }
 
         // ------------------------------------------------------------------ GUI
 
         private void OnGUI()
         {
+            // Esc drops back to the full graph from any solo view.
+            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Escape && SoloActive)
+            {
+                ClearSolo();
+                Event.current.Use();
+            }
+
             DrawToolbar();
 
             if (Director == null)
@@ -290,6 +407,15 @@ namespace Core.Editor
             _showAudioLane = GUILayout.Toggle(_showAudioLane, "Audio", EditorStyles.toolbarButton, GUILayout.Width(50f));
             _showRulesLane = GUILayout.Toggle(_showRulesLane, "Rules", EditorStyles.toolbarButton, GUILayout.Width(50f));
 
+            // Active-solo indicator with a clear button (Esc also clears).
+            if (SoloActive)
+            {
+                string soloName = _soloKey is DirectorParameterDef def ? def.Id : _soloKey.name;
+                GUILayout.Space(8f);
+                GUILayout.Label($"◉ Solo: {soloName} ({(_soloSide == SoloSide.Input ? "input" : "output")})", EditorStyles.miniLabel);
+                if (GUILayout.Button("✕", EditorStyles.toolbarButton, GUILayout.Width(24f))) ClearSolo();
+            }
+
             GUILayout.FlexibleSpace();
 
             // Zoom controls (Ctrl+scroll zooms toward the cursor; middle-drag or Alt+drag pans).
@@ -329,6 +455,7 @@ namespace Core.Editor
             foreach (var c in _contributions)
             {
                 if (c == null || c.Signal == null || c.Parameter == null) continue;
+                if (!IsVisible(c.Signal) || !IsVisible(c.Parameter)) continue;
                 if (_nodeRects.TryGetValue(c.Signal, out var from) && _paramRects.TryGetValue(c.Parameter, out var to))
                     DrawWire(from, to, BlendColor(c.Blend), c.isActiveAndEnabled ? 3f : 1.5f);
             }
@@ -336,6 +463,7 @@ namespace Core.Editor
             foreach (var m in _modTriggers)
             {
                 if (m == null || m.Parameter == null) continue;
+                if (!IsVisible(m) || !IsVisible(m.Parameter)) continue;
                 if (_nodeRects.TryGetValue(m, out var from) && _paramRects.TryGetValue(m.Parameter, out var to))
                     DrawWire(from, to, new Color(1f, 0.7f, 0.2f, m.HasActiveModifier ? 1f : 0.45f), 2f);
             }
@@ -344,6 +472,7 @@ namespace Core.Editor
             foreach (var t in _targets)
             {
                 if (t == null || t.BoundParameter == null) continue;
+                if (!IsVisible(t) || !IsVisible(t.BoundParameter)) continue;
                 if (_paramRects.TryGetValue(t.BoundParameter, out var from) && _nodeRects.TryGetValue(t, out var to))
                     DrawWire(from, to, new Color(0.35f, 0.85f, 0.95f, 0.9f), t.isActiveAndEnabled ? 3f : 1.5f);
             }
@@ -351,6 +480,7 @@ namespace Core.Editor
             foreach (var r in _rules)
             {
                 if (r == null || r.Parameter == null) continue;
+                if (!IsVisible(r) || !IsVisible(r.Parameter)) continue;
                 if (_paramRects.TryGetValue(r.Parameter, out var from) && _nodeRects.TryGetValue(r, out var to))
                     DrawWire(from, to, new Color(0.75f, 0.75f, 0.75f, 0.55f), 2f);
             }
@@ -383,14 +513,14 @@ namespace Core.Editor
             float y = 28f;
             foreach (var signal in _signals)
             {
-                if (signal == null) continue;
+                if (signal == null || !IsVisible(signal)) continue;
                 bool manual = signal is ManualFloatSignal;
                 var rect = new Rect(ColSignals, y, ColWidth, manual ? 82f : 62f);
                 _nodeRects[signal] = rect;
                 GUI.Box(rect, GUIContent.none, "helpBox");
 
                 var inner = new Rect(rect.x + 6f, rect.y + 4f, rect.width - 12f, 16f);
-                NodeTitle(inner, signal.gameObject.name, TypeShortName(signal), signal);
+                NodeTitle(SoloHandles(inner, signal, false, true), signal.gameObject.name, TypeShortName(signal), signal);
 
                 inner.y += 18f;
                 GUI.Label(inner, $"value  {SafeSignalValue(signal):0.###}" + (signal.IsValid ? "" : "   (invalid)"), EditorStyles.miniLabel);
@@ -414,13 +544,13 @@ namespace Core.Editor
             // Scripted modifier triggers live here too — they're "signals" a script/event pushes in.
             foreach (var trigger in _modTriggers)
             {
-                if (trigger == null) continue;
+                if (trigger == null || !IsVisible(trigger)) continue;
                 var rect = new Rect(ColSignals, y, ColWidth, 66f);
                 _nodeRects[trigger] = rect;
                 GUI.Box(rect, GUIContent.none, "helpBox");
 
                 var inner = new Rect(rect.x + 6f, rect.y + 4f, rect.width - 12f, 16f);
-                NodeTitle(inner, trigger.gameObject.name, "Modifier", trigger);
+                NodeTitle(SoloHandles(inner, trigger, false, true), trigger.gameObject.name, "Modifier", trigger);
 
                 inner.y += 18f;
                 string state = trigger.HasActiveModifier ? "● active" : "○ idle";
@@ -447,7 +577,7 @@ namespace Core.Editor
             float y = 28f;
             foreach (var param in _parameters)
             {
-                if (param == null) continue;
+                if (param == null || !IsVisible(param)) continue;
 
                 // Collect this parameter's wiring rows up front so the node height fits them.
                 var rows = new List<(string label, Object select)>();
@@ -469,7 +599,7 @@ namespace Core.Editor
                 GUI.Box(rect, GUIContent.none, "helpBox");
 
                 var inner = new Rect(rect.x + 6f, rect.y + 4f, rect.width - 12f, 16f);
-                NodeTitle(inner, param.Id, "Parameter", param);
+                NodeTitle(SoloHandles(inner, param, true, true), param.Id, "Parameter", param);
 
                 // Value bar (normalized into the def's authored range).
                 inner.y += 18f;
@@ -557,14 +687,14 @@ namespace Core.Editor
             float y = 28f;
             foreach (var target in _targets)
             {
-                if (target == null) continue;
+                if (target == null || !IsVisible(target)) continue;
                 bool isAmbience = target is AmbienceInfluenceTarget;
                 var rect = new Rect(ColOutputs, y, ColWidth, (isAmbience ? 84f : 66f) + 16f);
                 _nodeRects[target] = rect;
                 GUI.Box(rect, GUIContent.none, "helpBox");
 
                 var inner = new Rect(rect.x + 6f, rect.y + 4f, rect.width - 12f, 16f);
-                NodeTitle(inner, target.TargetDescription, TypeShortName(target), target);
+                NodeTitle(SoloHandles(inner, target, true, false), target.TargetDescription, TypeShortName(target), target);
 
                 // Binding row: which parameter drives this target's Baseline (or none).
                 inner.y += 16f;
@@ -597,19 +727,25 @@ namespace Core.Editor
         private void DrawEventsColumn()
         {
             float y = 28f;
-            if (_showAudioLane) y = DrawAudioBox(y);
+
+            // In solo mode the audio panel only appears when the soloed chain touches ambience.
+            bool audioRelevant = !SoloActive;
+            if (SoloActive)
+                foreach (var t in _targets)
+                    if (t is AmbienceInfluenceTarget && _soloVisible.Contains(t)) { audioRelevant = true; break; }
+            if (_showAudioLane && audioRelevant) y = DrawAudioBox(y);
 
             if (!_showRulesLane) return;
             foreach (var rule in _rules)
             {
-                if (rule == null) continue;
+                if (rule == null || !IsVisible(rule)) continue;
                 int listeners = rule.onTriggered.GetPersistentEventCount();
                 var rect = new Rect(ColEvents, y, ColWidth, 92f + listeners * 14f);
                 _nodeRects[rule] = rect;
                 GUI.Box(rect, GUIContent.none, "helpBox");
 
                 var inner = new Rect(rect.x + 6f, rect.y + 4f, rect.width - 12f, 16f);
-                NodeTitle(inner, rule.gameObject.name, "Rule", rule);
+                NodeTitle(SoloHandles(inner, rule, true, false), rule.gameObject.name, "Rule", rule);
 
                 inner.y += 18f;
                 string arrow = rule.Direction == DirectorRule.TriggerDirection.RisesAbove ? "≥" : "≤";
