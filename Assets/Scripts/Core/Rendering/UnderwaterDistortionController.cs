@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 using Sirenix.OdinInspector;
 
 namespace Core.Rendering
@@ -20,9 +21,10 @@ namespace Core.Rendering
     [ExecuteAlways]
     public class UnderwaterDistortionController : MonoBehaviour
     {
-        // Must match UD_MAX_RIPPLES / UD_MAX_WAKES in UnderwaterDistortion.shader.
+        // Must match UD_MAX_RIPPLES / UD_MAX_WAKES / UD_MAX_LIGHTS in UnderwaterDistortion.shader.
         private const int MaxRipples = 16;
         private const int MaxWakes = 8;
+        private const int MaxLights = 8;
 
         // Odin group that quarantines every editor-only field and debug button. Everything
         // under it is for in-editor testing/capture only and has no effect on shipped gameplay.
@@ -40,6 +42,38 @@ namespace Core.Rendering
         [TitleGroup("Master")]
         [Tooltip("Camera used to project ripple world positions to the screen. Empty = Camera.main.")]
         public Camera targetCamera;
+
+        // ─── Scene lighting (darkness gating) ────────────────────────────────
+        [TitleGroup("Scene Lighting", "Lets features be LIT BY THE SCENE instead of always emissive — see each feature's Self Light slider.")]
+        [InfoBox("Per-pixel scene light = global light level + tracked spot/point lights (add a DistortionLightSource next to a Light2D) + the rendered scene's own brightness. A feature with Self Light 0 only shows where that sum is non-zero, so it can go truly dark; Self Light 1 = emissive, exactly the old behavior.")]
+        [Tooltip("Global Light2D whose intensity × color drives the base light level. Empty = auto-find the first Global Light2D on enable. No light found = treated as fully lit.")]
+        public Light2D globalLight;
+
+        [TitleGroup("Scene Lighting")]
+        [Tooltip("Extra multiplier on the sampled global light level.")]
+        [Range(0f, 2f)]
+        public float globalLightGain = 1f;
+
+        [TitleGroup("Scene Lighting")]
+        [Tooltip("Ignore the Light2D and drive the global level manually (e.g. from the environment director).")]
+        [ToggleLeft]
+        public bool overrideGlobalLight = false;
+
+        [TitleGroup("Scene Lighting")]
+        [ShowIf(nameof(overrideGlobalLight))]
+        [Tooltip("The manually driven global light level (0 = pitch black, 1 = fully lit).")]
+        [Range(0f, 1f)]
+        public float globalLightLevel = 1f;
+
+        [TitleGroup("Scene Lighting")]
+        [Tooltip("How much the rendered scene's own brightness under a pixel counts as light — reveals gated features over lit surfaces (spotlit rocks, glowing creatures).")]
+        [Range(0f, 8f)]
+        public float lumaLightGain = 1.5f;
+
+        [TitleGroup("Scene Lighting")]
+        [Tooltip("How much the god-ray shafts themselves count as light for the particles — dust/bubbles sparkling inside a sunbeam even in otherwise dark water.")]
+        [Range(0f, 4f)]
+        public float godRayLightGain = 1f;
 
         // ─── Ambient flow ────────────────────────────────────────────────────
         [TitleGroup("Ambient Flow")]
@@ -143,6 +177,11 @@ namespace Core.Rendering
         [ColorUsage(false, true)]
         public Color godRayTint = new Color(0.55f, 0.8f, 1f);
 
+        [TitleGroup("God Rays")]
+        [Tooltip("1 = emissive (sunlight — glows even in pitch black). 0 = only visible where the scene light reaches.")]
+        [Range(0f, 1f)]
+        public float godRaySelfLight = 1f;
+
         // ─── Caustics ────────────────────────────────────────────────────────
         [TitleGroup("Caustics", "Animated light webs that sparkle across surfaces.")]
         [Tooltip("Overall brightness of the caustics. 0 = off.")]
@@ -188,6 +227,11 @@ namespace Core.Rendering
         [Tooltip("Color of the caustics (HDR).")]
         [ColorUsage(false, true)]
         public Color causticTint = new Color(0.65f, 0.95f, 1f);
+
+        [TitleGroup("Caustics")]
+        [Tooltip("1 = emissive (old behavior). 0 = caustics vanish in true darkness and reappear under global light, spotlights, or lit surfaces.")]
+        [Range(0f, 1f)]
+        public float causticSelfLight = 0.3f;
 
         // ─── Marine snow ─────────────────────────────────────────────────────
         [TitleGroup("Marine Snow", "Drifting particulate in parallax layers — the strongest motion cue.")]
@@ -239,6 +283,11 @@ namespace Core.Rendering
         [ColorUsage(false, true)]
         public Color moteTint = new Color(0.78f, 0.9f, 1f);
 
+        [TitleGroup("Marine Snow")]
+        [Tooltip("1 = emissive (old behavior). 0 = motes only show where lit — including inside god-ray shafts (see God Ray Light Gain).")]
+        [Range(0f, 1f)]
+        public float moteSelfLight = 0.2f;
+
         // ─── Bubbles ─────────────────────────────────────────────────────────
         [TitleGroup("Bubbles", "Sparse rim-lit bubbles rising in two parallax layers.")]
         [Tooltip("Overall brightness of the bubbles. 0 = off.")]
@@ -284,6 +333,11 @@ namespace Core.Rendering
         [Tooltip("Color of the bubbles (HDR).")]
         [ColorUsage(false, true)]
         public Color bubbleTint = new Color(0.8f, 0.95f, 1f);
+
+        [TitleGroup("Bubbles")]
+        [Tooltip("1 = emissive (old behavior). 0 = bubbles only glint where lit — a bubble is glass, it shouldn't glow in the void.")]
+        [Range(0f, 1f)]
+        public float bubbleSelfLight = 0.1f;
 
         // ─── Flow bias ───────────────────────────────────────────────────────
         [TitleGroup("Flow Bias", "EXPERIMENTAL: scroll driven by travel speed — water streams past.")]
@@ -390,6 +444,18 @@ namespace Core.Rendering
         // ─── Debug readout ───────────────────────────────────────────────────
         [FoldoutGroup(TestingGroup)]
         [Title("Debug")]
+        [PropertyOrder(39)]
+        [ShowInInspector, ReadOnly]
+        [Tooltip("The global light level currently feeding the darkness gating.")]
+        public float CurrentGlobalLightLevel => _lastGlobalLightLevel;
+
+        [FoldoutGroup(TestingGroup)]
+        [PropertyOrder(39)]
+        [ShowInInspector, ReadOnly]
+        [Tooltip("How many DistortionLightSources are registered (the shader pool uploads at most 8, on-screen only).")]
+        public int RegisteredLightCount => DistortionLightRegistry.Sources.Count;
+
+        [FoldoutGroup(TestingGroup)]
         [PropertyOrder(40)]
         [ShowInInspector, ReadOnly]
         public int LiveRippleCount
@@ -452,6 +518,18 @@ namespace Core.Rendering
         private static readonly int _idWakeB         = Shader.PropertyToID("_UD_WakeB");
         private static readonly int _idWakeCount     = Shader.PropertyToID("_UD_WakeCount");
 
+        // Scene-light gating uniforms + the analytic light pool.
+        private static readonly int _idSceneLight    = Shader.PropertyToID("_UD_SceneLight");
+        private static readonly int _idSelfLight     = Shader.PropertyToID("_UD_SelfLight");
+        private static readonly int _idLightA        = Shader.PropertyToID("_UD_LightA");
+        private static readonly int _idLightB        = Shader.PropertyToID("_UD_LightB");
+        private static readonly int _idLightCount    = Shader.PropertyToID("_UD_LightCount");
+
+        // Light pool upload buffers + the last computed global level (debug readout).
+        private readonly Vector4[] _lightA = new Vector4[MaxLights];
+        private readonly Vector4[] _lightB = new Vector4[MaxLights];
+        private float _lastGlobalLightLevel = 1f;
+
         /** A single live ripple in the pool. */
         private struct Ripple
         {
@@ -507,6 +585,17 @@ namespace Core.Rendering
             Instance = this;
             DistortionRippleBus.OnRipple += Enqueue;
             DistortionWakeBus.OnWake += EnqueueWake;
+
+            if (globalLight == null) FindGlobalLight();
+        }
+
+        /** Locate the scene's Global Light2D so the darkness gating tracks it automatically. */
+        [TitleGroup("Scene Lighting")]
+        [Button("Find Global Light")]
+        public void FindGlobalLight()
+        {
+            foreach (var l in FindObjectsByType<Light2D>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                if (l.lightType == Light2D.LightType.Global) { globalLight = l; return; }
         }
 
         /** Release the singleton slot and stop listening. */
@@ -705,6 +794,19 @@ namespace Core.Rendering
             Shader.SetGlobalVector(_idBubbleTint, bubbleTint);
             Shader.SetGlobalVector(_idParticleDrift, new Vector4(moteDrift.x, moteDrift.y, bubbleDrift, bubbleRiseSpeed));
 
+            // Scene lighting: global level (Light2D or manual override), per-feature self-light
+            // gates, and the analytic spot/point pool from the registry.
+            _lastGlobalLightLevel = overrideGlobalLight
+                ? globalLightLevel
+                : globalLight != null && globalLight.isActiveAndEnabled
+                    ? globalLight.intensity * Luminance(globalLight.color)
+                    : 1f;   // no global light known → treat as fully lit (old behavior)
+            Shader.SetGlobalVector(_idSceneLight,
+                new Vector4(_lastGlobalLightLevel * globalLightGain, lumaLightGain, godRayLightGain, 0f));
+            Shader.SetGlobalVector(_idSelfLight,
+                new Vector4(godRaySelfLight, causticSelfLight, moteSelfLight, bubbleSelfLight));
+            UploadLights(cam, aspect);
+
             // Pack live ripples to the front of the arrays, expire finished ones, zero the rest.
             int live = 0;
             for (int i = 0; i < _ripples.Length; i++)
@@ -778,6 +880,64 @@ namespace Core.Rendering
             Shader.SetGlobalVectorArray(_idWakeA, _wakeA);
             Shader.SetGlobalVectorArray(_idWakeB, _wakeB);
             Shader.SetGlobalInt(_idWakeCount, wlive);
+        }
+
+        /** Perceptual luminance of a color (matches the shader's luma weights). */
+        private static float Luminance(Color c) => c.r * 0.299f + c.g * 0.587f + c.b * 0.114f;
+
+        /**
+         * Pack the registered DistortionLightSources into the analytic light pool. Each
+         * light is projected to viewport UV with its outer radius converted to
+         * viewport-height units (the shader's distance space) and its cone described by
+         * the cosines of its half-angles; full-circle lights get cosOuter=-2 so the
+         * shader's cone term passes everywhere. Off-screen and behind-camera lights are
+         * culled; past MaxLights the rest are silently dropped.
+         */
+        private void UploadLights(Camera cam, float aspect)
+        {
+            int count = 0;
+            var sources = DistortionLightRegistry.Sources;
+
+            for (int i = 0; i < sources.Count && count < MaxLights; i++)
+            {
+                // Skip dead/disabled sources and non-positional (global) lights.
+                DistortionLightSource src = sources[i];
+                if (src == null || !src.isActiveAndEnabled) continue;
+                Light2D l = src.Light;
+                if (cam == null || l == null || !l.isActiveAndEnabled || l.lightType == Light2D.LightType.Global) continue;
+
+                // Project to viewport; cull behind-camera and clearly off-screen lights.
+                Vector3 vp = cam.WorldToViewportPoint(l.transform.position);
+                if (vp.z <= 0f) continue;
+                float radius = l.pointLightOuterRadius * src.radiusScale / Mathf.Max(0.0001f, 2f * HalfHeight(cam));
+                float rx = radius / Mathf.Max(0.0001f, aspect);
+                if (vp.x < -rx || vp.x > 1f + rx || vp.y < -radius || vp.y > 1f + radius) continue;
+
+                // Cone: half-angle cosines (full circle → cosOuter=-2 disables the mask),
+                // axis = the light's up vector projected into aspect-corrected viewport space.
+                bool fullCircle = l.pointLightOuterAngle >= 359.9f;
+                float cosOuter = fullCircle ? -2f : Mathf.Cos(l.pointLightOuterAngle * 0.5f * Mathf.Deg2Rad);
+                float cosInner = fullCircle ? -1.5f : Mathf.Cos(Mathf.Min(l.pointLightInnerAngle, l.pointLightOuterAngle) * 0.5f * Mathf.Deg2Rad);
+                Vector3 vp1 = cam.WorldToViewportPoint(l.transform.position + l.transform.up);
+                Vector2 dirUv = new Vector2((vp1.x - vp.x) * aspect, vp1.y - vp.y);
+                dirUv = dirUv.sqrMagnitude < 1e-8f ? Vector2.up : dirUv.normalized;
+
+                float intensity = l.intensity * Luminance(l.color) * src.intensityScale;
+                _lightA[count] = new Vector4(vp.x, vp.y, radius, intensity);
+                _lightB[count] = new Vector4(dirUv.x, dirUv.y, cosOuter, cosInner);
+                count++;
+            }
+
+            // Zero the unused tail (full-length upload, same SetGlobalVectorArray pitfall).
+            for (int i = count; i < MaxLights; i++)
+            {
+                _lightA[i] = Vector4.zero;
+                _lightB[i] = Vector4.zero;
+            }
+
+            Shader.SetGlobalVectorArray(_idLightA, _lightA);
+            Shader.SetGlobalVectorArray(_idLightB, _lightB);
+            Shader.SetGlobalInt(_idLightCount, count);
         }
 
         // ─── Test controls ───────────────────────────────────────────────────

@@ -79,6 +79,17 @@ Shader "Submachina/UnderwaterDistortion"
             float4 _UD_BubbleTint;      // rgb tint of the bubbles
             float4 _UD_ParticleDrift;   // xy=mote world drift (current/sink) z=bubble sideways drift w=bubble rise speed
 
+            // Scene-light gating — lets a feature be LIT BY THE SCENE instead of emissive,
+            // so bubbles/motes can go truly dark while god rays keep glowing.
+            float4 _UD_SceneLight;      // x=globalLightLevel y=lumaGain z=godRayLightGain w=unused
+            float4 _UD_SelfLight;       // per-feature self-light (1=emissive, 0=needs light): x=godRays y=caustics z=motes w=bubbles
+
+            // Tracked scene lights (spot/point pool uploaded by the controller).
+            #define UD_MAX_LIGHTS 8
+            float4 _UD_LightA[UD_MAX_LIGHTS];   // xy=centerUV z=outerRadius(viewport-height units) w=intensity
+            float4 _UD_LightB[UD_MAX_LIGHTS];   // xy=cone dir (aspect-corrected unit) z=cosOuterHalf w=cosInnerHalf
+            int    _UD_LightCount;
+
             // Tiling source textures (material properties, declared above).
             TEXTURE2D(_UD_NoiseTex);    SAMPLER(sampler_UD_NoiseTex);
             TEXTURE2D(_UD_CausticTex);  SAMPLER(sampler_UD_CausticTex);
@@ -412,6 +423,38 @@ Shader "Submachina/UnderwaterDistortion"
                 return sum;
             }
 
+            // ─── Scene light (per-pixel "how lit is this spot actually?") ───────
+
+            /**
+             * Analytic contribution of the tracked scene lights. Each light adds a soft
+             * quadratic radial falloff inside its outer radius, masked by its cone
+             * (smoothstep between the outer and inner half-angle cosines; full-circle
+             * lights upload cosOuter=-2 so the cone term is 1 everywhere).
+             */
+            float UD_PoolLight(float2 uv)
+            {
+                float light = 0.0;
+                [loop]
+                for (int i = 0; i < _UD_LightCount; i++)
+                {
+                    float4 a = _UD_LightA[i];
+                    float4 b = _UD_LightB[i];
+
+                    // Radial falloff in aspect-corrected viewport space.
+                    float2 d      = (uv - a.xy) * _UD_Aspect;
+                    float  dist   = length(d);
+                    float  radial = saturate(1.0 - dist / max(a.z, 1e-4));
+                    radial *= radial;                                     // soft quadratic edge
+
+                    // Cone mask: how closely the pixel direction matches the light's axis.
+                    float2 nd   = d / max(dist, 1e-5);
+                    float  cone = smoothstep(b.z, max(b.w, b.z + 1e-3), dot(nd, b.xy));
+
+                    light += radial * cone * a.w;
+                }
+                return light;
+            }
+
             half4 Frag(Varyings input) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
@@ -439,15 +482,30 @@ Shader "Submachina/UnderwaterDistortion"
                 float rays    = GodRays(uv, disp);
                 float caustic = Caustics(uv, disp);
                 float caMask  = luma * _UD_CausticMask.x + _UD_CausticMask.y;
-                col += _UD_GodRayTint.rgb  * rays * _UD_GodRayParams.x * enable;
-                col += _UD_CausticTint.rgb * caustic * _UD_CausticParams.x * caMask * enable;
+
+                // Scene-light estimate: global level + tracked spot/point lights + the lit
+                // scene's own brightness. Each feature's SELF-LIGHT lerps its gate between
+                // "needs scene light" (0 → true darkness possible) and "emissive" (1).
+                float sceneLight = saturate(_UD_SceneLight.x + UD_PoolLight(uv) + luma * _UD_SceneLight.y);
+                float grGate  = lerp(sceneLight, 1.0, _UD_SelfLight.x);
+                float caGate  = lerp(sceneLight, 1.0, _UD_SelfLight.y);
+
+                // The (gated) god rays themselves count as light for the particles, so dust
+                // still sparkles inside a sunbeam even when everything else is pitch black.
+                float rayGlow  = rays * _UD_GodRayParams.x * grGate;
+                float rayLight = saturate(sceneLight + rayGlow * _UD_SceneLight.z);
+                float moGate   = lerp(rayLight, 1.0, _UD_SelfLight.z);
+                float buGate   = lerp(rayLight, 1.0, _UD_SelfLight.w);
+
+                col += _UD_GodRayTint.rgb  * rayGlow * enable;
+                col += _UD_CausticTint.rgb * caustic * _UD_CausticParams.x * caMask * caGate * enable;
 
                 // 3) PARTICLES — parallax marine snow (boosted where it crosses the light
                 //    shafts, like dust in a sunbeam) + rising bubbles. Both additive.
                 float motes   = UD_Motes(uv, disp, _UD_Time);
                 float bubbles = UD_Bubbles(uv, disp, _UD_Time);
-                col += _UD_MoteTint.rgb   * motes   * _UD_MoteParams.x   * (1.0 + rays * _UD_MoteParams2.w) * enable;
-                col += _UD_BubbleTint.rgb * bubbles * _UD_BubbleParams.x * enable;
+                col += _UD_MoteTint.rgb   * motes   * _UD_MoteParams.x   * (1.0 + rays * _UD_MoteParams2.w) * moGate * enable;
+                col += _UD_BubbleTint.rgb * bubbles * _UD_BubbleParams.x * buGate * enable;
 
                 // 4) TINT — optional subtle deep-water grade.
                 col = lerp(col, col * _UD_DeepTint.rgb, _UD_DeepTint.w * enable);

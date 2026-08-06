@@ -95,6 +95,31 @@ through the same offset so they scroll with travel:
 Both are additive light drawn over the scene (a fullscreen pass can't occlude behind sprites);
 at the tuned default intensities this is imperceptible, and dim far layers read as distant.
 
+## Scene-light gating (Self Light — true darkness)
+
+Every added feature is additive, so by default it *creates* light and still glows in a
+pitch-black scene. The **Scene Lighting** group + per-feature **Self Light** sliders fix that:
+
+- Per pixel the shader estimates `sceneLight = saturate(globalLightLevel + analytic light
+  pool + sceneLuma × Luma Light Gain)`.
+- Each feature's contribution is scaled by `lerp(sceneLight, 1, selfLight)`:
+  **1 = emissive** (old behavior — god rays default here, they ARE sunlight),
+  **0 = only visible where the scene is actually lit**. Defaults: god rays 1, caustics 0.3,
+  motes 0.2, bubbles 0.1.
+- The **global level** auto-reads the scene's Global Light2D (intensity × color luminance,
+  auto-found on enable; none found = treated as fully lit) or can be driven manually via
+  `overrideGlobalLight` + `globalLightLevel` (e.g. from the environment director).
+- **Spot/point lights**: add a `DistortionLightSource` component next to any Light2D and it
+  self-registers (`DistortionLightRegistry`, same decoupled pattern as the ripple bus —
+  prefab-spawned sub spotlights just work). The controller uploads up to **8** on-screen
+  lights per frame (position, radius, cone half-angle cosines, intensity) and the shader
+  computes an analytic quadratic-falloff cone — so gated features appear inside a headlight
+  beam even over empty black water, where the luma term has nothing to catch.
+- **God rays count as light for particles** (`godRayLightGain`): motes/bubbles sparkle inside
+  a shaft even in otherwise dark water — and this uses the *gated* ray brightness, so if the
+  rays themselves are darkened, so is their reveal.
+- Debug readouts in Testing & Debug: `CurrentGlobalLightLevel`, `RegisteredLightCount`.
+
 ## Flow bias (experimental, default OFF)
 
 `flowBiasEnabled` + `flowBiasStrength` on the controller: while the camera travels, extra
