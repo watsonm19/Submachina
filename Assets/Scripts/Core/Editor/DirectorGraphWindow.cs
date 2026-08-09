@@ -750,7 +750,7 @@ namespace Core.Editor
                 inner.y += 18f;
                 string arrow = rule.Direction == DirectorRule.TriggerDirection.RisesAbove ? "≥" : "≤";
                 GUI.Label(inner, $"{(rule.Parameter != null ? rule.Parameter.Id : "(none)")} {arrow} {rule.TriggerThreshold:0.##}" +
-                                 $"   cd {rule.CooldownSeconds:0}s   p={rule.Probability:0.##}{(rule.OneShot ? "   one-shot" : "")}", EditorStyles.miniLabel);
+                                 $"   cd {rule.CooldownDescription}   p={rule.Probability:0.##}{(rule.OneShot ? "   one-shot" : "")}", EditorStyles.miniLabel);
 
                 inner.y += 16f;
                 string state = !Application.isPlaying ? "—"
