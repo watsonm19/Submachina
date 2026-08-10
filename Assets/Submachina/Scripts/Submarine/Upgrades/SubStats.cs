@@ -30,6 +30,9 @@ namespace Submachina.Core
             { 6, "Defense" },
             { 7, "Mining" },
             { 8, "Sonar" },
+            { 9, "Hull" },
+            { 10, "Cargo" },
+            { 11, "Ballast" },
         };
     }
 }

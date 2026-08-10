@@ -30,6 +30,9 @@ namespace Submachina.Core
             { 6, "Upgrades" },
             { 7, "Sonar" },
             { 8, "Thrust" },
+            { 9, "Hull" },
+            { 10, "Cargo" },
+            { 11, "Ballast" },
         };
     }
 }

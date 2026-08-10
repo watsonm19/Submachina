@@ -204,6 +204,49 @@ namespace Submachina.Core
         /** +1 when facing right, -1 when facing left — useful for aiming/spawning effects. */
         public float FacingSign => _facingSign;
 
+        /** The designer-tuned base mass, before any registered contributions. */
+        public float BaseMass => mass;
+
+        /** Current total Rigidbody mass (base + all registered contributions). */
+        public float TotalMass => _rb != null ? _rb.mass : mass;
+
+        // =====================
+        // Mass Aggregation
+        // =====================
+
+        // Extra mass registered by other systems (cargo, ballast water, tank tiers),
+        // keyed by contributor so each source can update or release independently.
+        private readonly System.Collections.Generic.Dictionary<object, float> _massContributions = new();
+
+        /**
+         * Registers (or updates) an extra-mass contribution from another system.
+         * Example: a CargoHold with 12 units × 0.05 mass calls RegisterMass(this, 0.6);
+         * the Rigidbody mass becomes base + Σ contributions, so a loaded sub
+         * accelerates slower under the same thrust forces — inertia for free.
+         */
+        public void RegisterMass(object source, float extraMass)
+        {
+            if (source == null) return;
+            _massContributions[source] = Mathf.Max(0f, extraMass);
+            RecomputeMass();
+        }
+
+        /** Removes a contributor's mass (on module destroy / cargo banked). */
+        public void UnregisterMass(object source)
+        {
+            if (source == null || !_massContributions.Remove(source)) return;
+            RecomputeMass();
+        }
+
+        /** Applies base + Σ contributions to the Rigidbody. */
+        private void RecomputeMass()
+        {
+            if (_rb == null) return;
+            float total = mass;
+            foreach (var kvp in _massContributions) total += kvp.Value;
+            _rb.mass = total;
+        }
+
         // =====================
         // Upgrade Accessors
         // =====================

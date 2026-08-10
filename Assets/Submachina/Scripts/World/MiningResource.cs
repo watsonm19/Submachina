@@ -3,6 +3,7 @@ using Core.Rendering;
 using UnityEngine;
 using Sirenix.OdinInspector;
 
+
 namespace Submachina.Core
 {
     /**
@@ -27,6 +28,11 @@ namespace Submachina.Core
      *   - Set the prefab's layer to "Resource" so MiningLaser's raycast can hit it.
      *   - Resources are awarded through the Submarine passed to Collect() by
      *     MiningLaser — no references need wiring at spawn time.
+     *
+     * In addition to the in-run resourceValue (XP-like progression currency),
+     * a node can yield typed cargo: when resourceType is assigned, Collect()
+     * stores cargoUnits of that ResourceType into the submarine's CargoHold
+     * (Sub.Cargo) for banking back at the hub.
      */
     [RequireComponent(typeof(Collider2D))]
     public class MiningResource : MonoBehaviour
@@ -53,6 +59,15 @@ namespace Submachina.Core
         [FoldoutGroup("Settings")]
         [Tooltip("When on, forces the collider to be a trigger so the sub cannot bump into it")]
         [SerializeField] private bool isTrigger = true;
+
+        [FoldoutGroup("Settings")]
+        [Tooltip("Typed cargo yielded on collection (e.g. Ferrite Nodules, Vent Brass). Leave empty " +
+                 "for nodes that only grant in-run resourceValue with no physical cargo, such as scrap-only nodes.")]
+        [SerializeField] private ResourceType resourceType;
+
+        [FoldoutGroup("Settings")]
+        [Tooltip("Units of resourceType stored into the submarine's CargoHold on collection.")]
+        [SerializeField, Min(0)] private int cargoUnits = 1;
 
         // =====================
         // Glow
@@ -195,6 +210,10 @@ namespace Submachina.Core
                 sub.Resources.AddResources(resourceValue);
             else
                 Debug.LogWarning("[MiningResource] No Submarine ResourceManager available.");
+
+            // Store typed cargo into the hold, when this node yields a physical resource
+            if (resourceType != null)
+                sub?.Cargo?.Add(resourceType, cargoUnits);
 
             // Roll for a scrap pickup drop — spawns a physical world object that the
             // player must come within pickup range to collect (bank-full check happens there)

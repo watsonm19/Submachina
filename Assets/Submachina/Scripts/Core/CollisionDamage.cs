@@ -15,12 +15,19 @@ namespace Submachina.Core
      * A short cooldown prevents repeated damage ticks while the sub is
      * sliding or pressed against a surface.
      *
-     * How impact speed maps to damage:
-     *   Speed < minImpactSpeed  → no damage
-     *   Speed >= minImpactSpeed → damagePerImpact HP lost
+     * Damage source:
+     *   Sub.Hull present    → routed through HullSystem.EvaluateImpact, which
+     *                          weighs the hit against current pressure load and
+     *                          structural reserve. A 0 result means the hull
+     *                          absorbed the impact within its margin — no damage,
+     *                          no CollisionDamage feedback (HullSystem already
+     *                          played its own overload cue).
+     *   Sub.Hull absent     → legacy flat damagePerImpact (upgradeable via
+     *                          SubStats.CollisionDamagePerImpact), unchanged from
+     *                          before HullSystem existed — old scenes still work.
      *
-     * Example: minImpactSpeed=3, damagePerImpact=1 means the sub only
-     * takes damage when hitting a rock faster than 3 m/s.
+     * Example: minImpactSpeed=3 means the sub only takes damage when hitting a
+     * rock faster than 3 m/s, regardless of which damage source is active.
      */
     [RequireComponent(typeof(Health))]
     [UsesFeedbacks(nameof(SubFeedbacks.CollisionDamage))]
@@ -118,7 +125,9 @@ namespace Submachina.Core
             // Threshold check — ignore gentle contact
             if (impactSpeed < minImpactSpeed) return;
 
-            int damage = DamagePerImpactMod;
+            // Damage source: HullSystem's pressure+impact overload model when present
+            // (0 means the hull absorbed it), otherwise the legacy flat per-impact damage.
+            int damage = Sub?.Hull != null ? Sub.Hull.EvaluateImpact(impactSpeed) : DamagePerImpactMod;
             if (damage <= 0) return;
 
             _health.TakeDamage(damage);

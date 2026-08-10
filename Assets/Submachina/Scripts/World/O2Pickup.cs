@@ -158,8 +158,10 @@ namespace Submachina.Core
         }
 
         /**
-         * Restores O2 and destroys this pickup. Returns the actual air amount
-         * added (after size and timing multipliers) so callers can display it.
+         * Restores O2 (or, with the ballast pump destination set to Ballast,
+         * fills the ballast tank with the air instead) and destroys this pickup. Returns
+         * the actual air amount added/spent (after size and timing multipliers)
+         * so callers can display it.
          *
          * airMultiplier scales the air granted — lets the collector grade the
          * reward by timing quality. This is orthogonal to the size multiplier:
@@ -167,6 +169,11 @@ namespace Submachina.Core
          *
          * Example: replenishAmount=10, sizeMultiplier=3.0, airMultiplier=0.35
          * → weak pump on a large bubble restores 10 * 3.0 * 0.35 = 10.5 air.
+         *
+         * Ballast routing: when the sub carries a BallastTank and its shared
+         * pump destination is set to Ballast, the captured air fills the tank
+         * (adding lift) instead of topping up the O2 reserve; overflow past a
+         * full tank still banks into the reserve.
          */
         public float Collect(Submarine sub, float airMultiplier = 1f)
         {
@@ -175,7 +182,16 @@ namespace Submachina.Core
             if (sub?.O2 != null)
             {
                 airAmount = replenishAmount * _sizeMultiplier * airMultiplier;
-                sub.O2.AddAir(airAmount);
+
+                if (sub.Ballast != null && sub.Ballast.Destination == PumpDestination.Ballast)
+                {
+                    // Fill the ballast tank with the captured air; overflow past a
+                    // full tank still banks into the main reserve (never wasted)
+                    float overflow = sub.Ballast.AddAirToBallast(airAmount);
+                    if (overflow > 0f) sub.O2.AddAir(overflow);
+                }
+                else
+                    sub.O2.AddAir(airAmount);
             }
             else
                 Debug.LogWarning("[O2Pickup] No Submarine O2System available — pickup consumed but air not restored.");

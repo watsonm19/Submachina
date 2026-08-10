@@ -355,6 +355,29 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
         /**
+         * Sends a finished pump's generated air to wherever the shared pump
+         * destination currently points, so Perfect and Weak pumps share one
+         * routing rule:
+         *
+         *   No ballast tank / destination O2Reserve → main tank, as always.
+         *   Destination Ballast → the fresh air fills the BALLAST tank instead
+         *     (lift without draining the reserve — the tank auto-promotes its
+         *     gear to hold the level); any overflow past a full tank still
+         *     banks into the main reserve, so pumped air is never wasted.
+         */
+        private void RouteFinishedPump(float amount)
+        {
+            if (Sub?.Ballast == null || Sub.O2 == null || Sub.Ballast.Destination != PumpDestination.Ballast)
+            {
+                Sub?.O2?.AddAir(amount);
+                return;
+            }
+
+            float overflow = Sub.Ballast.AddAirToBallast(amount);
+            if (overflow > 0f) Sub.O2.AddAir(overflow);
+        }
+
+        /**
          * Called on button press. Detects spam before allowing a new charge cycle.
          *
          * Spam detection uses a rolling time window: each press that arrives within
@@ -421,7 +444,7 @@ namespace Submachina.Core
 
             if (inSweetSpot)
             {
-                Sub?.O2?.AddAir(PerfectAirMod);
+                RouteFinishedPump(PerfectAirMod);
                 _rapidPressCount = 0;
                 _chargeProgress = 0f;
                 _wasInSweetSpot = false;
@@ -437,7 +460,7 @@ namespace Submachina.Core
                 return;
             }
 
-            Sub?.O2?.AddAir(WeakAirMod);
+            RouteFinishedPump(WeakAirMod);
             _chargeProgress = 0f;
             _wasInSweetSpot = false;
 

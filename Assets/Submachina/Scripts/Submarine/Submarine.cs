@@ -79,6 +79,15 @@ namespace Submachina.Core
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public SonarSystem Sonar { get; private set; }
 
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        public CargoHold Cargo { get; private set; }
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        public HullSystem Hull { get; private set; }
+
+        [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
+        public BallastTank Ballast { get; private set; }
+
         // =====================
         // Lifecycle
         // =====================
@@ -116,6 +125,9 @@ namespace Submachina.Core
                 case PickupRangeDetector pickupRange:   PickupRange = pickupRange; break;
                 case UpgradeManager upgrades:           Upgrades = upgrades;     break;
                 case SonarSystem sonar:                 Sonar = sonar;           break;
+                case CargoHold cargo:                   Cargo = cargo;           break;
+                case HullSystem hull:                   Hull = hull;             break;
+                case BallastTank ballast:               Ballast = ballast;       break;
             }
         }
 
@@ -139,6 +151,9 @@ namespace Submachina.Core
                 case PickupRangeDetector pr when PickupRange == pr:                      PickupRange = null; break;
                 case UpgradeManager u when Upgrades == u:                                Upgrades = null;    break;
                 case SonarSystem sonar when Sonar == sonar:                              Sonar = null;       break;
+                case CargoHold cargo when Cargo == cargo:                                Cargo = null;       break;
+                case HullSystem hull when Hull == hull:                                  Hull = null;        break;
+                case BallastTank ballast when Ballast == ballast:                        Ballast = null;     break;
             }
         }
 
