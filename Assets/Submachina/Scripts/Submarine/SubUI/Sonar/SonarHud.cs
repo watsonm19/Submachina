@@ -14,10 +14,14 @@ namespace Submachina.Core
      * time an echo returns. How much a blip reveals is gated by the current sonar tier,
      * so the same HUD progressively unlocks meaning as the player upgrades:
      *
-     *   Presence  — a generic blip pinned to the top of the ring (no bearing).
+     *   Presence  — a generic blip parked in the centre of the ring (no bearing, no range).
      *   Direction — the blip is placed by the contact's bearing around the ring.
      *   Size      — the blip's distance from centre encodes range; a distance label shows.
      *   Identify  — the blip takes the signature's icon, colour, and name.
+     *
+     * Independently of tier, an optional proximity tint blends each blip's colour from its
+     * base colour (a contact at max range) toward the proximity colour (a contact right on
+     * top of the sub), so closeness reads even before range is unlocked.
      *
      * Blips are built in code (no prefab required) so the HUD works out of the box; assign
      * a label font to enable the distance/name text. The outgoing pulse visual is left to
@@ -66,8 +70,18 @@ namespace Submachina.Core
         [SerializeField] private Sprite blipSprite;
 
         [FoldoutGroup("Appearance")]
-        [Tooltip("Colour of a blip before the Identify tier reveals the contact's own colour.")]
+        [Tooltip("Colour of a blip before the Identify tier reveals the contact's own colour. " +
+                 "With proximity colouring on, this is the colour of a contact at maximum range.")]
         [SerializeField, ColorUsage(true, true)] private Color neutralColor = new Color(0.4f, 0.9f, 1f, 1f);
+
+        [FoldoutGroup("Appearance")]
+        [Tooltip("Tint blips by how close the contact is: far contacts keep their base colour, " +
+                 "close ones blend toward the proximity colour. Applies at every tier.")]
+        [SerializeField] private bool colorByProximity = true;
+
+        [FoldoutGroup("Appearance"), ShowIf(nameof(colorByProximity))]
+        [Tooltip("Colour of a contact sitting right on top of the sub (distance 0).")]
+        [SerializeField, ColorUsage(true, true)] private Color proximityCloseColor = new Color(1f, 0.25f, 0.2f, 1f);
 
         [FoldoutGroup("Appearance")]
         [Tooltip("Optional font for the distance/name label (Size tier and up). " +
@@ -156,19 +170,24 @@ namespace Submachina.Core
             SonarTier tier = _sonar.CurrentTier;
             if (tier == SonarTier.None || ringContainer == null) return;
 
+            // Normalised range of the contact (0 = on top of the sub, 1 = at max range).
+            // Used for both radial placement and the proximity tint.
+            float rangeT = Mathf.Clamp01(contact.Distance / Mathf.Max(0.01f, _sonar.ResolvedRange));
+
             // Bearing: only placed by direction once the Direction tier is unlocked,
             // otherwise pinned to the top of the ring as a generic "contact" mark.
             float angle = tier >= SonarTier.Direction && contact.Direction.sqrMagnitude > 0.0001f
                 ? Mathf.Atan2(contact.Direction.y, contact.Direction.x)
                 : Mathf.PI * 0.5f;
 
-            // Distance: only mapped to ring radius once the Size tier is unlocked.
-            float radius = ringRadius;
-            if (tier >= SonarTier.Size)
-            {
-                float range = Mathf.Max(0.01f, _sonar.ResolvedRange);
-                radius = Mathf.Lerp(minRadius, ringRadius, Mathf.Clamp01(contact.Distance / range));
-            }
+            // Radius by tier: Presence knows neither bearing nor range, so its blip sits dead
+            // centre ("something is out there"); Direction rides the ring edge; Size and up
+            // map the contact's actual distance onto the ring.
+            float radius = tier <= SonarTier.Presence
+                ? 0f
+                : tier >= SonarTier.Size
+                    ? Mathf.Lerp(minRadius, ringRadius, rangeT)
+                    : ringRadius;
             Vector2 pos = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
 
             // Identity: colour + icon only revealed at the Identify tier.
@@ -176,6 +195,16 @@ namespace Submachina.Core
             Color color = identified ? contact.Signature.blipColor : neutralColor;
             Sprite sprite = identified && contact.Signature.blipIcon != null
                 ? contact.Signature.blipIcon : blipSprite;
+
+            // Proximity tint: blend the base colour toward the close colour as range shrinks,
+            // e.g. a contact at 25% of max range reads as 75% of the way to red. Alpha is left
+            // to the base colour so the fade logic still owns transparency.
+            if (colorByProximity)
+            {
+                float a = color.a;
+                color = Color.Lerp(proximityCloseColor, color, rangeT);
+                color.a = a;
+            }
 
             // Label: distance at Size+, prefixed with the name once identified.
             string labelText = BuildLabel(tier, contact);
