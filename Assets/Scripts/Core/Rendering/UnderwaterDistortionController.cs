@@ -540,6 +540,8 @@ namespace Core.Rendering
             public float frequency;
             public float speed;
             public float lifetime;
+            public float expansionSpeed;   // per-ripple override; <= 0 → global ringExpansionSpeed
+            public float ringWidth;        // per-ripple override; <= 0 → global ringFalloff
         }
 
         /** A single live wake (turbulence trail) in the pool. */
@@ -675,7 +677,9 @@ namespace Core.Rendering
                 strength = r.strength,
                 frequency = r.frequency,
                 speed = r.speed,
-                lifetime = Mathf.Max(0.01f, r.lifetime)
+                lifetime = Mathf.Max(0.01f, r.lifetime),
+                expansionSpeed = r.expansionSpeed,
+                ringWidth = r.ringWidth
             };
         }
 
@@ -824,10 +828,14 @@ namespace Core.Rendering
 
                 // Envelope: quick ramp-in (avoids a pop) then linear fade-out over the lifetime.
                 float amplitude = rp.strength * (1f - u) * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(u / 0.1f)) * visible;
-                float radius = ringExpansionSpeed * t;
+
+                // Ring shape: per-ripple overrides win when set (> 0), else the global settings.
+                float expansion = rp.expansionSpeed > 0f ? rp.expansionSpeed : ringExpansionSpeed;
+                float falloff   = rp.ringWidth      > 0f ? rp.ringWidth      : ringFalloff;
+                float radius = expansion * t;
 
                 _rippleA[live] = new Vector4(vp.x, vp.y, radius, amplitude);
-                _rippleB[live] = new Vector4(rp.frequency, ringFalloff, t * rp.speed, 1f);
+                _rippleB[live] = new Vector4(rp.frequency, falloff, t * rp.speed, 1f);
                 live++;
             }
 

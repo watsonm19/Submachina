@@ -12,19 +12,29 @@ namespace Core.Rendering
      */
     public readonly struct RippleRequest
     {
-        public readonly Vector3 worldPos;   // where the ripple originates, in world space
-        public readonly float strength;     // peak UV displacement amplitude
-        public readonly float frequency;    // wave cycles packed into the ring
-        public readonly float speed;        // how fast the wave oscillates (phase rate)
-        public readonly float lifetime;     // seconds until the ripple fully fades out
+        public readonly Vector3 worldPos;      // where the ripple originates, in world space
+        public readonly float strength;        // peak UV displacement amplitude
+        public readonly float frequency;       // wave cycles packed into the ring
+        public readonly float speed;           // how fast the wave oscillates (phase rate)
+        public readonly float lifetime;        // seconds until the ripple fully fades out
+        public readonly float expansionSpeed;  // ring growth in viewport units/sec; <= 0 → controller default
+        public readonly float ringWidth;       // ring band width in viewport units; <= 0 → controller default
 
+        /** Standard request — ring expansion and band width use the controller's global settings. */
         public RippleRequest(Vector3 worldPos, float strength, float frequency, float speed, float lifetime)
+            : this(worldPos, strength, frequency, speed, lifetime, -1f, -1f) { }
+
+        /** Full request with per-ripple ring shape overrides (pass <= 0 to keep a controller default). */
+        public RippleRequest(Vector3 worldPos, float strength, float frequency, float speed, float lifetime,
+                             float expansionSpeed, float ringWidth)
         {
             this.worldPos = worldPos;
             this.strength = strength;
             this.frequency = frequency;
             this.speed = speed;
             this.lifetime = lifetime;
+            this.expansionSpeed = expansionSpeed;
+            this.ringWidth = ringWidth;
         }
     }
 

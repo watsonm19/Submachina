@@ -32,7 +32,10 @@ concentric ripples and propulsion turbulence wakes.
   deterministic `EditorCapture` stills.
 
 - **`DistortionRippleBus.cs`** (`Core.Rendering`, static) — `Emit(pos, strength, frequency,
-  speed, lifetime)`. Concentric expanding ripple (surface-style splash / impact).
+  speed, lifetime)`. Concentric expanding ripple (surface-style splash / impact). The 7-arg
+  `RippleRequest` overload adds per-ripple `expansionSpeed` / `ringWidth` (viewport units)
+  that override the controller's global `ringExpansionSpeed` / `ringFalloff` when > 0 —
+  CPU-side only, no shader change (used by `SonarReturnRipples` to speed-match echo waves).
 
 - **`DistortionWakeBus.cs`** (`Core.Rendering`, static) — `Emit(pos, dir, strength, length,
   frequency, lifetime)`. Elongated turbulence plume trailing a travel direction (propulsion).

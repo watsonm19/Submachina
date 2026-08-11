@@ -143,6 +143,13 @@ namespace Submachina.Core
         /** Raised for each echo as it returns, with the full contact. */
         public event Action<SonarContact> ContactReturned;
 
+        /**
+         * Raised at ping time for each contact whose return has just been scheduled.
+         * Lets presentation layers (e.g. the return-ripple VFX) act during the echo's
+         * flight — the contact's ReturnDelay says when it will mature.
+         */
+        public event Action<SonarContact> ContactScheduled;
+
         /** Raised once all scheduled returns for a pulse have resolved. */
         public event Action PingResolved;
 
@@ -166,6 +173,10 @@ namespace Submachina.Core
         /** Resolved base range after the SonarRange stat modifier. */
         public float ResolvedRange => Sub?.Upgrades != null
             ? Sub.Upgrades.Stats.Resolve(SubStats.SonarRange, baseRange) : baseRange;
+
+        /** Ping travel speed (world units/sec) after the SonarPingSpeed stat modifier. */
+        public float ResolvedPingSpeed => Sub?.Upgrades != null
+            ? Sub.Upgrades.Stats.Resolve(SubStats.SonarPingSpeed, pingSpeed) : pingSpeed;
 
         /**
          * Highest sonar tier currently unlocked, resolved from active upgrade features.
@@ -284,7 +295,7 @@ namespace Submachina.Core
         private void ScheduleReturns(Vector2 origin)
         {
             float range = ResolvedRange;
-            float speed = ResolvedPingSpeed();
+            float speed = ResolvedPingSpeed;
             _seenThisPing.Clear();
 
             // Scan generously, then filter per-target by that object's true reflect range.
@@ -308,6 +319,7 @@ namespace Submachina.Core
 
                 var contact = new SonarContact(target, contactPos, dir, distance, target.Signature, returnDelay);
                 _pendingReturns.Add(new PendingReturn { contact = contact, dueTime = Time.time + returnDelay });
+                ContactScheduled?.Invoke(contact);
             }
         }
 
@@ -381,10 +393,6 @@ namespace Submachina.Core
         /** Cooldown after the SonarCooldown modifier. */
         private float ResolvedCooldown() => Sub?.Upgrades != null
             ? Sub.Upgrades.Stats.Resolve(SubStats.SonarCooldown, cooldown) : cooldown;
-
-        /** Ping speed after the SonarPingSpeed modifier. */
-        private float ResolvedPingSpeed() => Sub?.Upgrades != null
-            ? Sub.Upgrades.Stats.Resolve(SubStats.SonarPingSpeed, pingSpeed) : pingSpeed;
 
         // -------------------------------------------------------
         // Gizmos
