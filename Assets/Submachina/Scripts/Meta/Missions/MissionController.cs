@@ -309,10 +309,9 @@ namespace Submachina.Meta
             if (MissionOver) return;
             MissionOver = true;
 
-            // Bank the hold plus the mission reward, then empty the hold
+            // Bank whatever was actually mined and hauled home, then empty the hold —
+            // there is no completion gift; the world's resources ARE the reward
             ProfileService.BankCargo(_sub.Cargo);
-            if (!string.IsNullOrEmpty(Spec.rewardResourceKey) && Spec.rewardAmount > 0)
-                ProfileService.AddResource(Spec.rewardResourceKey, Spec.rewardAmount);
             _sub.Cargo?.Clear();
 
             ProfileService.RecordMission(success: true, _deepestDepth);

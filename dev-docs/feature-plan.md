@@ -144,6 +144,14 @@ handling code needed. `maxSpeed` stays; inertia does the feel work.
   rolls properties, weights resource abundance toward the depth band's native types.
 - **Scanner report** = the spec's display data with per-property confidence noise (e.g. "Vent Brass:
   RICH", "Hostiles: large contact detected"). Rendered on hub mission cards.
+- **Forecast is real (2026-08-10)**: `MissionResourceRule` (a polymorphic `SpawnRule` in the
+  dedicated `MissionProfile`) expands the active forecast into per-type runtime spawn rules —
+  count/chunk = template base × abundance, depth-banded per `ResourceType.depthBand` with a
+  triangular prevalence peak (the same math the forecast uses). Unlisted types don't spawn; the
+  completion gift was removed — mine it, hold it, extract it, or it isn't yours. Verified live:
+  a 124 m offer forecasting only Ferrite+Vent Brass produced exactly those two types (42 nodes)
+  and zero others even at 250 m. Future biomes: subclass `SpawnRule` the same way and swap the
+  profile per mission.
 - Runtime: `MissionController` (scene object, no singleton) in `Mission_Descent.unity`:
   - applies spec: sets `CurrentManager` tier/boost from `currentStrength`, scales `SpawnProfile.globalDensityMultiplier`
     clones per resource-rule via multipliers, o2Richness scales the O2 rule density.

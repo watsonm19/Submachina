@@ -76,14 +76,6 @@ namespace Submachina.Meta
                 });
             }
 
-            // Reward: a native resource for this depth, bigger for deeper tiers
-            if (spec.forecast.Count > 0)
-            {
-                var pick = spec.forecast[rng.Next(spec.forecast.Count)];
-                spec.rewardResourceKey = pick.resourceKey;
-                spec.rewardAmount = (8 + tier * 6) + rng.Next(0, 5);
-            }
-
             WriteCopy(spec, tier, rng);
             return spec;
         }

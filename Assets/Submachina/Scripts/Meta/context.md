@@ -50,8 +50,17 @@ persist.
   `forecast` (per-resource abundance → RICH/DETECTED/TRACE grades), reward.
 - **MissionGenerator** — static; emits 3 offers per hub visit around the sub's
   rated depth (≈70% / 100% / 130% — the stretch card is the depth-progression
-  carrot). Forecast honesty: abundance derives from each type's `depthBand` vs
-  target depth, matching what spawn rules naturally produce at that depth.
+  carrot). The forecast is a PROMISE, not a payout: **MissionResourceRule**
+  (`World/Spawning/`, a `SpawnRule` subclass in the `MissionProfile` used by
+  `Mission_Descent`'s ChunkSpawner) expands `MissionContext.Current.forecast`
+  into concrete per-type spawn rules at chunk-generation time — forecasted
+  types spawn at forecasted abundance inside their native depth bands
+  (TRACE ≈ occasional single nodes, RICH ≈ dense), unlisted types don't exist
+  in that level, and there is no completion reward: mined → cargo hold →
+  extracted is the only way resources bank. No active mission → a moderate
+  fallback mix so sandbox play still has ore. This is also the composition
+  hook for future biome packs (any `SpawnRule` subclass can contribute
+  multiple runtime rule datas via the virtual `Rules` property).
 - **MissionContext** — static scene hand-off (`Launch`, `ReturnToHub`,
   `Current`, last-result flags). Scenes played directly see null and fall back
   to a debug spec.

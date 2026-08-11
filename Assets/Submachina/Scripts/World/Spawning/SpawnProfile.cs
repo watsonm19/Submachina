@@ -81,14 +81,20 @@ namespace Submachina.Core
         /**
          * Every rule this profile contributes, shared then inline. Null entries
          * (empty asset slots) are skipped so callers can iterate safely.
+         * Shared assets enumerate through SpawnRule.Rules so composite rules
+         * (e.g. MissionResourceRule) can contribute several datas each.
          */
         public IEnumerable<SpawnRuleData> AllRules
         {
             get
             {
                 foreach (SpawnRule shared in sharedRules)
-                    if (shared != null && shared.Rule != null)
-                        yield return shared.Rule;
+                {
+                    if (shared == null) continue;
+                    foreach (SpawnRuleData data in shared.Rules)
+                        if (data != null)
+                            yield return data;
+                }
 
                 foreach (SpawnRuleData inline in inlineRules)
                     if (inline != null)

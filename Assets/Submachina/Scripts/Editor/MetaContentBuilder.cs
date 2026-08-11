@@ -100,6 +100,9 @@ namespace Submachina.EditorTools
             BuildCargoPickupPrefab();
             WireBallastAndCargoPrefabs();
 
+            // -- Mission resource spawning (forecast → real world spawns) --
+            BuildMissionResourceRule();
+
             AssetDatabase.SaveAssets();
             Debug.Log($"[MetaContentBuilder] Built meta content: catalog with {catalog.entries.Count} entries, {catalog.loadoutSlots.Count} slots.");
         }
@@ -313,6 +316,51 @@ namespace Submachina.EditorTools
             if (set) PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
             else Debug.LogWarning($"[MetaContentBuilder] Property '{property}' not found on {prefabPath}.");
             PrefabUtility.UnloadPrefabContents(root);
+        }
+
+        /**
+         * The mission-aware resource rule: one template per ResourceType mapping
+         * it to its world prefabs and a base density. Counts are tuned so a
+         * DETECTED (≈1.0) forecast feels like today's resource frequency and
+         * TRACE/RICH clearly bracket it.
+         */
+        private static void BuildMissionResourceRule()
+        {
+            var rule = LoadOrCreate<MissionResourceRule>(MetaDir + "/MissionResources.asset");
+            rule.templates = new List<MissionResourceRule.ResourceTemplate>();
+
+            void Template(string typeName, float countAtFull, params string[] prefabPaths)
+            {
+                var type = LoadResource(typeName);
+                if (type == null) { Debug.LogWarning($"[MetaContentBuilder] ResourceType '{typeName}' missing — template skipped."); return; }
+
+                var prefabs = new List<GameObject>();
+                foreach (var path in prefabPaths)
+                {
+                    var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    if (prefab != null) prefabs.Add(prefab);
+                    else Debug.LogWarning($"[MetaContentBuilder] Prefab missing for {typeName}: {path}");
+                }
+                if (prefabs.Count == 0) return;
+
+                rule.templates.Add(new MissionResourceRule.ResourceTemplate
+                {
+                    type = type,
+                    prefabVariants = prefabs.ToArray(),
+                    countPerChunkAtFull = countAtFull,
+                    minSpacing = 2f,
+                });
+            }
+
+            const string res = "Assets/Submachina/Prefabs/World/Resources";
+            const string nug = "Assets/Submachina/Prefabs/World/Cluster/OreNugget";
+            Template("FerriteNodules", 3f, res + "/CopperResource.prefab", nug + "/OreMetalNugget.prefab");
+            Template("VentBrass", 2.5f, res + "/Glitter Metal.prefab", nug + "/OreGoldNugget.prefab");
+            Template("ClathrateIce", 2f, res + "/ClathrateIce.prefab");
+            Template("Luminite", 2f, res + "/GreenCrystal.prefab");
+            Template("Abyssite", 1.5f, res + "/RockPinkCrystals_0_albedo.prefab");
+
+            EditorUtility.SetDirty(rule);
         }
 
         // -------------------------------------------------------

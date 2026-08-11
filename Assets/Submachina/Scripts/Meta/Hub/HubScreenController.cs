@@ -533,10 +533,8 @@ namespace Submachina.Meta
                 MakeText(card.transform, $"{type.displayName}: {forecast.Grade}", type.tint, 13, FontStyles.Normal, TextAlignmentOptions.Left);
             }
 
-            var rewardType = FindResourceType(spec.rewardResourceKey);
-            if (rewardType != null)
-                MakeText(card.transform, $"Reward: {spec.rewardAmount} {rewardType.displayName}", affordColor, 14, FontStyles.Bold, TextAlignmentOptions.Left);
-
+            // No completion reward line — the forecast above IS the payout:
+            // those resources spawn in the level and must be mined + hauled home
             var launchBtn = MakeButton(card.transform, "LAUNCH", buttonColor, headerColor, 18, () => OnLaunchClicked(spec));
             launchBtn.gameObject.AddComponent<LayoutElement>().preferredHeight = 56f;
         }

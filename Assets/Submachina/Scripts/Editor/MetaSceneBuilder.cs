@@ -77,8 +77,67 @@ namespace Submachina.EditorTools
                 applierSO.ApplyModifiedPropertiesWithoutUndo();
             }
 
+            // Mission spawn profile: forecast-driven resources instead of fixed rules
+            AssignMissionSpawnProfile();
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
+        }
+
+        /**
+         * Points the mission scene's ChunkSpawner at a dedicated MissionProfile:
+         * a copy of the sandbox profile with the fixed resource rules (generic
+         * Resource / OreCluster) swapped for the mission-aware MissionResources
+         * rule, so the level contains exactly what the scanner forecast promises.
+         * The sandbox scene keeps its original profile untouched. Idempotent —
+         * an existing MissionProfile is refreshed in place (rule swap re-checked).
+         */
+        private static void AssignMissionSpawnProfile()
+        {
+            const string missionProfilePath = "Assets/Submachina/Data/Meta/MissionProfile.asset";
+            const string missionRulePath = "Assets/Submachina/Data/Meta/MissionResources.asset";
+
+            var spawner = Object.FindFirstObjectByType<ChunkSpawner>(FindObjectsInactive.Include);
+            if (spawner == null) { Debug.LogWarning("[MetaSceneBuilder] No ChunkSpawner in mission scene — profile not assigned."); return; }
+
+            var missionRule = AssetDatabase.LoadAssetAtPath<MissionResourceRule>(missionRulePath);
+            if (missionRule == null) { Debug.LogWarning("[MetaSceneBuilder] MissionResources rule missing — run Build Meta Content first."); return; }
+
+            var spawnerSO = new SerializedObject(spawner);
+            var profileProp = spawnerSO.FindProperty("spawnProfile");
+            var current = profileProp.objectReferenceValue as SpawnProfile;
+
+            // Create the mission profile from the scene's current profile on first run
+            var missionProfile = AssetDatabase.LoadAssetAtPath<SpawnProfile>(missionProfilePath);
+            if (missionProfile == null)
+            {
+                if (current == null) { Debug.LogWarning("[MetaSceneBuilder] ChunkSpawner has no profile to derive from."); return; }
+                missionProfile = Object.Instantiate(current);
+                AssetDatabase.CreateAsset(missionProfile, missionProfilePath);
+            }
+
+            // Swap resource rules for the mission rule inside the shared list
+            var profileSO = new SerializedObject(missionProfile);
+            var shared = profileSO.FindProperty("sharedRules");
+            bool hasMissionRule = false;
+            for (int i = shared.arraySize - 1; i >= 0; i--)
+            {
+                var element = shared.GetArrayElementAtIndex(i).objectReferenceValue;
+                if (element == missionRule) { hasMissionRule = true; continue; }
+                if (element != null && (element.name == "Resource" || element.name == "OreCluster"))
+                    shared.DeleteArrayElementAtIndex(i);
+            }
+            if (!hasMissionRule)
+            {
+                shared.InsertArrayElementAtIndex(shared.arraySize);
+                shared.GetArrayElementAtIndex(shared.arraySize - 1).objectReferenceValue = missionRule;
+            }
+            profileSO.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(missionProfile);
+
+            // Point the spawner at the mission profile
+            profileProp.objectReferenceValue = missionProfile;
+            spawnerSO.ApplyModifiedPropertiesWithoutUndo();
         }
 
         /** Loads a prefab (optionally as a specific component) into a serialized slot. */
@@ -112,9 +171,11 @@ namespace Submachina.EditorTools
                 ? EditorSceneManager.OpenScene(HubScenePath, OpenSceneMode.Single)
                 : EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // Camera — dark harbor-water backdrop
-            var camGO = GameObject.Find("Main Camera") ?? new GameObject("Main Camera");
-            var cam = camGO.GetComponent<Camera>() ?? camGO.AddComponent<Camera>();
+            // Camera — reuse ANY existing scene camera (whatever its name) so
+            // re-runs never create a duplicate; dark harbor-water backdrop
+            var cam = Object.FindFirstObjectByType<Camera>();
+            var camGO = cam != null ? cam.gameObject : new GameObject("HubCamera");
+            if (cam == null) cam = camGO.AddComponent<Camera>();
             camGO.tag = "MainCamera";
             cam.orthographic = true;
             cam.clearFlags = CameraClearFlags.SolidColor;

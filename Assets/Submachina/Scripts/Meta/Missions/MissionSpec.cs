@@ -53,12 +53,13 @@ namespace Submachina.Meta
         // Scanner forecast
         // =====================
 
-        /** Long-range scanner estimate per resource key ("VentBrass" → 1.4 = rich). */
+        /**
+         * Long-range scanner estimate per resource key ("VentBrass" → 1.4 = rich).
+         * This is a PROMISE about the world, not a payout: MissionResourceRule
+         * spawns exactly these types at these abundances, and the only way
+         * resources come home is mined → in the cargo hold → extracted.
+         */
         public List<ResourceForecast> forecast = new();
-
-        /** Reward for completing the objective, banked on extraction. */
-        public string rewardResourceKey;
-        public int rewardAmount;
 
         [Serializable]
         public struct ResourceForecast

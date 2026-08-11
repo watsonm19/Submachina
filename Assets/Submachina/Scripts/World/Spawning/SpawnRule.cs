@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Sirenix.OdinInspector;
 
@@ -12,6 +13,11 @@ namespace Submachina.Core
      * author them inline on the SpawnProfile instead — both paths feed the
      * same execution code.
      *
+     * Subclasses can override Rules to contribute MULTIPLE (even runtime-built)
+     * rule datas from one asset — see MissionResourceRule, which expands the
+     * active mission's resource forecast into concrete per-type rules. This is
+     * the composition hook for future biome/mission rule packs.
+     *
      * Create via: Assets → Create → Submachina → Spawning → Spawn Rule
      */
     [CreateAssetMenu(fileName = "SpawnRule", menuName = "Submachina/Spawning/Spawn Rule")]
@@ -22,5 +28,11 @@ namespace Submachina.Core
 
         /** The underlying rule data executed by WorldChunk. */
         public SpawnRuleData Rule => rule;
+
+        /** Every rule data this asset contributes (base: just the one authored rule). */
+        public virtual IEnumerable<SpawnRuleData> Rules
+        {
+            get { yield return rule; }
+        }
     }
 }
