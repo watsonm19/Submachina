@@ -11,5 +11,6 @@ namespace Submachina.Core
         public static readonly AnchorId Top = new(HullCat, 3);
         public static readonly AnchorId Bottom = new(HullCat, 4);
         public static readonly AnchorId Propeller = new(HullCat, 5);
+        public static readonly AnchorId Canvas = new(HullCat, 6);
     }
 }

@@ -14,7 +14,9 @@ namespace Submachina.Core
      *
      * Mount modes:
      *   - Reparent: re-parents this object under the anchor so it inherits the
-     *     anchor's motion. Best when the object should ride with the sub.
+     *     anchor's motion. Best when the object should ride with the sub. Can snap
+     *     to the anchor, keep its world position, or carry its authored local
+     *     coordinates across into the new parent's space (see below).
      *   - MatchWorldPosition: leaves the parent untouched and only matches the
      *     anchor's world position. Best when the object must visually sit on the
      *     anchor but stay owned by its current hierarchy (e.g. to avoid inheriting
@@ -23,6 +25,11 @@ namespace Submachina.Core
      *     canvas/screen space, not world space, so a raw world position never lines
      *     up. This projects the anchor's world position through a camera into the
      *     canvas, centering the UI element over the world point.
+     *
+     * Re-parenting a UI element into a canvas: MatchWorldOnCanvas never changes the
+     * hierarchy, so it can't move a RectTransform authored on a sub prefab into the
+     * sub's world-space canvas. Use Reparent with 'Preserve Local Position' for that
+     * — the object keeps the x/y it was authored at, now read in canvas space.
      *
      * This is what lets a self-contained prefab ship without a hard reference into
      * the sub hierarchy: it names a mount point by key and relocates there on Start.
@@ -64,8 +71,18 @@ namespace Submachina.Core
 
         [ShowIf(nameof(mountMode), MountMode.Reparent)]
         [Tooltip("Snap onto the anchor's position when mounting. " +
-                 "Off = keep current world position and only re-parent.")]
+                 "Off = keep the current position, either in world space or in local " +
+                 "coordinates (see 'Preserve Local Position').")]
         [SerializeField] private bool snapToAnchor = true;
+
+        [ShowIf(nameof(ShowPreserveLocalPosition))]
+        [Tooltip("Carry this object's current local x/y/z into the new parent's space " +
+                 "instead of preserving its world position. Use when re-parenting a UI " +
+                 "element from a world object into a canvas: authored at 5,10 => still " +
+                 "sits at 5,10 once inside the canvas. RectTransforms are restored via " +
+                 "anchoredPosition3D, so the values match the Pos X/Y/Z the inspector " +
+                 "shows. Off = the object stays put in world space.")]
+        [SerializeField] private bool preserveLocalPosition;
 
         [ShowIf(nameof(WillSnap))]
         [Tooltip("Also match the anchor's rotation when snapping.")]
@@ -73,6 +90,7 @@ namespace Submachina.Core
 
         [ShowIf(nameof(ShowOffset))]
         [Tooltip("Position offset. World modes: applied in the anchor's local space. " +
+                 "Preserve Local Position: added to the carried-over local coordinates. " +
                  "Canvas mode: a screen-pixel (x, y) nudge after projection.")]
         [SerializeField] private Vector3 localOffset;
 
@@ -119,8 +137,16 @@ namespace Submachina.Core
             mountMode == MountMode.MatchWorldPosition ||
             (mountMode == MountMode.Reparent && snapToAnchor);
 
-        // The offset field is used by any snapping world mode and by canvas mode.
-        private bool ShowOffset => WillSnap || mountMode == MountMode.MatchWorldOnCanvas;
+        // Carrying local coordinates across is only meaningful for a non-snapping reparent.
+        private bool ShowPreserveLocalPosition => mountMode == MountMode.Reparent && !snapToAnchor;
+
+        // True when the mount should re-apply the pre-mount local coordinates.
+        private bool KeepsLocalPosition => ShowPreserveLocalPosition && preserveLocalPosition;
+
+        // The offset field is used by any snapping world mode, the local-carry reparent,
+        // and canvas mode.
+        private bool ShowOffset =>
+            WillSnap || KeepsLocalPosition || mountMode == MountMode.MatchWorldOnCanvas;
 
         // =====================
         // Lifecycle
@@ -173,8 +199,12 @@ namespace Submachina.Core
         }
 
         /**
-         * Re-parents this object onto the anchor, snapping and resolving scale per
+         * Re-parents this object onto the anchor, placing and resolving scale per
          * the configured options.
+         *
+         * Placement is one of three: snap to the anchor origin, keep the current world
+         * position, or carry the authored local coordinates into the new parent's space
+         * (the UI-into-canvas case).
          */
         private void Reparent(Transform point)
         {
@@ -182,15 +212,33 @@ namespace Submachina.Core
             // it afterwards if the anchor's parent chain is scaled.
             var worldScale = transform.lossyScale;
 
-            // Re-parent under the anchor. Keep world position when not snapping so
-            // the object stays put visually and only its parent changes.
-            transform.SetParent(point, worldPositionStays: !snapToAnchor);
+            // Capture the pre-mount local placement when we're carrying it across.
+            // RectTransforms are read through anchoredPosition3D so the captured numbers
+            // are the Pos X/Y/Z shown in the inspector rather than raw localPosition.
+            var keepLocal = KeepsLocalPosition;
+            var rect = keepLocal ? transform as RectTransform : null;
+            var localPos = rect != null ? rect.anchoredPosition3D : transform.localPosition;
+
+            // Re-parent under the anchor. worldPositionStays only when we're neither
+            // snapping nor carrying local coordinates — both of those write the local
+            // transform themselves, and keeping world position first would force Unity
+            // to bake the old parent's scale into localScale on the way in.
+            transform.SetParent(point, worldPositionStays: !snapToAnchor && !keepLocal);
 
             // Snap => drive the local transform from the anchor origin plus offset.
             if (snapToAnchor)
             {
                 transform.localPosition = localOffset;
                 if (matchRotation) transform.localRotation = Quaternion.identity;
+            }
+            // Carry across => re-apply the captured coordinates, now read in the new
+            // parent's space. SetParent alone preserves localPosition, which is not the
+            // same thing for a RectTransform: entering a differently-sized/anchored rect
+            // (e.g. a world-space canvas) shifts anchoredPosition, so we restore it here.
+            else if (keepLocal)
+            {
+                if (rect != null) rect.anchoredPosition3D = localPos + localOffset;
+                else transform.localPosition = localPos + localOffset;
             }
 
             // Resolve scale after parenting (mutually exclusive options).
