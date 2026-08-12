@@ -15,7 +15,7 @@ namespace Core.Rendering
         public readonly Vector3 worldPos;      // where the ripple originates, in world space
         public readonly float strength;        // peak UV displacement amplitude
         public readonly float frequency;       // wave cycles packed into the ring
-        public readonly float speed;           // how fast the wave oscillates (phase rate)
+        public readonly float speed;           // crest drift rate relative to the ring (0 = crests ride the ring; negative trails)
         public readonly float lifetime;        // seconds until the ripple fully fades out
         public readonly float expansionSpeed;  // ring growth in viewport units/sec; <= 0 → controller default
         public readonly float ringWidth;       // ring band width in viewport units; <= 0 → controller default

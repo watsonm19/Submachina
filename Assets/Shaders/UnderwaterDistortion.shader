@@ -174,10 +174,12 @@ Shader "Submachina/UnderwaterDistortion"
                     disp += contrib;
 
                     // Identity extras: chromatic weight rides this ripple's own displacement;
-                    // tint glows in the band, gated by amplitude (amp 0.125 ≈ full glow).
+                    // tint glows in the band, shimmering with the crests. Its temporal fade is
+                    // premultiplied into c.rgb CPU-side (own envelope, independent of amplitude,
+                    // so faint far-contact waves can still carry readable colour).
                     float4 c = _UD_RippleC[i];
                     caExtra += contrib * c.w;
-                    tint    += c.rgb * ring * (0.55 + 0.45 * wave) * saturate(a.w * 8.0);
+                    tint    += c.rgb * ring * (0.55 + 0.45 * wave);
                 }
                 return disp;
             }

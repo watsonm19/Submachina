@@ -407,6 +407,13 @@ namespace Core.Rendering
         [Range(0f, 2f)]
         public float rippleTintGain = 1f;
 
+        [TitleGroup("Ripple Shape")]
+        [Tooltip("How the tint glow fades across a ripple's lifetime. 1 = linear, matching the wave's " +
+                 "own fade; <1 holds colour deep into old age (0.3 ≈ still ~70% tint at three-quarters " +
+                 "life); >1 drains colour early. The tint always reaches zero at end of life.")]
+        [Range(0.05f, 4f)]
+        public float rippleTintFadePower = 0.5f;
+
         // ─── Ripple defaults (used by the test buttons) ──────────────────────
         [FoldoutGroup(TestingGroup)]
         [Title("Ripple Defaults", "Parameters used by the test ripple buttons; gameplay emitters pass their own.")]
@@ -423,8 +430,9 @@ namespace Core.Rendering
 
         [FoldoutGroup(TestingGroup)]
         [PropertyOrder(12)]
-        [Tooltip("Oscillation (phase) speed of a test ripple — higher feels faster/jolting.")]
-        [Range(0f, 30f)]
+        [Tooltip("Crest drift of a test ripple relative to its ring (0 = crests ride the ring; " +
+                 "negative = trail behind).")]
+        [Range(-30f, 30f)]
         public float defaultSpeed = 12f;
 
         [FoldoutGroup(TestingGroup)]
@@ -849,9 +857,12 @@ namespace Core.Rendering
                 _rippleA[live] = new Vector4(vp.x, vp.y, radius, amplitude);
                 _rippleB[live] = new Vector4(rp.frequency, falloff, t * rp.speed, 1f);
 
-                // Identity extras: tint premultiplied by its intensity and the master gain
-                // (the shader couples it to live amplitude), w = extra chromatic weight.
-                float tintGain = rp.tint.a * rippleTintGain;
+                // Identity extras: tint premultiplied by intensity, master gain, and its OWN
+                // lifetime envelope — same ramp-in as the wave, but a tunable fade power so
+                // colour can outlast the displacement fade (w = extra chromatic weight).
+                float tintEnv = Mathf.Pow(1f - u, rippleTintFadePower)
+                                * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(u / 0.1f)) * visible;
+                float tintGain = rp.tint.a * rippleTintGain * tintEnv;
                 _rippleC[live] = new Vector4(rp.tint.r * tintGain, rp.tint.g * tintGain, rp.tint.b * tintGain,
                                              Mathf.Max(0f, rp.chromaticBoost - 1f));
                 live++;

@@ -32,13 +32,17 @@ concentric ripples and propulsion turbulence wakes.
   deterministic `EditorCapture` stills.
 
 - **`DistortionRippleBus.cs`** (`Core.Rendering`, static) — `Emit(pos, strength, frequency,
-  speed, lifetime)`. Concentric expanding ripple (surface-style splash / impact). The 7-arg
+  speed, lifetime)`. Concentric expanding ripple (surface-style splash / impact). Crest
+  pattern is anchored to the moving ring (anti-strobing for fast rings), so `speed` is the
+  crests' drift RELATIVE to the ring — 0 rides the ring, negative trails behind. The 7-arg
   `RippleRequest` overload adds per-ripple `expansionSpeed` / `ringWidth` (viewport units)
   that override the controller's global `ringExpansionSpeed` / `ringFalloff` when > 0 —
   CPU-side only, no shader change (used by `SonarReturnRipples` to speed-match echo waves).
   The 9-arg overload adds identity extras carried by a third GPU array (`_UD_RippleC`):
-  `tint` (rgb × a = additive glow riding the ring band, amplitude-coupled, added AFTER the
-  deep grade so it stays visible in darkness; master `rippleTintGain` on the controller)
+  `tint` (rgb × a = additive glow riding the ring band with its own lifetime envelope —
+  `rippleTintFadePower` on the controller tunes how long colour survives vs. the wave's
+  displacement fade — added AFTER the deep grade so it stays visible in darkness; master
+  `rippleTintGain` on the controller)
   and `chromaticBoost` (extra R/B split on that ring only — metallic glint; 1 = neutral).
 
 - **`DistortionWakeBus.cs`** (`Core.Rendering`, static) — `Emit(pos, dir, strength, length,

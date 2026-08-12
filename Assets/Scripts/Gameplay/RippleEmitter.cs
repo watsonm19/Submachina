@@ -32,8 +32,11 @@ namespace Gameplay
         public float frequency = 12f;
 
         [TitleGroup("Ripple")]
-        [Tooltip("Oscillation (phase) speed of the wave — higher feels sharper/faster.")]
-        [Range(0f, 100f)]
+        [Tooltip("Crest drift RELATIVE to the traveling ring: 0 = crests ride the ring at its " +
+                 "expansion speed; positive = crests surge ahead (sharper); negative = crests trail " +
+                 "behind (slow/heavy). ≈ -(ring expansion speed × frequency × 6.3) holds crests " +
+                 "stationary in space.")]
+        [Range(-100f, 100f)]
         public float waveSpeed = 14f;
 
         [TitleGroup("Ripple")]

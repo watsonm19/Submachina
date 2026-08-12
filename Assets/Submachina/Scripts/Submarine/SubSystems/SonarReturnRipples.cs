@@ -109,12 +109,13 @@ namespace Submachina.Core
         [SerializeField, Range(1f, 30f)] private float frequencyFar = 20f;
 
         [FoldoutGroup("Wave Shape")]
-        [Tooltip("Phase/oscillation speed for a near contact — higher throbs harder.")]
-        [SerializeField, Range(0f, 30f)] private float waveSpeedNear = 14f;
+        [Tooltip("Crest drift relative to the ring for a near contact (0 = crests ride the ring; " +
+                 "positive surges ahead, negative trails behind) — higher throbs harder.")]
+        [SerializeField, Range(-30f, 30f)] private float waveSpeedNear = 14f;
 
         [FoldoutGroup("Wave Shape")]
-        [Tooltip("Phase/oscillation speed for a far contact.")]
-        [SerializeField, Range(0f, 30f)] private float waveSpeedFar = 7f;
+        [Tooltip("Crest drift relative to the ring for a far contact.")]
+        [SerializeField, Range(-30f, 30f)] private float waveSpeedFar = 7f;
 
         [FoldoutGroup("Wave Shape")]
         [Tooltip("Ring band width in viewport units for a near contact (fat, soft front).")]
