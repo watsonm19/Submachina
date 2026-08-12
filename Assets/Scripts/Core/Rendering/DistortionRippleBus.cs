@@ -19,14 +19,21 @@ namespace Core.Rendering
         public readonly float lifetime;        // seconds until the ripple fully fades out
         public readonly float expansionSpeed;  // ring growth in viewport units/sec; <= 0 → controller default
         public readonly float ringWidth;       // ring band width in viewport units; <= 0 → controller default
+        public readonly Color tint;            // additive ring glow; rgb = color, a = intensity (clear = none)
+        public readonly float chromaticBoost;  // extra R/B split on this ring (1 = neutral, >1 = metallic fringe)
 
         /** Standard request — ring expansion and band width use the controller's global settings. */
         public RippleRequest(Vector3 worldPos, float strength, float frequency, float speed, float lifetime)
             : this(worldPos, strength, frequency, speed, lifetime, -1f, -1f) { }
 
-        /** Full request with per-ripple ring shape overrides (pass <= 0 to keep a controller default). */
+        /** Request with per-ripple ring shape overrides (pass <= 0 to keep a controller default). */
         public RippleRequest(Vector3 worldPos, float strength, float frequency, float speed, float lifetime,
                              float expansionSpeed, float ringWidth)
+            : this(worldPos, strength, frequency, speed, lifetime, expansionSpeed, ringWidth, Color.clear, 1f) { }
+
+        /** Full request with identity extras: a colored glow riding the ring and a chromatic-split boost. */
+        public RippleRequest(Vector3 worldPos, float strength, float frequency, float speed, float lifetime,
+                             float expansionSpeed, float ringWidth, Color tint, float chromaticBoost)
         {
             this.worldPos = worldPos;
             this.strength = strength;
@@ -35,6 +42,8 @@ namespace Core.Rendering
             this.lifetime = lifetime;
             this.expansionSpeed = expansionSpeed;
             this.ringWidth = ringWidth;
+            this.tint = tint;
+            this.chromaticBoost = chromaticBoost;
         }
     }
 

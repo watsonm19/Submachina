@@ -65,6 +65,23 @@ namespace Submachina.Core
         [SerializeField, Range(0.25f, 3f)] private float waveTravelScale = 1f;
 
         // =====================
+        // Signature Voice
+        // =====================
+
+        [FoldoutGroup("Signature Voice")]
+        [InfoBox("One gate for every identity trait: at this tier and above, a contact's wave takes on " +
+                 "its signature's Ripple Voice (tint, chromatic glint, rhythm, frequency/width character) " +
+                 "and its size class biases strength. Below it, every echo ripples generically — the " +
+                 "distance mapping above is never gated.")]
+        [Tooltip("Sonar tier that unlocks signature-flavoured waves.")]
+        [SerializeField] private SonarTier voiceTier = SonarTier.Identify;
+
+        [FoldoutGroup("Signature Voice")]
+        [Tooltip("How much the signature's size class biases wave strength once voiced " +
+                 "(0 = distance only, 1 = full Tiny 0.4× … Huge 1.6× swing).")]
+        [SerializeField, Range(0f, 1f)] private float sizeStrengthInfluence = 0.5f;
+
+        // =====================
         // Wave Shape
         // =====================
 
@@ -171,6 +188,8 @@ namespace Submachina.Core
             public float frequency;        // spatial wave cycles
             public float phaseSpeed;       // oscillation rate
             public float ringWidth;        // band width in viewport units
+            public Color tint;             // identity glow (clear when unvoiced)
+            public float chromaticBoost;   // identity chromatic fringe (1 = neutral)
         }
 
         private SonarSystem _sonar;
@@ -260,20 +279,53 @@ namespace Submachina.Core
             float phaseSpeed = Mathf.Lerp(waveSpeedFar, waveSpeedNear, proximity);
             float ringWidth = Mathf.Lerp(ringWidthFar, ringWidthNear, proximity);
             int pulses = Mathf.Max(1, Mathf.RoundToInt(Mathf.Lerp(pulseCountFar, pulseCountNear, proximity)));
+            float interval = pulseInterval;
+
+            // Identity voice: one gate unlocks every distinguishing trait — the wave takes on
+            // the signature's colour/glint/rhythm/character and size class biases strength.
+            SonarSignature sig = contact.Signature;
+            Color tint = Color.clear;
+            float chromaticBoost = 1f;
+            if (sig != null && _sonar.CurrentTier >= voiceTier)
+            {
+                arrivalStrength *= Mathf.Lerp(1f, sig.SizeRangeFactor, sizeStrengthInfluence);
+                frequency *= sig.rippleFrequencyScale;
+                phaseSpeed *= sig.ripplePhaseSpeedScale;
+                ringWidth *= sig.rippleWidthScale;
+                chromaticBoost = sig.rippleChromaticBoost;
+
+                // Tint: normalize the HDR blip colour to unit peak so authored bloom levels
+                // (e.g. an intensity-4 colour) don't blow the additive glow out to a solid
+                // ring — rippleTintStrength alone owns the glow's intensity.
+                tint = sig.blipColor;
+                float peak = Mathf.Max(tint.r, Mathf.Max(tint.g, tint.b));
+                if (peak > 1e-4f) { tint.r /= peak; tint.g /= peak; tint.b /= peak; }
+                tint.a = sig.rippleTintStrength;
+
+                // Rhythm: an authored pattern replaces the proximity-driven pulse count.
+                switch (sig.ripplePulsePattern)
+                {
+                    case RipplePulsePattern.Single:     pulses = 1; break;
+                    case RipplePulsePattern.DoubleBeat: pulses = 2; interval *= 0.45f; break;
+                    case RipplePulsePattern.TripleBeat: pulses = 3; interval *= 0.45f; break;
+                }
+            }
 
             // Queue the train — each successive pulse trails and weakens.
             for (int k = 0; k < pulses; k++)
             {
                 _pending.Add(new PendingRipple
                 {
-                    dueTime = emitTime + k * pulseInterval,
+                    dueTime = emitTime + k * interval,
                     worldPos = contact.WorldPosition,
                     worldSpeed = worldSpeed,
                     travelTime = travelTime,
                     arrivalStrength = arrivalStrength * Mathf.Pow(pulseDecay, k),
                     frequency = frequency,
                     phaseSpeed = phaseSpeed,
-                    ringWidth = ringWidth
+                    ringWidth = ringWidth,
+                    tint = tint,
+                    chromaticBoost = chromaticBoost
                 });
             }
         }
@@ -304,7 +356,8 @@ namespace Submachina.Core
             float strength = Mathf.Min(maxEmitStrength, p.arrivalStrength / fadeAtArrival);
 
             DistortionRippleBus.Emit(new RippleRequest(
-                p.worldPos, strength, p.frequency, p.phaseSpeed, lifetime, viewportSpeed, p.ringWidth));
+                p.worldPos, strength, p.frequency, p.phaseSpeed, lifetime, viewportSpeed, p.ringWidth,
+                p.tint, p.chromaticBoost));
             onRippleEmitted?.Invoke(p.worldPos);
         }
 
@@ -325,6 +378,11 @@ namespace Submachina.Core
         // -------------------------------------------------------
 
 #if UNITY_EDITOR
+        [FoldoutGroup("Debug")]
+        [Tooltip("Optional signature the test buttons impersonate, to audition a Ripple Voice " +
+                 "without real targets. Empty = generic wave.")]
+        [SerializeField] private SonarSignature debugSignature;
+
         /** Fakes a contact at a fraction of sonar range to audition the ripple without targets. */
         [FoldoutGroup("Debug")]
         [Button("Test Ripple @ 25% Range"), GUIColor(0.4f, 0.8f, 1f)]
@@ -344,7 +402,7 @@ namespace Submachina.Core
             Vector2 pos = _sonar.RadiusOrigin + dir * distance;
             float delay = 2f * distance / Mathf.Max(0.01f, _sonar.ResolvedPingSpeed);
 
-            ScheduleContactRipples(new SonarContact(null, pos, dir, distance, null, delay));
+            ScheduleContactRipples(new SonarContact(null, pos, dir, distance, debugSignature, delay));
             Debug.Log($"[SonarReturnRipples] Test contact {distance:0.0}u {dir} — beep in {delay:0.00}s.");
         }
 #endif

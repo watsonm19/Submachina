@@ -33,18 +33,9 @@ namespace Submachina.Core
         public Vector2 ReflectionOrigin =>
             reflectionPoint != null ? (Vector2)reflectionPoint.position : (Vector2)transform.position;
 
-        /**
-         * The furthest distance at which this object still reflects a ping, given a
-         * sonar's base range. Larger, denser objects reflect from further out:
-         *   maxReflect = baseRange × sizeFactor × reflectionStrength
-         * Example: a Huge rock (1.6 × 1.0) reflects from 60% beyond the base range,
-         * while a Tiny soft creature (0.4 × 0.8) only shows up at ~third the range.
-         */
-        public float MaxReflectRange(float baseRange)
-        {
-            if (signature == null) return 0f;
-            return baseRange * signature.SizeRangeFactor * signature.reflectionStrength;
-        }
+        // Note: the size-class → detect-range mapping lives on SonarSystem ("Detection by
+        // Size"), so each sonar decides how far it can hear each size class — the target
+        // only declares its signature.
 
         // -------------------------------------------------------
         // Gizmos

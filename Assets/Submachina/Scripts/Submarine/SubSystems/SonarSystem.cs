@@ -102,6 +102,31 @@ namespace Submachina.Core
         [SerializeField] private Transform pingCenter;
 
         // =====================
+        // Detection by Size
+        // =====================
+        // Detect-range multipliers per SonarSizeClass, owned by the sonar (not the signature)
+        // so detectability can be tuned independently of how a size class LOOKS in the return
+        // wave (SonarSignature.SizeRangeFactor, used by SonarReturnRipples, is presentation-only).
+
+        [FoldoutGroup("Detection by Size")]
+        [InfoBox("Max detect range = base range × this size factor × the signature's reflectionStrength. " +
+                 "E.g. Huge 1.6 reflects from 60% beyond base range; set a factor to 0 to make a size " +
+                 "class undetectable.")]
+        [SerializeField, Range(0f, 3f)] private float tinyDetectFactor = 0.4f;
+
+        [FoldoutGroup("Detection by Size")]
+        [SerializeField, Range(0f, 3f)] private float smallDetectFactor = 0.7f;
+
+        [FoldoutGroup("Detection by Size")]
+        [SerializeField, Range(0f, 3f)] private float mediumDetectFactor = 1.0f;
+
+        [FoldoutGroup("Detection by Size")]
+        [SerializeField, Range(0f, 3f)] private float largeDetectFactor = 1.3f;
+
+        [FoldoutGroup("Detection by Size")]
+        [SerializeField, Range(0f, 3f)] private float hugeDetectFactor = 1.6f;
+
+        // =====================
         // Tier Features
         // =====================
 
@@ -236,10 +261,22 @@ namespace Submachina.Core
         private readonly List<float> _activeExpiry = new();
         private readonly HashSet<SonarTarget> _seenThisPing = new();
 
-        // Upper bound on how far any object can reflect, relative to base range:
-        // largest size factor (Huge = 1.6) × largest reflectionStrength (2). Used as
-        // the scan radius so the per-target MaxReflectRange filter is never starved.
-        private const float MaxReflectScanFactor = 1.6f * 2f;
+        /** Detect-range multiplier for a size class (this sonar's own tuning, not the signature's). */
+        public float SizeDetectFactor(SonarSizeClass size) => size switch
+        {
+            SonarSizeClass.Tiny   => tinyDetectFactor,
+            SonarSizeClass.Small  => smallDetectFactor,
+            SonarSizeClass.Medium => mediumDetectFactor,
+            SonarSizeClass.Large  => largeDetectFactor,
+            SonarSizeClass.Huge   => hugeDetectFactor,
+            _ => 1f
+        };
+
+        // Upper bound on how far any object can reflect, relative to base range: the largest
+        // configured size factor × the largest reflectionStrength (slider max 2). Used as the
+        // scan radius so the per-target detect-range filter is never starved.
+        private float MaxReflectScanFactor =>
+            Mathf.Max(tinyDetectFactor, smallDetectFactor, mediumDetectFactor, largeDetectFactor, hugeDetectFactor) * 2f;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -308,10 +345,12 @@ namespace Submachina.Core
                 if (target == null || target.Signature == null) continue;
                 if (!_seenThisPing.Add(target)) continue;
 
-                // Only objects whose size/strength reflect this far actually echo back.
+                // Only objects whose size/strength reflect this far actually echo back —
+                // the size mapping is this sonar's own Detection by Size config.
                 Vector2 contactPos = target.ReflectionOrigin;
                 float distance = Vector2.Distance(origin, contactPos);
-                if (distance > target.MaxReflectRange(range)) continue;
+                float maxReflect = range * SizeDetectFactor(target.Signature.sizeClass) * target.Signature.reflectionStrength;
+                if (distance > maxReflect) continue;
 
                 // Round-trip echo delay: out and back at the ping speed.
                 float returnDelay = (2f * distance) / Mathf.Max(0.01f, speed);

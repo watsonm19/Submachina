@@ -33,13 +33,19 @@ namespace Gameplay
 
         [TitleGroup("Ripple")]
         [Tooltip("Oscillation (phase) speed of the wave — higher feels sharper/faster.")]
-        [Range(0f, 30f)]
+        [Range(0f, 100f)]
         public float waveSpeed = 14f;
 
         [TitleGroup("Ripple")]
         [Tooltip("Seconds until the emitted ripple fully fades out.")]
         [Range(0.1f, 6f)]
         public float lifetime = 1.5f;
+
+        [TitleGroup("Ripple")]
+        [Tooltip("How fast the ring travels outward, in viewport units/sec (1 ≈ one full screen " +
+                 "height per second). 0 = inherit the UnderwaterDistortionController's global speed.")]
+        [Range(0f, 4f)]
+        public float expansionSpeed = 0f;
 
         /**
          * Emit a single ripple at this object's current position, with a strength
@@ -53,13 +59,13 @@ namespace Gameplay
             float strength = Random.Range(minStrength, maxStrength);
 
             // Fire the ripple at our position with the configured wave shape.
-            DistortionRippleBus.Emit(transform.position, strength, frequency, waveSpeed, lifetime);
+            EmitRequest(transform.position, strength);
         }
-        
-        
+
+
         public void EmitWithStrength(float strength)
         {
-            DistortionRippleBus.Emit(transform.position, strength, frequency, waveSpeed, lifetime);
+            EmitRequest(transform.position, strength);
         }
 
         /**
@@ -70,7 +76,15 @@ namespace Gameplay
         public void EmitAt(Vector3 worldPosition)
         {
             float strength = Random.Range(minStrength, maxStrength);
-            DistortionRippleBus.Emit(worldPosition, strength, frequency, waveSpeed, lifetime);
+            EmitRequest(worldPosition, strength);
+        }
+
+        /** Shared emit path: 0 expansion speed falls back to the controller's global (<= 0 sentinel). */
+        private void EmitRequest(Vector3 worldPosition, float strength)
+        {
+            DistortionRippleBus.Emit(new RippleRequest(
+                worldPosition, strength, frequency, waveSpeed, lifetime,
+                expansionSpeed > 0f ? expansionSpeed : -1f, -1f));
         }
     }
 }

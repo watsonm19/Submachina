@@ -13,6 +13,17 @@ namespace Submachina.Core
     public enum SonarSizeClass { Tiny, Small, Medium, Large, Huge }
 
     /**
+     * Rhythm of a signature's return-ripple train — the most readable identity channel
+     * (sonar operators identify by rhythm, players do too):
+     *
+     *   DistanceDriven — no identity rhythm; pulse count comes from proximity (the default).
+     *   Single         — one crisp ring (hard inert objects: scrap, metal).
+     *   DoubleBeat     — two quick pulses, a "heartbeat" (biological contacts).
+     *   TripleBeat     — three quick pulses (agitated / unusual contacts).
+     */
+    public enum RipplePulsePattern { DistanceDriven, Single, DoubleBeat, TripleBeat }
+
+    /**
      * The "sonic signature" of a sonar-detectable object — its identity as it
      * appears in a returning sonar wave.
      *
@@ -58,10 +69,49 @@ namespace Submachina.Core
                  "reflect more strongly; soft creatures reflect less. 1 = neutral.")]
         public float reflectionStrength = 1f;
 
+        // =====================
+        // Ripple Voice
+        // =====================
+        // How this archetype's return WAVE looks (SonarReturnRipples applies these on top of
+        // its distance mapping, gated behind a single identity tier). Neutral defaults mean
+        // an unauthored signature ripples generically.
+
+        [FoldoutGroup("Ripple Voice")]
+        [Tooltip("Rhythm of the ripple train — the strongest identity cue. DistanceDriven keeps " +
+                 "the generic proximity-based pulse count.")]
+        public RipplePulsePattern ripplePulsePattern = RipplePulsePattern.DistanceDriven;
+
+        [FoldoutGroup("Ripple Voice"), Range(0f, 4f)]
+        [Tooltip("How strongly the return wave glows with this signature's blip color " +
+                 "(hue is normalized, so this alone sets intensity). 0 = colorless refraction " +
+                 "only; ~0.1–0.3 = subtle shimmer; >1 = overdriven beacon.")]
+        public float rippleTintStrength = 0.2f;
+
+        [FoldoutGroup("Ripple Voice"), Range(1f, 16f)]
+        [Tooltip("Extra chromatic (R/B) fringing on the wavefront. 1 = neutral water; " +
+                 "push up for metallic/crystalline contacts that 'glint'.")]
+        public float rippleChromaticBoost = 1f;
+
+        [FoldoutGroup("Ripple Voice"), Range(0.05f, 10f)]
+        [Tooltip("Scales the wave cycles in the ring. >1 = tight ringing (hard/dense), " +
+                 "<1 = one broad swell (soft/organic).")]
+        public float rippleFrequencyScale = 1f;
+
+        [FoldoutGroup("Ripple Voice"), Range(0.05f, 10f)]
+        [Tooltip("Scales the wave's oscillation rate. >1 = jittery shimmer (metal), " +
+                 "<1 = slow rolling swell (organic).")]
+        public float ripplePhaseSpeedScale = 1f;
+
+        [FoldoutGroup("Ripple Voice"), Range(0.05f, 10f)]
+        [Tooltip("Scales the ring band width. <1 = thin precise line (hard), " +
+                 ">1 = fat soft front (soft-bodied).")]
+        public float rippleWidthScale = 1f;
+
         /**
-         * Maps the size bucket to a reflect-range multiplier.
-         * Tiny barely shows up; Huge reflects from well outside the base range.
-         * Example: Medium = 1.0 (base range), Huge = 1.6 (60% further).
+         * Maps the size bucket to a presentation weight (Tiny 0.4 … Huge 1.6) used by the
+         * return-wave visuals (SonarReturnRipples size-strength bias). NOT detection —
+         * how far each size class can actually be detected is the sonar's own
+         * "Detection by Size" config on SonarSystem.
          */
         public float SizeRangeFactor => sizeClass switch
         {

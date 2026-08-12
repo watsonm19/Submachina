@@ -401,6 +401,12 @@ namespace Core.Rendering
         [Range(0.01f, 0.5f)]
         public float ringFalloff = 0.08f;
 
+        [TitleGroup("Ripple Shape")]
+        [Tooltip("Master gain on per-ripple identity tints (the colored glow sonar returns can carry). " +
+                 "0 mutes all ripple color without touching the per-emitter settings.")]
+        [Range(0f, 2f)]
+        public float rippleTintGain = 1f;
+
         // ─── Ripple defaults (used by the test buttons) ──────────────────────
         [FoldoutGroup(TestingGroup)]
         [Title("Ripple Defaults", "Parameters used by the test ripple buttons; gameplay emitters pass their own.")]
@@ -474,6 +480,7 @@ namespace Core.Rendering
         private Ripple[] _ripples = new Ripple[MaxRipples];
         private readonly Vector4[] _rippleA = new Vector4[MaxRipples];
         private readonly Vector4[] _rippleB = new Vector4[MaxRipples];
+        private readonly Vector4[] _rippleC = new Vector4[MaxRipples];
 
         // Wake pool (turbulence trails), packed the same way the ripple pool is.
         private Wake[] _wakes = new Wake[MaxWakes];
@@ -513,6 +520,7 @@ namespace Core.Rendering
         private bool _hasLastCamPos;
         private static readonly int _idRippleA       = Shader.PropertyToID("_UD_RippleA");
         private static readonly int _idRippleB       = Shader.PropertyToID("_UD_RippleB");
+        private static readonly int _idRippleC       = Shader.PropertyToID("_UD_RippleC");
         private static readonly int _idRippleCount   = Shader.PropertyToID("_UD_RippleCount");
         private static readonly int _idWakeA         = Shader.PropertyToID("_UD_WakeA");
         private static readonly int _idWakeB         = Shader.PropertyToID("_UD_WakeB");
@@ -542,6 +550,8 @@ namespace Core.Rendering
             public float lifetime;
             public float expansionSpeed;   // per-ripple override; <= 0 → global ringExpansionSpeed
             public float ringWidth;        // per-ripple override; <= 0 → global ringFalloff
+            public Color tint;             // additive ring glow (rgb=color, a=intensity; clear = none)
+            public float chromaticBoost;   // extra chromatic split (1 = neutral)
         }
 
         /** A single live wake (turbulence trail) in the pool. */
@@ -679,7 +689,9 @@ namespace Core.Rendering
                 speed = r.speed,
                 lifetime = Mathf.Max(0.01f, r.lifetime),
                 expansionSpeed = r.expansionSpeed,
-                ringWidth = r.ringWidth
+                ringWidth = r.ringWidth,
+                tint = r.tint,
+                chromaticBoost = r.chromaticBoost
             };
         }
 
@@ -836,6 +848,12 @@ namespace Core.Rendering
 
                 _rippleA[live] = new Vector4(vp.x, vp.y, radius, amplitude);
                 _rippleB[live] = new Vector4(rp.frequency, falloff, t * rp.speed, 1f);
+
+                // Identity extras: tint premultiplied by its intensity and the master gain
+                // (the shader couples it to live amplitude), w = extra chromatic weight.
+                float tintGain = rp.tint.a * rippleTintGain;
+                _rippleC[live] = new Vector4(rp.tint.r * tintGain, rp.tint.g * tintGain, rp.tint.b * tintGain,
+                                             Mathf.Max(0f, rp.chromaticBoost - 1f));
                 live++;
             }
 
@@ -844,10 +862,12 @@ namespace Core.Rendering
             {
                 _rippleA[i] = Vector4.zero;
                 _rippleB[i] = Vector4.zero;
+                _rippleC[i] = Vector4.zero;
             }
 
             Shader.SetGlobalVectorArray(_idRippleA, _rippleA);
             Shader.SetGlobalVectorArray(_idRippleB, _rippleB);
+            Shader.SetGlobalVectorArray(_idRippleC, _rippleC);
             Shader.SetGlobalInt(_idRippleCount, live);
 
             // Pack live wakes: viewport center + aspect-corrected travel direction.

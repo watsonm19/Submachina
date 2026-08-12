@@ -98,6 +98,7 @@ Shader "Submachina/UnderwaterDistortion"
             #define UD_MAX_RIPPLES 16
             float4 _UD_RippleA[UD_MAX_RIPPLES];   // xy=centerUV z=currentRadius w=currentAmplitude
             float4 _UD_RippleB[UD_MAX_RIPPLES];   // x=waveFrequency y=ringFalloff z=phase w=active
+            float4 _UD_RippleC[UD_MAX_RIPPLES];   // rgb=tint (premultiplied) w=extra chromatic weight
             int    _UD_RippleCount;
 
             // Wake pool — elongated turbulence trails behind propulsion sources.
@@ -138,10 +139,19 @@ Shader "Submachina/UnderwaterDistortion"
             /**
              * Concentric expanding ripples (surface-style). Each is a Gaussian ring around
              * its growing radius, oscillating and pushing radially outward.
+             *
+             * Besides the summed displacement, two per-ripple identity extras accumulate
+             * (both driven by _UD_RippleC, zero for ordinary ripples):
+             *   caExtra — additional displacement counted ONLY toward the chromatic split,
+             *             so a "metallic" ring refracts with exaggerated R/B fringing;
+             *   tint    — an additive glow riding the ring band, coupled to the ripple's
+             *             live amplitude so it swells and fades with the wave itself.
              */
-            float2 RippleFlow(float2 uv)
+            float2 RippleFlow(float2 uv, out float2 caExtra, out half3 tint)
             {
                 float2 disp = 0;
+                caExtra = 0;
+                tint = 0;
                 [loop]
                 for (int i = 0; i < _UD_RippleCount; i++)
                 {
@@ -153,9 +163,21 @@ Shader "Submachina/UnderwaterDistortion"
                     float  dist = length(d);
                     float  rr   = (dist - a.z) / max(b.y, 1e-4);     // signed distance from the ring
                     float  ring = exp(-rr * rr);                     // Gaussian band (x*x avoids pow(neg,2))
-                    float  wave = sin(dist * b.x * UD_TAU - b.z);
+
+                    // Wave crests are anchored to the MOVING ring (dist - radius), not to static
+                    // space — a fast ring carries its crest pattern with it instead of strobing
+                    // across stationary crests it outruns between frames. Phase still oscillates
+                    // the pattern within the band via the per-ripple speed.
+                    float  wave = sin((dist - a.z) * b.x * UD_TAU - b.z);
                     float2 dir  = d / max(dist, 1e-4);
-                    disp += dir * wave * ring * a.w;
+                    float2 contrib = dir * wave * ring * a.w;
+                    disp += contrib;
+
+                    // Identity extras: chromatic weight rides this ripple's own displacement;
+                    // tint glows in the band, gated by amplitude (amp 0.125 ≈ full glow).
+                    float4 c = _UD_RippleC[i];
+                    caExtra += contrib * c.w;
+                    tint    += c.rgb * ring * (0.55 + 0.45 * wave) * saturate(a.w * 8.0);
                 }
                 return disp;
             }
@@ -466,12 +488,14 @@ Shader "Submachina/UnderwaterDistortion"
                 float  fade = edge.x * edge.y;
 
                 // 1) DISTORT — combine all displacement sources.
-                float2 disp = (AmbientFlow(uv) + RippleFlow(uv) + WakeFlow(uv)) * fade * enable;
+                float2 rippleCa; half3 rippleTint;
+                float2 disp = (AmbientFlow(uv) + RippleFlow(uv, rippleCa, rippleTint) + WakeFlow(uv)) * fade * enable;
                 float2 warped = saturate(uv + disp);
 
                 // Chromatic refraction: split R/B along the displacement so light bends/splits
-                // most where the water is churned (edges, wakes).
-                float2 ca = disp * _UD_Chromatic;
+                // most where the water is churned (edges, wakes). Identity ripples add their
+                // own extra split weight (metallic returns fringe harder than the water around them).
+                float2 ca = (disp + rippleCa * fade * enable) * _UD_Chromatic;
                 half3 col;
                 col.r = SAMPLE_TEXTURE2D_X_LOD(_BlitTexture, sampler_LinearClamp, saturate(warped + ca), _BlitMipLevel).r;
                 col.g = SAMPLE_TEXTURE2D_X_LOD(_BlitTexture, sampler_LinearClamp, warped,                 _BlitMipLevel).g;
@@ -509,6 +533,10 @@ Shader "Submachina/UnderwaterDistortion"
 
                 // 4) TINT — optional subtle deep-water grade.
                 col = lerp(col, col * _UD_DeepTint.rgb, _UD_DeepTint.w * enable);
+
+                // 5) IDENTITY GLOW — colored sonar-return shimmer. Added after the grade and
+                //    outside the darkness gating: an echo announces itself even in pitch black.
+                col += rippleTint * fade * enable;
 
                 return half4(col, 1.0);
             }

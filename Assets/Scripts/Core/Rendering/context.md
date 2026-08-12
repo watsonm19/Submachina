@@ -36,6 +36,10 @@ concentric ripples and propulsion turbulence wakes.
   `RippleRequest` overload adds per-ripple `expansionSpeed` / `ringWidth` (viewport units)
   that override the controller's global `ringExpansionSpeed` / `ringFalloff` when > 0 —
   CPU-side only, no shader change (used by `SonarReturnRipples` to speed-match echo waves).
+  The 9-arg overload adds identity extras carried by a third GPU array (`_UD_RippleC`):
+  `tint` (rgb × a = additive glow riding the ring band, amplitude-coupled, added AFTER the
+  deep grade so it stays visible in darkness; master `rippleTintGain` on the controller)
+  and `chromaticBoost` (extra R/B split on that ring only — metallic glint; 1 = neutral).
 
 - **`DistortionWakeBus.cs`** (`Core.Rendering`, static) — `Emit(pos, dir, strength, length,
   frequency, lifetime)`. Elongated turbulence plume trailing a travel direction (propulsion).
