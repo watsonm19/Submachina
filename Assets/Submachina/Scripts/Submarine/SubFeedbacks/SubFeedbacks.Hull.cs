@@ -11,7 +11,13 @@ namespace Submachina.Core
         /** An impact exceeded the hull's remaining margin — real damage taken. */
         public static readonly FeedbackId HullOverload = new(HullCat, 1);
 
-        /** Looping cue while ambient pressure alone exceeds hull resistance (cascade). */
+        /** Looping cue while the sub is past rated depth and accruing pressure strain. */
         public static readonly FeedbackId CrushZone = new(HullCat, 2);
+
+        /** One-shot per pressure-damage tick — hull actively losing HP to depth. */
+        public static readonly FeedbackId PressureDamage = new(HullCat, 3);
+
+        /** Air pumped into the hull — pressure boost applied (pump-to-hull). */
+        public static readonly FeedbackId HullPressurize = new(HullCat, 4);
     }
 }

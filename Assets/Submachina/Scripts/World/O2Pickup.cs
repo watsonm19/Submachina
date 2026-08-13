@@ -5,6 +5,13 @@ using Sirenix.OdinInspector;
 namespace Submachina.Core
 {
     /**
+     * How a pickup's air was earned — gates destination routing: only a
+     * sweet-spot pump may fill the ballast tank or pressurize the hull.
+     * Contact grabs keep legacy ballast routing but never touch the hull.
+     */
+    public enum CollectGrade { Contact, Weak, SweetSpot }
+
+    /**
      * An O2 bubble collectible dropped by enemies when killed.
      *
      * When the player's collider overlaps this trigger, it calls AddO2 on
@@ -175,23 +182,41 @@ namespace Submachina.Core
          * (adding lift) instead of topping up the O2 reserve; overflow past a
          * full tank still banks into the reserve.
          */
-        public float Collect(Submarine sub, float airMultiplier = 1f)
+        public float Collect(Submarine sub, float airMultiplier = 1f, CollectGrade grade = CollectGrade.Contact)
         {
             float airAmount = 0f;
 
             if (sub?.O2 != null)
             {
                 airAmount = replenishAmount * _sizeMultiplier * airMultiplier;
+                var destination = sub.Ballast != null ? sub.Ballast.Destination : PumpDestination.O2Reserve;
 
-                if (sub.Ballast != null && sub.Ballast.Destination == PumpDestination.Ballast)
+                // A weak pump forfeits destination routing — imprecise air only tops
+                // up the reserve, never fills ballast or pressurizes the hull
+                if (grade == CollectGrade.Weak) destination = PumpDestination.O2Reserve;
+
+                // Hull pressurization demands a deliberate sweet-spot pump — contact
+                // grabs fall back to the reserve rather than stress the frame
+                if (destination == PumpDestination.Hull && (grade != CollectGrade.SweetSpot || sub.Hull == null))
+                    destination = PumpDestination.O2Reserve;
+
+                switch (destination)
                 {
-                    // Fill the ballast tank with the captured air; overflow past a
-                    // full tank still banks into the main reserve (never wasted)
-                    float overflow = sub.Ballast.AddAirToBallast(airAmount);
-                    if (overflow > 0f) sub.O2.AddAir(overflow);
+                    case PumpDestination.Hull:
+                        sub.Hull.PumpAirIntoHull(airAmount);
+                        break;
+
+                    case PumpDestination.Ballast:
+                        // Fill the ballast tank with the captured air; overflow past a
+                        // full tank still banks into the main reserve (never wasted)
+                        float overflow = sub.Ballast.AddAirToBallast(airAmount);
+                        if (overflow > 0f) sub.O2.AddAir(overflow);
+                        break;
+
+                    default:
+                        sub.O2.AddAir(airAmount);
+                        break;
                 }
-                else
-                    sub.O2.AddAir(airAmount);
             }
             else
                 Debug.LogWarning("[O2Pickup] No Submarine O2System available — pickup consumed but air not restored.");

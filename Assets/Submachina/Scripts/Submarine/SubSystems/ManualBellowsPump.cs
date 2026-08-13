@@ -356,25 +356,39 @@ namespace Submachina.Core
 
         /**
          * Sends a finished pump's generated air to wherever the shared pump
-         * destination currently points, so Perfect and Weak pumps share one
-         * routing rule:
+         * destination currently points. Only a SWEET-SPOT pump earns destination
+         * routing — a weak pump always dribbles into the main O2 reserve, so
+         * missing the window can never fill the ballast tank or pressurize the
+         * hull (precision is the price of the special destinations).
          *
-         *   No ballast tank / destination O2Reserve → main tank, as always.
-         *   Destination Ballast → the fresh air fills the BALLAST tank instead
-         *     (lift without draining the reserve — the tank auto-promotes its
-         *     gear to hold the level); any overflow past a full tank still
-         *     banks into the main reserve, so pumped air is never wasted.
+         *   Weak pump / destination O2Reserve → main tank, as always.
+         *   Perfect + Ballast → fills the BALLAST tank (lift without draining
+         *     the reserve — the tank auto-promotes its gear to hold the level);
+         *     overflow past a full tank still banks into the main reserve.
+         *   Perfect + Hull → pressurizes the hull: counter-pressure against the
+         *     sea (extra depth headroom) at the cost of structural HP.
          */
-        private void RouteFinishedPump(float amount)
+        private void RouteFinishedPump(float amount, bool inSweetSpot)
         {
-            if (Sub?.Ballast == null || Sub.O2 == null || Sub.Ballast.Destination != PumpDestination.Ballast)
+            var destination = Sub?.Ballast != null ? Sub.Ballast.Destination : PumpDestination.O2Reserve;
+
+            // Sweet-spot pump into the hull — counter-pressure, self-damage handled inside
+            if (inSweetSpot && destination == PumpDestination.Hull && Sub?.Hull != null)
             {
-                Sub?.O2?.AddAir(amount);
+                Sub.Hull.PumpAirIntoHull(amount);
                 return;
             }
 
-            float overflow = Sub.Ballast.AddAirToBallast(amount);
-            if (overflow > 0f) Sub.O2.AddAir(overflow);
+            // Sweet-spot pump into the ballast tank — overflow banks into the reserve
+            if (inSweetSpot && destination == PumpDestination.Ballast && Sub?.O2 != null)
+            {
+                float overflow = Sub.Ballast.AddAirToBallast(amount);
+                if (overflow > 0f) Sub.O2.AddAir(overflow);
+                return;
+            }
+
+            // Weak pumps and the default destination top up the breathing reserve
+            Sub?.O2?.AddAir(amount);
         }
 
         /**
@@ -444,7 +458,7 @@ namespace Submachina.Core
 
             if (inSweetSpot)
             {
-                RouteFinishedPump(PerfectAirMod);
+                RouteFinishedPump(PerfectAirMod, true);
                 _rapidPressCount = 0;
                 _chargeProgress = 0f;
                 _wasInSweetSpot = false;
@@ -460,7 +474,7 @@ namespace Submachina.Core
                 return;
             }
 
-            RouteFinishedPump(WeakAirMod);
+            RouteFinishedPump(WeakAirMod, false);
             _chargeProgress = 0f;
             _wasInSweetSpot = false;
 

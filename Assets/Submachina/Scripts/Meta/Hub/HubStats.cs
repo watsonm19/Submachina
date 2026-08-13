@@ -50,7 +50,25 @@ namespace Submachina.Meta
             AccumulateModifiers(catalog, SubStats.PressureLoadMult, out _, out float pressureMultDelta);
             float pressureMult = Mathf.Max(0.1f, 1f + pressureMultDelta);
 
-            return strengthMod * RatedDepthSafety / (PressurePerMeter * pressureMult);
+            // Shared formula lives on HullSystem so hub and gameplay can't drift
+            return HullSystem.ComputeRatedDepth(strengthMod, PressurePerMeter, RatedDepthSafety, pressureMult);
+        }
+
+        /** Hull strength (impact absorption) as HullSystem.StrengthMod would resolve it. */
+        public static float ComputeHullStrength(UpgradeCatalog catalog)
+        {
+            AccumulateModifiers(catalog, SubStats.HullStrength, out float add, out float mult);
+            return (BaseHullStrength + add) * (1f + mult);
+        }
+
+        /**
+         * Impact load reduction as a display percentage, from ImpactLoadMult
+         * upgrades. Example: one Impact Skirt level (×0.85 load) → 15.
+         */
+        public static float ComputeImpactResistPercent(UpgradeCatalog catalog)
+        {
+            AccumulateModifiers(catalog, SubStats.ImpactLoadMult, out _, out float multDelta);
+            return (1f - Mathf.Max(0.1f, 1f + multDelta)) * 100f;
         }
 
         /** Cargo hold capacity as CargoHold.Capacity would resolve it for the owned upgrades. */

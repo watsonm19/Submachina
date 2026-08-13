@@ -286,8 +286,13 @@ namespace Submachina.Core
             if (_hasHitThisAttack) return;
             if (!collision.collider.CompareTag("Player")) return;
 
+            // Depth-loaded hulls take amplified damage (HullSystem.EvaluateAttack scaling)
             var victim = collision.collider.GetComponentInParent<Submarine>();
-            victim?.Health?.TakeDamage(attackDamage);
+            if (victim != null)
+            {
+                int damage = victim.Hull != null ? victim.Hull.EvaluateAttack(attackDamage) : attackDamage;
+                victim.Health?.TakeDamage(damage);
+            }
             _hasHitThisAttack = true;
         }
 

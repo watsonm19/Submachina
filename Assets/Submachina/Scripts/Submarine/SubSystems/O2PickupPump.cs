@@ -380,9 +380,12 @@ namespace Submachina.Core
                 return;
             }
 
-            // Grade the reward by timing; Collect() routes the air into the tank
+            // Grade the reward by timing; Collect() routes the air by destination,
+            // and only a sweet-spot grade may reach the ballast tank or the hull
             bool inSweetSpot = _chargeProgress >= sweetSpotMin && _chargeProgress <= sweetSpotMax;
-            float airCollected = pickup.Collect(Sub, inSweetSpot ? SweetMultMod : WeakMultMod);
+            float airCollected = pickup.Collect(Sub,
+                inSweetSpot ? SweetMultMod : WeakMultMod,
+                inSweetSpot ? CollectGrade.SweetSpot : CollectGrade.Weak);
 
             _chargeProgress = 0f;
             _state = PumpState.Idle;

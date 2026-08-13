@@ -5,8 +5,8 @@ using Sirenix.OdinInspector;
 
 namespace Submachina.Core
 {
-    /** Where captured intake-pump air is routed: the breathing reserve or the ballast tank. */
-    public enum PumpDestination { O2Reserve, Ballast }
+    /** Where captured intake-pump air is routed: the breathing reserve, the ballast tank, or hull pressurization. */
+    public enum PumpDestination { O2Reserve, Ballast, Hull }
 
     /** Commanded ballast state — a three-position gear shifter. */
     public enum BallastMode { Empty, Neutral, Full }
@@ -110,7 +110,7 @@ namespace Submachina.Core
         [SerializeField] private InputActionReference blowAction;
 
         [FoldoutGroup("Input")]
-        [Tooltip("Toggles the intake pump's destination (O2 reserve ↔ ballast tank).")]
+        [Tooltip("Cycles the pump destination: O2 reserve → ballast tank → hull pressurization.")]
         [SerializeField] private InputActionReference pumpDestinationAction;
 
         // =====================
@@ -373,12 +373,21 @@ namespace Submachina.Core
         // Destination toggle
         // -------------------------------------------------------
 
-        /** Flips the intake pump destination on the toggle action's press edge. */
+        /**
+         * Cycles the pump destination on the toggle action's press edge:
+         * O2 reserve → Ballast → Hull → back to O2. The Hull stop is skipped
+         * when the sub has no HullSystem to pressurize.
+         */
         private void HandleDestinationToggle()
         {
             if (!ActionPressed(pumpDestinationAction)) return;
 
-            Destination = Destination == PumpDestination.O2Reserve ? PumpDestination.Ballast : PumpDestination.O2Reserve;
+            Destination = Destination switch
+            {
+                PumpDestination.O2Reserve => PumpDestination.Ballast,
+                PumpDestination.Ballast when Sub?.Hull != null => PumpDestination.Hull,
+                _ => PumpDestination.O2Reserve,
+            };
             onDestinationChanged?.Invoke(Destination);
             Sub?.Feedbacks?.Play(SubFeedbacks.PumpDestinationToggled, transform.position);
         }

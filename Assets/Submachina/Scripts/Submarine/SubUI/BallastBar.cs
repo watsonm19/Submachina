@@ -59,6 +59,10 @@ namespace Submachina.Core
         [Tooltip("Destination label text while pumped air routes to the ballast tank.")]
         [SerializeField] private string ballastLabel = "→ BALLAST";
 
+        [FoldoutGroup("Labels")]
+        [Tooltip("Destination label text while sweet-spot pumps pressurize the hull.")]
+        [SerializeField] private string hullLabel = "→ HULL";
+
         // =====================
         // State
         // =====================
@@ -124,7 +128,13 @@ namespace Submachina.Core
                 BallastMode.Empty => "EMPTY ▼",
                 _ => "NEUTRAL —",
             };
-            destinationText.text = gear + "  " + (destination == PumpDestination.Ballast ? ballastLabel : o2Label);
+            string destLabel = destination switch
+            {
+                PumpDestination.Ballast => ballastLabel,
+                PumpDestination.Hull => hullLabel,
+                _ => o2Label,
+            };
+            destinationText.text = gear + "  " + destLabel;
             _lastDestination = destination;
             _lastMode = mode;
             _hasLabelState = true;

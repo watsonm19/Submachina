@@ -13,9 +13,10 @@ namespace Submachina.Core
      * per-frame compare. As a SubmarineObserver it resolves its sub from the
      * hierarchy, so each player's HUD tracks its own hull independently.
      *
-     * The bar forces its critical color while the sub is InCrushZone, even if
-     * the reserve fraction itself sits above the critical threshold — ambient
-     * pressure alone exceeding resistance is always an emergency worth flagging.
+     * The bar forces its critical color while the sub is InCrushZone (past its
+     * rated depth, accruing pressure strain), even if the reserve fraction
+     * itself sits above the critical threshold — active pressure damage is
+     * always an emergency worth flagging.
      *
      * Setup:
      *   1. Place this Image under the submarine root (e.g. its Player Canvas).

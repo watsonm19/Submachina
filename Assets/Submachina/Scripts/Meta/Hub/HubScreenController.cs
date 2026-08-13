@@ -208,10 +208,13 @@ namespace Submachina.Meta
             }
 
             float ratedDepth = HubStats.ComputeRatedDepth(catalog);
+            float hullStrength = HubStats.ComputeHullStrength(catalog);
+            float impactResist = HubStats.ComputeImpactResistPercent(catalog);
             int cargo = HubStats.ComputeCargoCapacity(catalog);
             float o2 = HubStats.ComputeMaxO2(catalog);
             var profile = ProfileService.Current;
-            _statsText.text = $"Rated depth: {ratedDepth:0} m   Cargo: {cargo}   O2: {o2:0}   " +
+            _statsText.text = $"Rated depth: {ratedDepth:0} m   Hull: {hullStrength:0}   Impact resist: {impactResist:0}%   " +
+                               $"Cargo: {cargo}   O2: {o2:0}   " +
                                $"Missions: {profile.missionsCompleted}/{profile.missionsCompleted + profile.missionsFailed}";
         }
 
