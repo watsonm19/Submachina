@@ -10,7 +10,7 @@ namespace Submachina.Core
         /** One roll against a probability — 0 or 1 instance (rare encounters). */
         SingleRoll,
 
-        /** A flat random integer in [min, max] (uniform variation). */
+        /** A flat random count in [min, max] — fractions read as odds (uniform variation). */
         Range,
 
         /** A count that ramps with depth between two endpoints (density curves). */
@@ -43,6 +43,10 @@ namespace Submachina.Core
      *   - Expected    → mission resources (float average; fractions stay exact,
      *                   so 0.3/chunk really is one node every ~3 chunks).
      *
+     * EVERY model preserves fractions rather than rounding them away: a count
+     * below 1 is a per-chunk probability (0.5 = one every 2 chunks), and a
+     * count like 5.5 spawns 5 or 6. See StochasticRound.
+     *
      * The optional Split lets two rules share one rounded budget: the original
      * rock generator computed totalCount once then split it half wall / half
      * center. Giving the wall rule FloorHalf and the center rule CeilHalf over
@@ -55,12 +59,15 @@ namespace Submachina.Core
         [InfoBox("How many instances spawn per chunk:\n" +
                  "• Single Roll — flip ONE weighted coin: spawn 1 (at 'Spawn Chance') or 0. For rare, " +
                  "at-most-one things (a mini-boss, a special creature).\n" +
-                 "• Range — a flat random whole number between Min and Max, every value equally likely. " +
-                 "For steady, depth-independent variety (e.g. 1–2 bubbles).\n" +
+                 "• Range — a flat random number between Min and Max, every whole value equally likely. " +
+                 "For steady, depth-independent variety (e.g. 1–2 bubbles). Fractions are allowed and read " +
+                 "as ODDS: a range of 0–0.5 means about a 25% chance of one per chunk.\n" +
                  "• Curve Range — the count RAMPS WITH DEPTH: it equals 'Count At Min Depth' at the shallow " +
                  "end and 'Count At Max Depth' at the deep end, blending linearly between (and clamping past " +
-                 "Max Depth). For density that grows as you descend (rocks, enemies). The live preview below " +
-                 "shows the actual counts at sample depths.\n" +
+                 "Max Depth). For density that grows as you descend (rocks, enemies). Fractional counts are " +
+                 "odds too — 0.5 → one every 2 chunks, 5.5 → 5 or 6. 'Midpoint Bias' bends the ramp: 0.5 is " +
+                 "a straight line, higher front-loads the growth into the shallows, lower keeps it flat then " +
+                 "spikes deep. The live preview below shows the actual counts at sample depths.\n" +
                  "• Expected — averages a FLOAT count: the whole part always spawns, the fraction is a " +
                  "weighted coin flip (0.3 → about one every 3 chunks; 2.5 → 2 or 3 each chunk). The only " +
                  "model with exact sub-1-per-chunk rates.",
@@ -80,13 +87,15 @@ namespace Submachina.Core
 
         [ShowIf(nameof(kind), CountKind.Range)]
         [HorizontalGroup("Range"), LabelWidth(40)]
-        [Tooltip("Minimum instances (inclusive).")]
-        public int min = 1;
+        [Tooltip("Minimum instances (inclusive). Fractions are odds, not zero — 0.5 means 'half an instance', " +
+                 "i.e. a 50% chance of one.")]
+        [Min(0f)] public float min = 1f;
 
         [ShowIf(nameof(kind), CountKind.Range)]
         [HorizontalGroup("Range"), LabelWidth(40)]
-        [Tooltip("Maximum instances (inclusive).")]
-        public int max = 2;
+        [Tooltip("Maximum instances (inclusive). Fractions are odds — a 0–0.5 range averages 0.25 per chunk, " +
+                 "about one every 4 chunks.")]
+        [Min(0f)] public float max = 2f;
 
         // ---- CurveRange ----
 
@@ -102,14 +111,26 @@ namespace Submachina.Core
 
         [ShowIf(nameof(kind), CountKind.CurveRange)]
         [HorizontalGroup("Counts"), LabelWidth(110)]
-        [Tooltip("Count at (and shallower than) refMinDepth.")]
-        public float countAtMinDepth = 2f;
+        [Tooltip("Count at (and shallower than) refMinDepth. Fractions are odds — 0.5 = one every 2 chunks.")]
+        [Min(0f)] public float countAtMinDepth = 2f;
 
         [ShowIf(nameof(kind), CountKind.CurveRange)]
         [HorizontalGroup("Counts"), LabelWidth(110)]
-        [Tooltip("Count at refMaxDepth and deeper.")]
+        [Tooltip("Count at refMaxDepth and deeper. Fractions are odds — 0.5 = one every 2 chunks.")]
+        [Min(0f)] public float countAtMaxDepth = 9f;
+
+        [ShowIf(nameof(kind), CountKind.CurveRange)]
+        [LabelText("$MidpointBiasLabel"), LabelWidth(160)]
+        [Tooltip("Bends the ramp without needing a curve: how far the count has travelled from the shallow " +
+                 "value to the deep value by the HALFWAY depth.\n\n" +
+                 "0.5 = straight line (the default).\n" +
+                 "Above 0.5 = front-loaded — most of the change happens shallow, then it flattens out.\n" +
+                 "Below 0.5 = back-loaded — it stays near the shallow value, then ramps hard at depth.\n\n" +
+                 "Example (2 → 9 over 0–300m): 0.5 gives 5.5 at 150m, 0.8 gives ~7.6, 0.2 gives ~3.4. " +
+                 "The endpoints never move.")]
+        [PropertyRange(0.05f, 0.95f)]
         [InfoBox("$CurveRangePreview", InfoMessageType.None)]
-        public float countAtMaxDepth = 9f;
+        public float midpointBias = 0.5f;
 
         // ---- Expected ----
 
@@ -144,7 +165,7 @@ namespace Submachina.Core
          * for count models it scales the float count before rounding.
          *
          * Example (CurveRange 2→9 over 0–300m, depth=150, density=1, FloorHalf):
-         *   t = 150/300 = 0.5 → raw = lerp(2,9,0.5) = 5.5 → round = 6 → floor(6/2) = 3
+         *   t = 150/300 = 0.5 → raw = lerp(2,9,0.5) = 5.5 → 5 or 6 → floor(/2) = 2 or 3
          */
         public int Evaluate(float depth, System.Random rng, float densityMultiplier)
         {
@@ -157,23 +178,31 @@ namespace Submachina.Core
                     count = rng.NextFloat01() < spawnChance * densityMultiplier ? 1 : 0;
                     break;
 
-                // Flat uniform range, then density-scaled
+                // Flat range, then density-scaled. Whole endpoints keep the classic
+                // uniform integer roll (1–2 → 1 or 2, equally likely); fractional
+                // endpoints sample a real number instead so sub-1 ranges survive as
+                // odds (0–0.5 → averages 0.25/chunk) rather than rounding to nothing.
                 case CountKind.Range:
-                    int rolled = rng.Next(Mathf.Min(min, max), Mathf.Max(min, max) + 1);
-                    count = Mathf.RoundToInt(rolled * densityMultiplier);
+                {
+                    float lo = Mathf.Min(min, max);
+                    float hi = Mathf.Max(min, max);
+                    float rolled = IsWhole(lo) && IsWhole(hi)
+                        ? rng.Next(Mathf.RoundToInt(lo), Mathf.RoundToInt(hi) + 1)
+                        : rng.NextFloat(lo, hi);
+                    count = StochasticRound(rolled * densityMultiplier, rng);
                     break;
+                }
 
                 // Float expectation — the whole part is guaranteed, the fraction
                 // is a Bernoulli roll. Example: 2.3 × density 1 → 2 always, +1 at 30%.
                 case CountKind.Expected:
-                    float scaled = expectedCount * densityMultiplier;
-                    int whole = Mathf.FloorToInt(scaled);
-                    count = whole + (rng.NextFloat01() < scaled - whole ? 1 : 0);
+                    count = StochasticRound(expectedCount * densityMultiplier, rng);
                     break;
 
-                // Depth-ramped count
+                // Depth-ramped count — fractions along the ramp stay meaningful,
+                // so a curve that ends at 0.5 really is one every other chunk
                 default:
-                    count = Mathf.RoundToInt(RawCurveCount(depth) * densityMultiplier);
+                    count = StochasticRound(RawCurveCount(depth) * densityMultiplier, rng);
                     break;
             }
 
@@ -187,18 +216,83 @@ namespace Submachina.Core
             return Mathf.Max(0, count);
         }
 
+        /**
+         * Rounds a float count to an int WITHOUT discarding the fraction: the
+         * whole part always spawns and the fraction becomes a weighted coin
+         * flip. This is what lets sub-1 counts read as a per-chunk percentage
+         * instead of collapsing to zero.
+         *
+         * Examples: 0.5 → 1 half the time (one every 2 chunks); 0.25 → one
+         * every ~4 chunks; 5.5 → 5 or 6. Averages out to the exact input.
+         *
+         * Whole values consume no RNG draw, so rules authored with whole
+         * numbers keep the exact random sequence (and worlds) they had before.
+         */
+        private static int StochasticRound(float value, System.Random rng)
+        {
+            if (value <= 0f) return 0;
+
+            int whole = Mathf.FloorToInt(value);
+            float frac = value - whole;
+            if (frac <= 0f) return whole;
+
+            return whole + (rng.NextFloat01() < frac ? 1 : 0);
+        }
+
+        /** True when a value is (near enough) a whole number — picks the Range roll style. */
+        private static bool IsWhole(float v) => Mathf.Approximately(v, Mathf.Round(v));
+
         /** The un-rounded, un-scaled CurveRange count at a depth (deterministic). */
         private float RawCurveCount(float depth)
         {
             float t = Mathf.Approximately(refMaxDepth, refMinDepth)
                 ? 1f
                 : Mathf.Clamp01((depth - refMinDepth) / (refMaxDepth - refMinDepth));
-            return Mathf.Lerp(countAtMinDepth, countAtMaxDepth, t);
+            return Mathf.Lerp(countAtMinDepth, countAtMaxDepth, ApplyMidpointBias(t));
+        }
+
+        /**
+         * Warps normalized depth so the ramp can bow toward either end — a
+         * one-slider stand-in for authoring a full AnimationCurve.
+         *
+         * Uses a power curve t^k with k solved so the halfway depth lands
+         * exactly on midpointBias: 0.5^k = bias → k = ln(bias)/ln(0.5).
+         *   bias 0.5  → k = 1    → straight line
+         *   bias 0.8  → k ≈ 0.32 → front-loaded (climbs fast, then flattens)
+         *   bias 0.2  → k ≈ 2.32 → back-loaded (flat, then climbs hard deep)
+         *
+         * Monotonic and endpoint-preserving in every case: t=0 and t=1 always
+         * map to themselves, so the authored min/max counts stay exact.
+         */
+        private float ApplyMidpointBias(float t)
+        {
+            // Straight line — skip the pow entirely (the overwhelmingly common
+            // case). A 0 also means "unset" (the slider floor is 0.05), so old
+            // assets predating this field stay linear rather than bending hard.
+            if (midpointBias <= 0f || Mathf.Approximately(midpointBias, 0.5f)) return t;
+
+            // Clamp guards against a 1.0 bias (zero exponent) from bad data
+            float bias = Mathf.Clamp(midpointBias, 0.01f, 0.99f);
+            return Mathf.Pow(t, Mathf.Log(bias) / Mathf.Log(0.5f));
         }
 
         // -------------------------------------------------------
         // Editor previews
         // -------------------------------------------------------
+
+        // Names the bias slider with the shape it produces and the resolved
+        // midpoint count, e.g. "Midpoint Bias — front-loaded (7.6 @ 150m)"
+        private string MidpointBiasLabel
+        {
+            get
+            {
+                float mid = Mathf.Lerp(refMinDepth, refMaxDepth, 0.5f);
+                string shape = Mathf.Approximately(midpointBias, 0.5f) ? "linear"
+                    : midpointBias > 0.5f ? "front-loaded"
+                    : "back-loaded";
+                return $"Midpoint Bias — {shape} ({RawCurveCount(mid):0.##} @ {mid:F0}m)";
+            }
+        }
 
         // Shows the resolved counts at sample depths for the CurveRange model
         private string CurveRangePreview
@@ -211,9 +305,30 @@ namespace Submachina.Core
                 float[] depths = { refMinDepth, q1, mid, q3, refMaxDepth };
                 string s = "Counts by depth (before split/density):";
                 foreach (float d in depths)
-                    s += $"\n  {d:F0}m → {Mathf.RoundToInt(RawCurveCount(d))}";
+                    s += $"\n  {d:F0}m → {DescribeCount(RawCurveCount(d))}";
                 return s;
             }
+        }
+
+        /**
+         * Plain-language rendering of a fractional count, so designers can see
+         * that 0.4 is "40% chance of 1" and 5.5 is "5 or 6" rather than a
+         * number that looks like it rounds away.
+         */
+        private static string DescribeCount(float raw)
+        {
+            if (raw <= 0.0001f) return "0";
+
+            int whole = Mathf.FloorToInt(raw);
+            float frac = raw - whole;
+
+            // Effectively a whole number — show it bare
+            if (frac < 0.005f) return whole.ToString();
+
+            // Sub-1 counts are odds: report both the chance and the cadence
+            if (whole == 0) return $"{frac * 100f:F0}% chance of 1 (~1 every {1f / raw:F1} chunks)";
+
+            return $"{raw:0.##} ({whole} or {whole + 1})";
         }
 
         // One-line plain-language summary of the effective behavior, including split
@@ -230,7 +345,11 @@ namespace Submachina.Core
                         body = $"≈{pct:F0}% chance to spawn 1 ({freq})";
                         break;
                     case CountKind.Range:
-                        body = $"random {Mathf.Min(min, max)}–{Mathf.Max(min, max)} per chunk";
+                        float lo = Mathf.Min(min, max), hi = Mathf.Max(min, max);
+                        float avg = (lo + hi) * 0.5f;
+                        body = $"random {lo:0.##}–{hi:0.##} per chunk";
+                        // Fractional endpoints don't read as counts, so spell out the average
+                        if (!IsWhole(lo) || !IsWhole(hi)) body += $" → averages {DescribeCount(avg)}";
                         break;
                     case CountKind.Expected:
                         string cadence = expectedCount > 0.0001f && expectedCount < 1f
@@ -238,8 +357,11 @@ namespace Submachina.Core
                         body = $"averages {expectedCount:F2} per chunk{cadence}";
                         break;
                     default:
-                        body = $"ramps {Mathf.RoundToInt(RawCurveCount(refMinDepth))} → " +
-                               $"{Mathf.RoundToInt(RawCurveCount(refMaxDepth))} with depth";
+                        body = $"ramps {DescribeCount(RawCurveCount(refMinDepth))} → " +
+                               $"{DescribeCount(RawCurveCount(refMaxDepth))} with depth";
+                        // Only worth naming the shape when it isn't a straight line
+                        if (!Mathf.Approximately(midpointBias, 0.5f))
+                            body += midpointBias > 0.5f ? ", front-loaded" : ", back-loaded";
                         break;
                 }
 
