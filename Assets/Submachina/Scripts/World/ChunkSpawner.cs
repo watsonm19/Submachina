@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Sirenix.OdinInspector;
+using Submachina.Meta;
 
 namespace Submachina.Core
 {
@@ -41,6 +43,28 @@ namespace Submachina.Core
                  "Assets → Create → Submachina → Spawning → Spawn Profile.")]
         [Required, InlineEditor(objectFieldMode: InlineEditorObjectFieldModes.Boxed)]
         [SerializeField] private SpawnProfile spawnProfile;
+
+        [FoldoutGroup("Spawn Data")]
+        [Tooltip("Optional per-mission profile swaps: the FIRST entry whose flags overlap the active " +
+                 "mission's flags replaces Spawn Profile for the whole level. Sandbox / no-mission play " +
+                 "always uses the default profile. Resolved once at Awake.")]
+        [SerializeField] private List<MissionProfileOverride> missionProfileOverrides = new();
+
+        /** One flag-conditional profile swap entry. */
+        [Serializable]
+        private class MissionProfileOverride
+        {
+            [Tooltip("Applies when the mission has ANY of these flags.")]
+            public MissionFlags requireAny = MissionFlags.None;
+
+            [Required] public SpawnProfile profile;
+        }
+
+        [FoldoutGroup("Spawn Data")]
+        [ReadOnly, ShowInInspector, LabelText("Active Profile (runtime)")]
+        private string ActiveProfileName => Application.isPlaying
+            ? (_activeProfile != null ? _activeProfile.name : "<none>")
+            : "resolved at Awake";
 
         // =====================
         // Determinism
@@ -110,17 +134,36 @@ namespace Submachina.Core
         // Cached main camera — used every frame to decide which cells to generate
         private Camera _camera;
 
+        // The profile actually driving chunks this level (default or mission override)
+        private SpawnProfile _activeProfile;
+
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
 
         /**
          * Caches the scene's main camera once so Update doesn't pay the cost
-         * of Camera.main's tagged lookup every frame.
+         * of Camera.main's tagged lookup every frame, and resolves the spawn
+         * profile once — the mission cannot change mid-level.
          */
         private void Awake()
         {
             _camera = Camera.main;
+            _activeProfile = ResolveProfile();
+        }
+
+        /**
+         * Picks the profile for this level: the first mission-flag override
+         * matching the active mission wins, else the default spawnProfile.
+         */
+        private SpawnProfile ResolveProfile()
+        {
+            MissionSpec spec = MissionContext.Current;
+            if (spec != null && missionProfileOverrides != null)
+                foreach (MissionProfileOverride entry in missionProfileOverrides)
+                    if (entry?.profile != null && (spec.flags & entry.requireAny) != 0)
+                        return entry.profile;
+            return spawnProfile;
         }
 
         private void Update()
@@ -183,10 +226,10 @@ namespace Submachina.Core
             cellGO.transform.SetParent(transform);
             cellGO.transform.position = new Vector3(centerX, topY, 0f);
 
-            // Hand the chunk its geometry, the shared profile, and a deterministic seed
+            // Hand the chunk its geometry, the resolved profile, and a deterministic seed
             WorldChunk chunk = cellGO.AddComponent<WorldChunk>();
             chunk.Initialize(topY, cellHeight, cellWidth * 0.5f, centerX,
-                depth, spawnProfile, SeedFor(cell));
+                depth, _activeProfile, SeedFor(cell));
 
             _chunks[cell] = chunk;
         }
@@ -243,12 +286,14 @@ namespace Submachina.Core
          */
         private void OnDrawGizmosSelected()
         {
-            if (spawnProfile == null) return;
+            // At runtime show the resolved profile; in edit mode the default
+            SpawnProfile profile = _activeProfile != null ? _activeProfile : spawnProfile;
+            if (profile == null) return;
 
             float lineHalf = cellWidth * (spawnRadius + 1);
             int index = 0;
 
-            foreach (SpawnRuleData rule in spawnProfile.AllRules)
+            foreach (SpawnRuleData rule in profile.AllRules)
             {
                 // Distinct hue per rule for quick visual separation
                 Gizmos.color = Color.HSVToRGB((index * 0.13f) % 1f, 0.7f, 1f);

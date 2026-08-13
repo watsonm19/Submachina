@@ -145,6 +145,10 @@ namespace Submachina.Core
         // Number of placement retries when minSpacing can't be satisfied immediately
         private const int SpacingRetries = 8;
 
+        // Runtime-only rate scale stamped onto shallow copies by mission gating
+        // (see SpawnRule.Rules / MissionGate). Never serialized; 1 = neutral.
+        [NonSerialized] public float runtimeRateScale = 1f;
+
         // -------------------------------------------------------
         // Execution
         // -------------------------------------------------------
@@ -163,9 +167,12 @@ namespace Submachina.Core
             if (prefab == null || placement == null) return;
             if (!depth.Contains(ctx.depth)) return;
 
-            // Fold the prevalence curve into the density multiplier, then resolve the count
+            // Fold prevalence and the mission-gate rate scale into the density
+            // multiplier, then resolve the count (guard: a 0 scale only ever
+            // means an unconstructed copy, so treat it as neutral)
             float prevalence = prevalenceByDepth != null ? prevalenceByDepth.Evaluate(ctx.depth) : 1f;
-            int n = count.Evaluate(ctx.depth, rng, globalDensity * prevalence);
+            float rateScale = runtimeRateScale > 0f ? runtimeRateScale : 1f;
+            int n = count.Evaluate(ctx.depth, rng, globalDensity * prevalence * rateScale);
             if (maxPerChunk > 0) n = Mathf.Min(n, maxPerChunk);
 
             // Spacing is enforced against THIS rule's own instances (not other rules)
@@ -198,6 +205,13 @@ namespace Submachina.Core
                 ctx.placed.Add(result.position);
             }
         }
+
+        /**
+         * Runtime shallow copy — shares placement/configurator references with
+         * the original. Used by SpawnRule mission gating to yield a rate-scaled
+         * variant of the authored rule without mutating the asset.
+         */
+        public SpawnRuleData ShallowCopy() => (SpawnRuleData)MemberwiseClone();
 
         /**
          * True if a candidate is within minSpacing of an instance this rule

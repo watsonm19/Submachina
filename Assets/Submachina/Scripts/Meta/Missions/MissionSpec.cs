@@ -49,6 +49,13 @@ namespace Submachina.Meta
         /** 0 = none, 1 = normal, 2 = aggressive spawns (reserved for hazard tuning). */
         public float hazardLevel = 1f;
 
+        /**
+         * Trait flags for the mission site (biome-ish). Spawn rules gate and
+         * rate-scale on these via their MissionGate, and ChunkSpawner can swap
+         * its whole SpawnProfile on them. None = a plain, unflagged site.
+         */
+        public MissionFlags flags = MissionFlags.None;
+
         // =====================
         // Scanner forecast
         // =====================

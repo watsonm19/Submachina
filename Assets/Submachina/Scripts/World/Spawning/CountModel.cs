@@ -14,7 +14,10 @@ namespace Submachina.Core
         Range,
 
         /** A count that ramps with depth between two endpoints (density curves). */
-        CurveRange
+        CurveRange,
+
+        /** A float average per chunk — the fraction becomes a weighted coin flip (exact sub-1 rates). */
+        Expected
     }
 
     /** Optional post-split applied to the evaluated count. */
@@ -33,10 +36,12 @@ namespace Submachina.Core
     /**
      * Describes how many instances of a rule spawn in a single chunk.
      *
-     * Three models cover every existing behavior:
+     * Four models cover every existing behavior:
      *   - SingleRoll  → passive creature / ramming enemy (probability gate).
      *   - Range       → passive O2 (flat 1–2 per chunk).
      *   - CurveRange  → rocks / resources / enemies (count ramps with depth).
+     *   - Expected    → mission resources (float average; fractions stay exact,
+     *                   so 0.3/chunk really is one node every ~3 chunks).
      *
      * The optional Split lets two rules share one rounded budget: the original
      * rock generator computed totalCount once then split it half wall / half
@@ -55,7 +60,10 @@ namespace Submachina.Core
                  "• Curve Range — the count RAMPS WITH DEPTH: it equals 'Count At Min Depth' at the shallow " +
                  "end and 'Count At Max Depth' at the deep end, blending linearly between (and clamping past " +
                  "Max Depth). For density that grows as you descend (rocks, enemies). The live preview below " +
-                 "shows the actual counts at sample depths.",
+                 "shows the actual counts at sample depths.\n" +
+                 "• Expected — averages a FLOAT count: the whole part always spawns, the fraction is a " +
+                 "weighted coin flip (0.3 → about one every 3 chunks; 2.5 → 2 or 3 each chunk). The only " +
+                 "model with exact sub-1-per-chunk rates.",
             InfoMessageType.None, "@Submachina.Core.SpawnDocs.ShowHelp")]
         [Tooltip("Which counting model this rule uses.")]
         [EnumToggleButtons]
@@ -103,6 +111,14 @@ namespace Submachina.Core
         [InfoBox("$CurveRangePreview", InfoMessageType.None)]
         public float countAtMaxDepth = 9f;
 
+        // ---- Expected ----
+
+        [ShowIf(nameof(kind), CountKind.Expected)]
+        [Tooltip("Average instances per chunk — fractions are exact over time: the whole part always " +
+                 "spawns, the fraction is a weighted coin flip. 0.3 → about one every 3 chunks; " +
+                 "2.5 → 2 or 3 each chunk. Scaled by global density × prevalence before rolling.")]
+        [Min(0f)] public float expectedCount = 0.5f;
+
         // ---- Split ----
 
         [InfoBox("Split divides the evaluated count in half — used to spread ONE budget across TWO rules.\n" +
@@ -145,6 +161,14 @@ namespace Submachina.Core
                 case CountKind.Range:
                     int rolled = rng.Next(Mathf.Min(min, max), Mathf.Max(min, max) + 1);
                     count = Mathf.RoundToInt(rolled * densityMultiplier);
+                    break;
+
+                // Float expectation — the whole part is guaranteed, the fraction
+                // is a Bernoulli roll. Example: 2.3 × density 1 → 2 always, +1 at 30%.
+                case CountKind.Expected:
+                    float scaled = expectedCount * densityMultiplier;
+                    int whole = Mathf.FloorToInt(scaled);
+                    count = whole + (rng.NextFloat01() < scaled - whole ? 1 : 0);
                     break;
 
                 // Depth-ramped count
@@ -207,6 +231,11 @@ namespace Submachina.Core
                         break;
                     case CountKind.Range:
                         body = $"random {Mathf.Min(min, max)}–{Mathf.Max(min, max)} per chunk";
+                        break;
+                    case CountKind.Expected:
+                        string cadence = expectedCount > 0.0001f && expectedCount < 1f
+                            ? $" (~1 every {1f / expectedCount:F1} chunks)" : "";
+                        body = $"averages {expectedCount:F2} per chunk{cadence}";
                         break;
                     default:
                         body = $"ramps {Mathf.RoundToInt(RawCurveCount(refMinDepth))} → " +

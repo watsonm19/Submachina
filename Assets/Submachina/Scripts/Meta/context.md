@@ -46,8 +46,18 @@ persist.
 ## Missions (`Missions/`)
 
 - **MissionSpec** — plain serializable offer: type (Retrieval / Neutralize /
-  Research), targetDepth, currentStrength, o2Richness, hazardLevel, scanner
-  `forecast` (per-resource abundance → RICH/DETECTED/TRACE grades), reward.
+  Research), targetDepth, currentStrength, o2Richness, hazardLevel, `flags`
+  (**MissionFlags** trait bits — biome-ish site traits like Infested /
+  MineralRich), scanner `forecast` (per-resource abundance →
+  RICH/DETECTED/TRACE grades).
+- **MissionFlags** — [Flags] enum of site traits. The spawning layer consumes
+  them two ways (the sanctioned upward Meta reference now covers
+  `MissionContext` + `MissionFlags`): every `SpawnRule` asset has a
+  **MissionGate** (require/exclude flags + per-flag rate multipliers), and
+  `ChunkSpawner.missionProfileOverrides` can swap the whole `SpawnProfile` on
+  a flag match. The generator does not set flags yet — wire them into
+  `GenerateOffer` (and surface them on the hub card) when site traits become
+  part of mission design.
 - **MissionGenerator** — static; emits 3 offers per hub visit around the sub's
   rated depth (≈70% / 100% / 130% — the stretch card is the depth-progression
   carrot). The forecast is a PROMISE, not a payout: **MissionResourceRule**

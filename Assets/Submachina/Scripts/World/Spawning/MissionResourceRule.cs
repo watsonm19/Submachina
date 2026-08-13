@@ -15,11 +15,17 @@ namespace Submachina.Core
      * resource prefab variant, so the world actually contains what the hub
      * advertised, at the advertised frequency:
      *   - count per chunk = countPerChunkAtFull × forecast abundance
-     *     (TRACE ~0.2 → occasional single nodes; RICH ~1.4 → dense patches)
+     *     (TRACE ~0.2 → occasional single nodes; RICH ~1.4 → dense patches).
+     *     Counts use the Expected model, so fractional budgets stay exact.
      *   - each type spawns only inside its native depth band
      *     (ResourceType.depthBand × MissionGenerator.WorldDepthScale), with a
      *     triangular prevalence peak at the band center — the same shape the
-     *     forecast math uses, so the scanner report is honest.
+     *     forecast math uses, so the scanner report is honest. A template can
+     *     instead author an explicit DepthEnvelope (start / full / fade / stop
+     *     in metres) when a type needs bespoke depths (e.g. "below 400m only");
+     *     the forecast still weights by the native band, so keep them close.
+     *   - the asset's MissionGate (from SpawnRule) scales or suppresses the
+     *     whole expansion per mission trait flags.
      *
      * Types missing from the forecast (or below the scanner's reporting floor)
      * simply don't spawn — hauling them home is impossible, exactly as the
@@ -49,12 +55,22 @@ namespace Submachina.Core
                      "Multiple variants split the count budget evenly.")]
             public GameObject[] prefabVariants;
 
-            [Tooltip("Total instances per chunk at abundance 1.0, across all variants. " +
+            [Tooltip("Total AVERAGE instances per chunk at abundance 1.0, across all variants. Fractions are " +
+                     "exact (0.3 → about one node every 3 chunks). " +
                      "Scaled by the mission forecast: TRACE (~0.2) → rare finds, RICH (~1.4) → dense.")]
             [Min(0f)] public float countPerChunkAtFull = 2.5f;
 
             [Tooltip("Minimum spacing between instances of the same variant (0 = none).")]
             [Min(0f)] public float minSpacing = 2f;
+
+            [Tooltip("Replace the depth window derived from the ResourceType's native band with explicit " +
+                     "depths (start / full rate / optional fade + stop). NOTE: the scanner forecast still " +
+                     "weights abundance by the native depthBand — keep the two roughly in agreement or the " +
+                     "report drifts from what actually spawns.")]
+            public bool useCustomDepth;
+
+            [ShowIf(nameof(useCustomDepth)), InlineProperty]
+            public DepthEnvelope customDepth = new DepthEnvelope();
         }
 
         // =====================
@@ -82,6 +98,27 @@ namespace Submachina.Core
         [NonSerialized] private List<SpawnRuleData> _expanded;
         [NonSerialized] private MissionSpec _expandedFor;
         [NonSerialized] private bool _expandedOnce;
+
+        /** The authored rule block is unused here — the templates ARE the rule. Hides it in the inspector. */
+        protected override bool UsesAuthoredRule => false;
+
+        /**
+         * Inspector edits drop the cached expansion so they apply to newly
+         * generated chunks immediately — essential with domain reload disabled,
+         * where the [NonSerialized] cache would otherwise outlive play sessions
+         * (sandbox play never changes the null spec key, so it never re-expands).
+         */
+        protected override void OnValidate()
+        {
+            base.OnValidate();
+            _expanded = null;
+            _expandedFor = null;
+            _expandedOnce = false;
+        }
+
+        /** Manual cache drop for testing (auto-drops on any inspector edit anyway). */
+        [Button("Force Re-Expansion"), PropertyOrder(100)]
+        private void ForceReExpansion() => OnValidate();
 
         /** Contributes the expanded per-type rules instead of the base single rule. */
         public override IEnumerable<SpawnRuleData> Rules
@@ -111,12 +148,16 @@ namespace Submachina.Core
         {
             var rules = new List<SpawnRuleData>();
 
+            // The asset-level mission gate scales (or suppresses) the whole expansion
+            float gateScale = MissionGateScale(spec);
+            if (gateScale <= 0f) return rules;
+
             // Resolve the abundance per template: forecast-driven, else fallback
             foreach (var template in templates)
             {
                 if (template?.type == null || template.prefabVariants == null || template.prefabVariants.Length == 0) continue;
 
-                float abundance = ResolveAbundance(spec, template.type.Key);
+                float abundance = ResolveAbundance(spec, template.type.Key) * gateScale;
                 if (abundance <= 0f) continue;
 
                 AddRulesFor(rules, template, abundance);
@@ -144,20 +185,31 @@ namespace Submachina.Core
         /** One SpawnRuleData per prefab variant, splitting the type's count budget evenly. */
         private void AddRulesFor(List<SpawnRuleData> rules, ResourceTemplate template, float abundance)
         {
-            // Depth band in absolute metres, prevalence peaking at the band center —
-            // the same triangle the mission generator's forecast math uses
-            float minDepth = template.type.depthBand.x * MissionGenerator.WorldDepthScale;
-            float maxDepth = template.type.depthBand.y * MissionGenerator.WorldDepthScale;
-            float center = (minDepth + maxDepth) * 0.5f;
+            // Depth window: the authored envelope when overridden, else the type's
+            // native band (× world scale) with the forecast-matching triangular peak
+            DepthRange depthRange;
+            AnimationCurve prevalence;
+            if (template.useCustomDepth && template.customDepth != null)
+            {
+                depthRange = template.customDepth.ToDepthRange();
+                prevalence = template.customDepth.BuildPrevalence();
+            }
+            else
+            {
+                float minDepth = template.type.depthBand.x * MissionGenerator.WorldDepthScale;
+                float maxDepth = template.type.depthBand.y * MissionGenerator.WorldDepthScale;
+                float center = (minDepth + maxDepth) * 0.5f;
 
-            var prevalence = new AnimationCurve(
-                new Keyframe(minDepth, bandEdgePrevalence),
-                new Keyframe(center, 1f),
-                new Keyframe(maxDepth, bandEdgePrevalence));
+                depthRange = new DepthRange { minDepth = minDepth, hasMax = true, maxDepth = maxDepth };
+                prevalence = new AnimationCurve(
+                    new Keyframe(minDepth, bandEdgePrevalence),
+                    new Keyframe(center, 1f),
+                    new Keyframe(maxDepth, bandEdgePrevalence));
+            }
 
-            // Split the abundance-scaled budget across the variants.
-            // Example: budget 2.8 over 2 variants → each Range(1, 2) per chunk,
-            // thinned toward the band edges by the prevalence curve.
+            // Split the abundance-scaled budget across the variants. Expected
+            // counts keep fractions exact: budget 0.3 over 1 variant really is
+            // ~one node every 3 chunks, thinned further by the prevalence curve.
             float perVariant = template.countPerChunkAtFull * abundance / template.prefabVariants.Length;
 
             foreach (var prefab in template.prefabVariants)
@@ -169,14 +221,9 @@ namespace Submachina.Core
                     ruleName = $"Mission: {template.type.Key}",
                     developerNotes = "Runtime-expanded by MissionResourceRule — do not author by hand.",
                     prefab = prefab,
-                    depth = new DepthRange { minDepth = minDepth, hasMax = true, maxDepth = maxDepth },
+                    depth = depthRange,
                     prevalenceByDepth = prevalence,
-                    count = new CountModel
-                    {
-                        kind = CountKind.Range,
-                        min = Mathf.FloorToInt(perVariant),
-                        max = Mathf.CeilToInt(perVariant),
-                    },
+                    count = new CountModel { kind = CountKind.Expected, expectedCount = perVariant },
                     minSpacing = template.minSpacing,
                     placement = new ScatterPlacement(),
                 });
