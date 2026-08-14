@@ -28,6 +28,21 @@ public class HitReceiver : MonoBehaviour
              "Example: 0.1 gives a brief grace period after each hit.")]
     [SerializeField, Min(0f)] private float hitCooldown = 0f;
 
+    [FoldoutGroup("Hit Receiver")]
+    [Tooltip("When true, accepted hits are automatically forwarded to a Health component on this " +
+             "same GameObject via Health.TakeDamage(hitData) — no Inspector wiring needed. " +
+             "If onHitReceived is already wired to that same Health.TakeDamage, the auto-apply is " +
+             "skipped so damage is never counted twice. Turn off for receivers that route damage " +
+             "elsewhere (e.g. a shield, a parent hull, or purely event-driven reactions).")]
+    [SerializeField] private bool autoApplyDamageToHealth = true;
+
+    [FoldoutGroup("Hit Receiver")]
+    [Tooltip("When true, accepted hits are automatically forwarded to a Knockback2D component " +
+             "on this same GameObject, which shoves the body along HitData.hitDirection by " +
+             "HitData.knockbackForce. Hits carrying no knockback force or no direction are " +
+             "ignored, so this is safe to leave on even for purely scripted damage.")]
+    [SerializeField] private bool autoApplyKnockback = true;
+
     // =====================
     // Events
     // =====================
@@ -80,6 +95,53 @@ public class HitReceiver : MonoBehaviour
 
     private float _lastHitTime = -999f;
 
+    /** Health on this same GameObject, resolved once in Awake. Null if none exists. */
+    private Health _health;
+
+    /** True when onHitReceived already calls _health.TakeDamage, so auto-apply must stand down. */
+    private bool _healthAlreadyWired;
+
+    /** Knockback2D on this same GameObject, resolved once in Awake. Null if none exists. */
+    private Knockback2D _knockback;
+
+    // -------------------------------------------------------
+    // Lifecycle
+    // -------------------------------------------------------
+
+    private void Awake()
+    {
+        // Cache the local damage/reaction handlers so the hit path stays lookup-free
+        _health = GetComponent<Health>();
+        _knockback = GetComponent<Knockback2D>();
+
+        // Detect legacy Inspector wiring (onHitReceived → Health.TakeDamage) on the same Health.
+        // Those prefabs would otherwise take damage twice once auto-apply defaults on.
+        _healthAlreadyWired = _health != null && IsWiredToHealthTakeDamage();
+    }
+
+    /**
+     * Scans onHitReceived's persistent (Inspector-authored) listeners for a call to
+     * TakeDamage on our cached Health component. Runtime-added listeners are invisible
+     * here by design — only Inspector wiring can be double-counted this way.
+     */
+    private bool IsWiredToHealthTakeDamage()
+    {
+        if (onHitReceived == null) return false;
+
+        for (int i = 0; i < onHitReceived.GetPersistentEventCount(); i++)
+        {
+            if (ReferenceEquals(onHitReceived.GetPersistentTarget(i), _health) &&
+                // Literal rather than nameof() — Health.TakeDamage is an overloaded
+                // method group, and UnityEvent stores the name as a plain string anyway.
+                onHitReceived.GetPersistentMethodName(i) == "TakeDamage")
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // -------------------------------------------------------
     // Public API
     // -------------------------------------------------------
@@ -115,6 +177,21 @@ public class HitReceiver : MonoBehaviour
             {
                 if (hitFeedbacks[i] != null) hitFeedbacks[i].PlayFeedbacks(hitData.hitPoint, intensity);
             }
+        }
+
+        // Shove before damaging, so a killing blow still starts the body moving.
+        // (Whether the corpse keeps that momentum is up to the owner — EnemyBase's
+        // killVelocityOnDeath zeroes it by default.)
+        if (autoApplyKnockback && _knockback != null)
+        {
+            _knockback.ApplyKnockback(hitData);
+        }
+
+        // Apply damage last so death behavior (destroy/deactivate) can't cut the
+        // events or feedbacks above short on a same-frame kill.
+        if (autoApplyDamageToHealth && _health != null && !_healthAlreadyWired)
+        {
+            _health.TakeDamage(hitData);
         }
 
         return true;

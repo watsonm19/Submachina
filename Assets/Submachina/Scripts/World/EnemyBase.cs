@@ -57,8 +57,18 @@ namespace Submachina.Core
 
         [FoldoutGroup("Death Behavior")]
         [Tooltip("Zero out the Rigidbody's velocity on death so the corpse stops dead " +
-                 "instead of coasting on its last movement vector.")]
+                 "instead of coasting on its last movement vector. Note that a knockback " +
+                 "death launch overrides this — see Launch On Knockback Death.")]
         [SerializeField] private bool killVelocityOnDeath = true;
+
+        [FoldoutGroup("Death Behavior")]
+        [Tooltip("When the killing blow carries knockback, let the corpse fly off with that " +
+                 "momentum instead of stopping dead — the payoff hit reads as a real kill. " +
+                 "Takes priority over Kill Velocity On Death, which still applies to every " +
+                 "other kind of death (so a corpse never coasts off on its own AI movement). " +
+                 "The corpse coasts freely; give the Rigidbody2D some Linear Damping if you " +
+                 "want the launch to decelerate rather than travel at a constant speed.")]
+        [SerializeField] private bool launchOnKnockbackDeath = true;
 
         [FoldoutGroup("Death Behavior")]
         [Tooltip("Disable the enemy's collider on death so the corpse no longer blocks or " +
@@ -78,6 +88,14 @@ namespace Submachina.Core
                  "Released on death so feedbacks can spin the corpse. Disable for enemies " +
                  "that should rotate freely (e.g. tumbling or physics-driven types).")]
         [SerializeField] private bool freezeRotationWhileAlive = true;
+
+        [FoldoutGroup("Physics")]
+        [Tooltip("Suspend AI steering while a Knockback2D on this enemy is mid-shove. " +
+                 "Required for knockback to be visible at all — UpdateAI assigns linearVelocity " +
+                 "every physics tick and would otherwise erase the impulse immediately. " +
+                 "Side effect (usually desirable): state transitions also pause, so a hit reads " +
+                 "as a brief stun. Disable only for enemies that must keep steering through hits.")]
+        [SerializeField] private bool suspendAiDuringKnockback = true;
 
         // =====================
         // Targeting (multiplayer-aware)
@@ -108,6 +126,15 @@ namespace Submachina.Core
 
         /** The Rigidbody2D used for all enemy movement. */
         protected Rigidbody2D Rb { get; private set; }
+
+        /** Optional knockback handler. Null when this enemy has no Knockback2D component. */
+        protected Knockback2D Knockback { get; private set; }
+
+        /**
+         * True while a knockback is shoving this enemy and AI steering is suspended.
+         * Subclasses can read this to hold off on telegraphs or attack commitments.
+         */
+        protected bool IsBeingKnockedBack => Knockback != null && Knockback.IsBeingKnockedBack;
 
         /** The SpriteRenderer for tinting and sprite flipping. */
         protected SpriteRenderer Sr { get; private set; }
@@ -143,6 +170,9 @@ namespace Submachina.Core
             Rb = GetComponent<Rigidbody2D>();
             Rb.gravityScale = 0f;
 
+            // Optional — enemies without a Knockback2D simply never get shoved
+            Knockback = GetComponent<Knockback2D>();
+
             // Optionally lock rotation so swimmers stay upright while alive
             if (freezeRotationWhileAlive)
                 Rb.constraints = RigidbodyConstraints2D.FreezeRotation;
@@ -167,11 +197,24 @@ namespace Submachina.Core
             SetIntentIndicator(false);
         }
 
+        /**
+         * Drives targeting and the subclass state machine each physics step.
+         *
+         * While a knockback is in flight we skip UpdateAI entirely, leaving the body
+         * under Knockback2D's control — otherwise the subclass's per-tick
+         * "Rb.linearVelocity = ..." would overwrite the impulse before it moved anything.
+         * Targeting still runs, so the enemy comes out of the shove aimed correctly.
+         */
         private void FixedUpdate()
         {
             if (IsDead) return;
+
             MaintainTarget();
-            UpdateAI();
+
+            // Knockback owns the body for its control window — steering stands down
+            if (!(suspendAiDuringKnockback && IsBeingKnockedBack))
+                UpdateAI();
+
             FlipSpriteToVelocity();
         }
 
@@ -194,8 +237,19 @@ namespace Submachina.Core
         {
             IsDead = true;
 
-            // Optionally stop the corpse dead instead of letting it coast.
-            if (killVelocityOnDeath)
+            // Death launch: the killing blow was a knockback, so the corpse keeps that
+            // momentum and flies. HitReceiver applies knockback *before* damage, so the
+            // shove is already on the body by the time this death hook runs.
+            bool launching = launchOnKnockbackDeath && IsBeingKnockedBack;
+
+            // Close any in-flight knockback window so the corpse isn't left under its
+            // control mid-death-animation. On a launch we still close it, which stops the
+            // component's drag and lets the corpse coast freely on the impulse.
+            if (Knockback != null) Knockback.Cancel();
+
+            // Stop the corpse dead rather than coasting off on its last AI movement vector.
+            // A death launch overrides this — that momentum is the whole point of the hit.
+            if (killVelocityOnDeath && !launching)
                 Rb.linearVelocity = Vector2.zero;
 
             // Optionally drop the collider so the corpse stops blocking/damaging.
