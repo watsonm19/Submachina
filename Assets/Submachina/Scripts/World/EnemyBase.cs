@@ -1,10 +1,22 @@
 using System;
 using UnityEngine;
 using DG.Tweening;
+using Core.ProceduralAnimation;
 using Sirenix.OdinInspector;
 
 namespace Submachina.Core
 {
+    /**
+     * How a creature's procedural chains respond to being knocked back.
+     * Shared by every EnemyBase subclass so the reaction is one inspector choice.
+     */
+    public enum ChainHitReaction
+    {
+        None,       // Leave the chains simulating normally
+        Limp,       // Ragdoll — no imposed facing, loose joints, wobble instead of swim
+        FreezePose  // Hold the shape rigid and carry it along — stunned-stiff
+    }
+
     /**
      * Shared plumbing for all sea creature enemies.
      *
@@ -98,6 +110,35 @@ namespace Submachina.Core
         [SerializeField] private bool suspendAiDuringKnockback = true;
 
         // =====================
+        // Knockback Reaction
+        // =====================
+
+        [FoldoutGroup("Knockback Reaction")]
+        [Tooltip("How this creature's procedural chains (bodies, tentacles, fins) react when it " +
+                 "gets shoved. Without a reaction, a chain in Velocity facing mode re-aims at the " +
+                 "knockback direction and keeps undulating, so the creature looks like it chose to " +
+                 "turn around and swim off.\n\n" +
+                 "Limp — ragdolls: no imposed facing, loose joints, swim wave off, wobble on.\n" +
+                 "FreezePose — holds the shape rigid and carries it along; reads as stunned-stiff.\n" +
+                 "None — leave the chains alone.")]
+        [SerializeField] private ChainHitReaction chainReaction = ChainHitReaction.Limp;
+
+        [FoldoutGroup("Knockback Reaction")]
+        [HideIf("chainReaction", ChainHitReaction.None)]
+        [Tooltip("Seconds the reaction holds after a shove lands. 0.3-0.5 reads well — long " +
+                 "enough to sell the hit, short enough that the creature recovers before the " +
+                 "player loses track of it. Limp then eases back over the simulator's own " +
+                 "Limp Recover Duration on top of this.")]
+        [SerializeField, Min(0f)] private float chainReactionDuration = 0.4f;
+
+        [FoldoutGroup("Knockback Reaction")]
+        [HideIf("chainReaction", ChainHitReaction.None)]
+        [Tooltip("Reaction duration used when the shove was the killing blow. Wants to outlast " +
+                 "the corpse itself so a dead creature never re-gathers and straightens out " +
+                 "mid-launch — a few seconds is plenty since the corpse is destroyed well before.")]
+        [SerializeField, Min(0f)] private float chainReactionDeathDuration = 5f;
+
+        // =====================
         // Targeting (multiplayer-aware)
         // =====================
 
@@ -160,6 +201,9 @@ namespace Submachina.Core
         /** Next time (Time.time) this enemy is allowed to re-scan for a target. Phase-staggered per instance. */
         private float _nextRetargetTime;
 
+        /** Every procedural chain under this creature, cached once for hit reactions. */
+        private ChainSimulator[] _chains;
+
         // -------------------------------------------------------
         // Lifecycle
         // -------------------------------------------------------
@@ -172,6 +216,10 @@ namespace Submachina.Core
 
             // Optional — enemies without a Knockback2D simply never get shoved
             Knockback = GetComponent<Knockback2D>();
+
+            // Procedural chains anywhere under this creature (body, tentacles, fins).
+            // Included inactive so culled/disabled parts still react on restore.
+            _chains = GetComponentsInChildren<ChainSimulator>(true);
 
             // Optionally lock rotation so swimmers stay upright while alive
             if (freezeRotationWhileAlive)
@@ -193,6 +241,10 @@ namespace Submachina.Core
 
             Health health = GetComponent<Health>();
             if (health != null) health.onDeath.AddListener(OnDeath);
+
+            // React the moment a shove lands rather than polling — this also catches the
+            // killing blow, which arrives before Health processes the damage.
+            if (Knockback != null) Knockback.onKnockbackStart.AddListener(HandleKnockbackStarted);
 
             SetIntentIndicator(false);
         }
@@ -241,6 +293,11 @@ namespace Submachina.Core
             // momentum and flies. HitReceiver applies knockback *before* damage, so the
             // shove is already on the body by the time this death hook runs.
             bool launching = launchOnKnockbackDeath && IsBeingKnockedBack;
+
+            // Extend the body's flinch well past the corpse's lifetime. The shove already
+            // fired a normal-length reaction; without this the corpse would visibly gather
+            // itself and straighten out while still flying.
+            if (launching) ReactChains(chainReactionDeathDuration);
 
             // Close any in-flight knockback window so the corpse isn't left under its
             // control mid-death-animation. On a launch we still close it, which stops the
@@ -371,6 +428,30 @@ namespace Submachina.Core
 
         /** Normalized direction directly away from the player — used by fleeing enemies. */
         protected Vector2 DirectionAwayFromPlayer() => -DirectionToPlayer();
+
+        /**
+         * Fires the configured chain reaction on every procedural chain under this creature.
+         * Protected so subclasses can trigger the same flinch from their own moments —
+         * a parried strike, a phase transition, a shockwave — not just knockback.
+         */
+        protected void ReactChains(float duration)
+        {
+            if (chainReaction == ChainHitReaction.None || _chains == null) return;
+
+            foreach (ChainSimulator chain in _chains)
+            {
+                if (chain == null) continue;
+
+                if (chainReaction == ChainHitReaction.Limp) chain.Limp(duration);
+                else chain.FreezePose(duration);
+            }
+        }
+
+        /** Knockback landed — flinch the body for the configured window. */
+        private void HandleKnockbackStarted(Vector2 impulse)
+        {
+            ReactChains(chainReactionDuration);
+        }
 
         /** Applies a color to the sprite. Pass BaseColor to reset to the default tint. */
         protected void SetSpriteColor(Color color)

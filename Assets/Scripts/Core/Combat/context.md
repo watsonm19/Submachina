@@ -67,6 +67,14 @@ the payoff hit reads as a real kill. Every other kind of death still stops the c
 it never coasts away on its own AI movement vector. The window is closed either way, so the
 corpse coasts freely; add `Rigidbody2D.linearDamping` if you want the launch to decelerate.
 
+### Body reaction
+`EnemyBase` listens to `Knockback2D.onKnockbackStart` and flinches every `ChainSimulator`
+under the creature — `chainReaction` (Limp / FreezePose / None) plus its duration, in the
+"Knockback Reaction" foldout. Without it, a chain in `FacingMode.Velocity` re-aims at the
+knockback direction and keeps undulating, so the creature looks like it turned around and
+swam off. See `Core/ProceduralAnimation/context.md`. A death launch re-fires the reaction
+with `chainReactionDeathDuration` so the corpse never straightens out mid-flight.
+
 ## Setup for a knockable creature
 `Rigidbody2D` + `HitReceiver` + `Health` + `Knockback2D` on the same GameObject. Nothing to
 wire — both damage sources already populate `HitData.knockbackForce`.
