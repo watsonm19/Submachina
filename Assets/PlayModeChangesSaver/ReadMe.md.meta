@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: f74b6d45e6b7ec94ea135f21a0c508ee
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 354984
+  packageName: Play Mode Changes Saver (Runtime-Saver)
+  packageVersion: 1.0.1
+  assetPath: Assets/PlayModeChangesSaver/ReadMe.md
+  uploadId: 925422

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 4ec0165beb1358b429682a77c154f383
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 354984
+  packageName: Play Mode Changes Saver (Runtime-Saver)
+  packageVersion: 1.0.1
+  assetPath: Assets/PlayModeChangesSaver/Scriptable_Objects/GO_Name_Changes_Store.asset
+  uploadId: 925422
