@@ -151,6 +151,129 @@ half3 ScaleRelief(half3 n, half s)
     return normalize(half3(n.xy * s, n.z));
 }
 
+// ---------------------------------------------------------------------------------
+// FORM SHAPE — a broad procedural 3D form (dome / bevel / pillow / cylinder / slope /
+// silhouette-inflate) composited UNDER the detail normal, so a flat sprite reads as a
+// raised solid while the detail relief (sprite map, override texture, albedo-height)
+// still supplies the surface texture. Form and detail are combined with Reoriented
+// Normal Mapping — the detail bumps are rotated onto the form's surface, which keeps
+// both readable instead of one washing the other out the way adding/averaging does.
+// ---------------------------------------------------------------------------------
+
+// Reoriented Normal Mapping (Barré-Brisebois & Hill). Treats `nForm` as the base
+// surface and re-expresses `nDetail` in its tangent frame. Flat detail returns the
+// form exactly; flat form returns the detail exactly.
+half3 BlendNormalsRNM(half3 nForm, half3 nDetail)
+{
+    half3 t = nForm + half3(0.0h, 0.0h, 1.0h);
+    half3 u = nDetail * half3(-1.0h, -1.0h, 1.0h);
+    return normalize(t * dot(t, u) / max(t.z, 1e-3h) - u);
+}
+
+// Slope magnitude of the form's height profile at normalized distance d (0 = shape
+// centre, 1 = its outer edge). Two dials morph the whole family of solids:
+//   _ShapeRim     — where the slope starts. 0 = curvature from the very centre (dome);
+//                   0.6+ = flat plateau with a narrow shoulder (bevel / pillow edge).
+//   _ShapeProfile — slope curve outside the rim. 0 = constant slope (linear bevel /
+//                   cone), ~1 = parabolic dome, 2+ = slope packed at the outer edge
+//                   (the round "inflated cushion" shoulder).
+// _ShapeHeight scales the result — the overall steepness/depth of the form.
+half FormProfileSlope(half d)
+{
+    half rim = saturate(_ShapeRim);
+    half t = saturate((d - rim) / max(1.0h - rim, 1e-3h));
+    half s = _ShapeHeight * pow(max(t, 1e-4h), max(_ShapeProfile, 0.0h));
+    // Past the footprint (d > 1, reachable when _ShapeExtent shrinks the shape inside
+    // the rect) the surface eases back to flat instead of freezing at maximum tilt.
+    return s * (1.0h - smoothstep(1.0h, 1.15h, d));
+}
+
+// FORM NORMAL for rect-based sprites: `p` is the rect-local 0..1 coordinate (atlas
+// remap already applied), `uv` the raw texture UV (silhouette mode only). Modes:
+//   1 Shape      — round↔rectangular footprint (_ShapeRect): the dome/bevel/pillow family
+//   2 Cylinder   — curved across ONE axis (aimed by _ShapeAngle): pipes, ridges, hulls
+//   3 Slope      — a ramp along one axis: wedges, tilted panels
+//   4 Silhouette — mip-blurred ALPHA as the height field, so the sprite puffs up from
+//                  its own outline whatever its shape ("inflate"). Needs mipmaps.
+half3 ComputeFormNormal(float2 p, float2 uv)
+{
+    // Silhouette inflate: central-difference the blurred alpha, exactly like the
+    // AlbedoHeight relief but on coverage instead of luminance. _ShapeBlur mip levels
+    // of blur turn the hard outline into a wide ramp — the rounded inflated shoulder.
+    if (_ShapeMode > 3.5h)
+    {
+        float2 px = (abs(ddx(uv)) + abs(ddy(uv))) * 0.5;
+        float lod = _ShapeBlur;
+        float2 e = max(_HeightTexel.xy, px) * exp2(lod);
+        half aL = (half)SAMPLE_TEXTURE2D_LOD(_MainTex, sampler_MainTex, uv - float2(e.x, 0), lod).a;
+        half aR = (half)SAMPLE_TEXTURE2D_LOD(_MainTex, sampler_MainTex, uv + float2(e.x, 0), lod).a;
+        half aD = (half)SAMPLE_TEXTURE2D_LOD(_MainTex, sampler_MainTex, uv - float2(0, e.y), lod).a;
+        half aU = (half)SAMPLE_TEXTURE2D_LOD(_MainTex, sampler_MainTex, uv + float2(0, e.y), lod).a;
+        half2 g = half2(aL - aR, aD - aU) * _ShapeHeight;
+        return normalize(half3(g, 1.0h));
+    }
+
+    // Shape frame: -1..1 local coords, rotated so cylinders/slopes can aim anywhere
+    // (and the rectangular footprint can sit at an angle).
+    float2 q = (p - 0.5) * 2.0;
+    half sA = 0.0h, cA = 1.0h;
+    sincos(_ShapeAngle, sA, cA);
+    float2 qr = float2(q.x * cA + q.y * sA, -q.x * sA + q.y * cA);
+
+    half d = 0.0h;                   // normalized distance through the shape (0 centre .. 1 edge)
+    float2 ur = float2(1.0, 0.0);    // downhill (outward) direction in the shape frame
+    if (_ShapeMode < 1.5h)
+    {
+        // Shape: blend the round distance field toward the rectangular (chebyshev) one.
+        // The two gradients blend the same way so the downhill direction stays coherent.
+        float r = length(qr);
+        float m = max(abs(qr.x), abs(qr.y));
+        float2 gRound = qr / max(r, 1e-4);
+        float2 gRect = abs(qr.x) >= abs(qr.y) ? float2(sign(qr.x), 0) : float2(0, sign(qr.y));
+        d = (half)lerp(r, m, _ShapeRect);
+        ur = normalize(lerp(gRound, gRect, _ShapeRect) + float2(1e-5, 0));
+    }
+    else if (_ShapeMode < 2.5h)
+    {
+        // Cylinder: distance measured across the rotated X axis only.
+        d = (half)abs(qr.x);
+        ur = float2(qr.x >= 0.0 ? 1.0 : -1.0, 0.0);
+    }
+    else
+    {
+        // Slope: one continuous ramp along the rotated X axis (rim/profile still shape it —
+        // rim 0 + profile 0 is a uniform tilt, raising profile curls the ramp).
+        d = (half)saturate(qr.x * 0.5 + 0.5);
+        ur = float2(1.0, 0.0);
+    }
+
+    // _ShapeExtent rescales the footprint: >1 pulls the form's edge INSIDE the rect
+    // (sprites with transparent padding), <1 spreads it past the rect (a gentler cap).
+    half s = FormProfileSlope(d * (half)_ShapeExtent);
+
+    // Rotate the downhill direction back into UV space; the normal tilts outward.
+    float2 u = float2(ur.x * cA - ur.y * sA, ur.x * sA + ur.y * cA);
+    return normalize(half3((half2)u * s, 1.0h));
+}
+
+// FORM NORMAL for edge-banded meshes (spline fills): the baked edge distance IS the
+// distance field, so the same rim/profile morphs dome an ARBITRARY outline — the whole
+// piece reads as one raised slab/cushion with the tiled detail map riding on top.
+// _ShapeExtent spans the band exactly like _EdgeWidth does (1 = the full baked band).
+half3 ComputeFormNormalEdge(half2 outwardDir, float edgeDist)
+{
+    half t = 1.0h - (half)saturate(edgeDist / max(_ShapeExtent, 1e-3h));
+    half s = FormProfileSlope(t);
+    return normalize(half3(outwardDir * s, 1.0h));
+}
+
+// Compose the form UNDER the detail normal. _ShapeDetail dials how much of the detail
+// relief survives on the form (1 = full detail riding the shape, 0 = the bare form).
+half3 ComposeFormNormal(half3 nForm, half3 nDetail)
+{
+    return BlendNormalsRNM(nForm, ScaleRelief(nDetail, _ShapeDetail));
+}
+
 // BASE surface normal (strength NOT applied — callers scale relief via ScaleRelief so
 // the specular depth and the emboss term can use the same map at different depths):
 // either the sprite's normal map (mode 0), a procedural pattern generated from the
@@ -193,7 +316,7 @@ half3 ComputeSurfaceNormal(float2 uv, float2 uvAlbedo, float2 wpos, out float2 u
     {
         uvEff = wpos; // world patterns vary per world unit, so world position IS their UV
         float wfreq = max(_NormalFreq, 1e-4);
-        float2 gw;
+        float2 gw = float2(0.0, 0.0);
         if (_NormalMode < 7.5h)      // World Facets: random tilt per hashed world cell (sparkle)
             gw = Hash22(floor(wpos * wfreq)) * 2.0 - 1.0;
         else                         // World Ripples: parallel wavy bands along world X
@@ -596,12 +719,14 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 nCurv, half3 texel, half3 
 }
 
 // Convenience wrapper for callers whose spec mask simply shares the main UV
-// (the sprite shader): samples _SpecMask at uv and runs the full pipeline. That caller
-// doesn't bend the normal, so nBase doubles as the curvature normal.
-half4 ApplySpecular(half4 c, half3 nBase, half3 texel, float2 uv, float2 uvEff, float2 wpos)
+// (the sprite shader): samples _SpecMask at uv and runs the full pipeline. nCurv is
+// the normal BEFORE the form-shape compose — a broad form is a wide smooth ramp that
+// would register as false curvature (the same reason the spline fill excludes its
+// edge bevel); pass nBase when the caller composes no form.
+half4 ApplySpecular(half4 c, half3 nBase, half3 nCurv, half3 texel, float2 uv, float2 uvEff, float2 wpos)
 {
     half3 specMask = (half3)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, uv).rgb;
-    return ApplySpecularMasked(c, nBase, nBase, texel, specMask, uvEff, wpos);
+    return ApplySpecularMasked(c, nBase, nCurv, texel, specMask, uvEff, wpos);
 }
 
 #endif // SUBMACHINA_SPECULAR_LIT_CORE_INCLUDED

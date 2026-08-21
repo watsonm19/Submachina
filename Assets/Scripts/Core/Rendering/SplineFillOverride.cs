@@ -17,6 +17,14 @@ namespace Core.Rendering
      * Compose-safe with SpecularController: both components Get the renderer's current
      * block, add their own properties, and Set it back, so neither clobbers the other.
      *
+     * The full faked-3D recipe for a spline fill: assign the albedo + a tiled detail
+     * normal map HERE, then add a SpecularController on the same object and pick a
+     * Form Shape — on spline-fill meshes the form uses the baked edge band, so the
+     * whole piece domes/bevels/pillows up from its own outline with the tiled detail
+     * relief riding the curved form (Reoriented Normal Mapping in the shader). The
+     * form dials live on SpecularController ON PURPOSE — one owner for the _Shape*
+     * properties keeps the two components from fighting over the block.
+     *
      * Note: property blocks can't remove single properties — to UNDO an override at edit
      * time, set the field back to the material's value (or clear the renderer's block).
      */

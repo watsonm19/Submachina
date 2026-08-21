@@ -148,6 +148,24 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // xy = tiling (scale), zw = offset for the override texture within the sprite rect (like Unity's _ST).
         _NormalTexST("Normal Override Tiling/Offset", Vector) = (1, 1, 0, 0)
 
+        [Header(Form Shape)]
+        // A broad procedural 3D form composited UNDER the detail normal above via Reoriented
+        // Normal Mapping: the sprite reads as a raised solid (dome/bevel/pillow, cylinder,
+        // slope, or inflated from its own silhouette) while the Normal Mode still supplies
+        // the surface texture riding on it. Feeds the specular, the emboss/ambient relief,
+        // AND the 2D light buffer, so the form shades as real depth under every Light2D.
+        // 0 = off. Rim + Profile morph the family: rim 0/profile ~1 = dome; rim 0.6/profile
+        // ~0.2 = bevel; rim 0.45/profile ~2 = pillow; rim 0/profile 0 = cone.
+        _ShapeMode("Form Shape (0=off 1=shape 2=cyl 3=slope 4=silhouette)", Float) = 0
+        _ShapeHeight("Form Height (slope gain)", Range(0, 8)) = 1.5
+        _ShapeRim("Form Rim Start (0=dome .. plateau)", Range(0, 0.95)) = 0
+        _ShapeProfile("Form Profile (0=linear .. round shoulder)", Range(0, 4)) = 1
+        _ShapeRect("Form Rectangularity (0=round 1=rect)", Range(0, 1)) = 0
+        _ShapeExtent("Form Extent (footprint scale)", Range(0.1, 4)) = 1
+        _ShapeAngle("Form Angle (radians)", Float) = 0
+        _ShapeDetail("Form Detail Blend (detail riding the form)", Range(0, 1)) = 1
+        _ShapeBlur("Form Silhouette Blur (mip)", Range(0, 6)) = 3
+
         [Header(Ambient Relief)]
         // URP 2D shades normal maps only from POSITIONAL lights — a Global Light2D has no
         // position, so it CANNOT light a normal map (it's a flat multiply) — and the
@@ -295,6 +313,16 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
+                // Form Shape: broad procedural form composited under the detail normal (RNM)
+                half _ShapeMode;
+                half _ShapeHeight;
+                half _ShapeRim;
+                half _ShapeProfile;
+                half _ShapeRect;
+                half _ShapeExtent;
+                half _ShapeAngle;
+                half _ShapeDetail;
+                half _ShapeBlur;
                 float _SortingLayerBit;
             CBUFFER_END
 
@@ -328,12 +356,23 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 // under per-instance tiling.
                 float2 uvEff;
                 // Normal UV and albedo UV are the same thing on a sprite (one texture set).
-                half3 nBase = ComputeSurfaceNormal(input.uv, input.uv, input.worldPos.xy, uvEff);
+                half3 nDetail = ComputeSurfaceNormal(input.uv, input.uv, input.worldPos.xy, uvEff);
                 half3 texel = (half3)SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).rgb * input.color.rgb;
+
+                // Form Shape: compose the broad procedural form UNDER the detail normal, so
+                // the whole sprite reads as a raised solid with the detail riding on it.
+                // The curvature terms keep the un-formed detail (nDetail) — a broad form is
+                // a wide smooth ramp that would otherwise paint a false cavity ring.
+                half3 nBase = nDetail;
+                if (_ShapeMode > 0.5h)
+                {
+                    float2 p = (input.uv - _NormalUVRect.xy) / max(_NormalUVRect.zw, 1e-5);
+                    nBase = ComposeFormNormal(ComputeFormNormal(p, input.uv), nDetail);
+                }
 
                 // Full glint pipeline (baseline + shimmer + real lights + glow zone + compose)
                 // lives in SpecularLitCore.hlsl, shared with the spline-fill mesh shader.
-                return ApplySpecular(c, nBase, texel, input.uv, uvEff, input.worldPos.xy);
+                return ApplySpecular(c, nBase, nDetail, texel, input.uv, uvEff, input.worldPos.xy);
             }
             ENDHLSL
         }
@@ -422,6 +461,16 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
+                // Form Shape: broad procedural form composited under the detail normal (RNM)
+                half _ShapeMode;
+                half _ShapeHeight;
+                half _ShapeRim;
+                half _ShapeProfile;
+                half _ShapeRect;
+                half _ShapeExtent;
+                half _ShapeAngle;
+                half _ShapeDetail;
+                half _ShapeBlur;
                 float _SortingLayerBit;
             CBUFFER_END
 
@@ -465,6 +514,16 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 // relative to Z tilts the normals further off-flat BEFORE they land in the 2D
                 // light buffer, so every Light2D (multiply included) shades with bigger bumps.
                 normalTS = ScaleRelief(normalTS, _DiffNormalStrength);
+
+                // Form Shape into the light buffer too (detail already at diffuse depth, so
+                // the form composes at its own height): this is what makes the dome/bevel/
+                // silhouette form shade as REAL raised depth under every Light2D, instead of
+                // only shaping the specular.
+                if (_ShapeMode > 0.5h)
+                {
+                    float2 p = (input.uv - _NormalUVRect.xy) / max(_NormalUVRect.zw, 1e-5);
+                    normalTS = BlendNormalsRNM(ComputeFormNormal(p, input.uv), normalTS);
+                }
                 return NormalsRenderingShared(mainTex, normalTS, input.tangentWS.xyz, input.bitangentWS.xyz, input.normalWS.xyz);
             }
             ENDHLSL
@@ -553,6 +612,16 @@ Shader "Submachina/2D/SpriteLitSpecular"
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
+                // Form Shape: broad procedural form composited under the detail normal (RNM)
+                half _ShapeMode;
+                half _ShapeHeight;
+                half _ShapeRim;
+                half _ShapeProfile;
+                half _ShapeRect;
+                half _ShapeExtent;
+                half _ShapeAngle;
+                half _ShapeDetail;
+                half _ShapeBlur;
                 float _SortingLayerBit;
             CBUFFER_END
 

@@ -129,6 +129,25 @@ Shader "Submachina/2D/SplineFillLitSpecular"
         _NormalTex("Normal Override (straight RGB)", 2D) = "bump" {}
         _NormalTexST("Normal Override Tiling/Offset", Vector) = (1, 1, 0, 0)
 
+        [Header(Form Shape)]
+        // A broad procedural 3D form composited UNDER the detail normal via Reoriented
+        // Normal Mapping. On this shader ANY non-zero mode uses the baked EDGE BAND as the
+        // distance field: the whole piece domes/bevels up from its own outline — whatever
+        // shape the spline is — while the tiled detail normal map rides on top. Rim +
+        // Profile morph the family (rim 0/profile ~1 = dome, rim 0.6/profile ~0.2 = bevel,
+        // rim 0.45/profile ~2 = pillow); Extent spans the band like Edge Effect Width.
+        // Unlike Edge Bevel above (an additive rim nudge), this is a full form compose the
+        // detail relief genuinely curves around. Feeds specular AND the 2D light buffer.
+        _ShapeMode("Form Shape (0=off, else edge-band form)", Float) = 0
+        _ShapeHeight("Form Height (slope gain)", Range(0, 8)) = 1.5
+        _ShapeRim("Form Rim Start (0=dome .. plateau)", Range(0, 0.95)) = 0
+        _ShapeProfile("Form Profile (0=linear .. round shoulder)", Range(0, 4)) = 1
+        _ShapeRect("Form Rectangularity (unused here)", Range(0, 1)) = 0
+        _ShapeExtent("Form Extent (fraction of band)", Range(0.1, 4)) = 1
+        _ShapeAngle("Form Angle (unused here)", Float) = 0
+        _ShapeDetail("Form Detail Blend (detail riding the form)", Range(0, 1)) = 1
+        _ShapeBlur("Form Silhouette Blur (unused here)", Range(0, 6)) = 3
+
         [Header(Ambient Relief)]
         // Ungated relief: URP 2D can only shade normals from POSITIONAL lights (a Global
         // Light2D is a flat multiply) and _NormalEmboss is falloff/cone gated, so relief
@@ -265,6 +284,16 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
+                // Form Shape: broad procedural form composited under the detail normal (RNM)
+                half _ShapeMode;
+                half _ShapeHeight;
+                half _ShapeRim;
+                half _ShapeProfile;
+                half _ShapeRect;
+                half _ShapeExtent;
+                half _ShapeAngle;
+                half _ShapeDetail;
+                half _ShapeBlur;
                 float _SortingLayerBit;
             CBUFFER_END
 
@@ -324,7 +353,13 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 // nCurv is kept UNBEVELLED for the curvature terms: the bevel is a wide smooth
                 // ramp across the whole band, so differentiating it would paint a false cavity
                 // ring around the rim — which _EdgeDarken is already treating.
-                half3 nBase = normalize(half3(nCurv.xy + (half2)input.edge.xy * (_EdgeBevel * w), nCurv.z));
+                // Form Shape first (the edge band as a distance field — the whole piece domes
+                // from its outline, detail relief curving around the form via RNM), then the
+                // legacy additive edge bevel on top; both are excluded from the curvature.
+                half3 nShaped = _ShapeMode > 0.5h
+                    ? ComposeFormNormal(ComputeFormNormalEdge((half2)input.edge.xy, input.edge.z), nCurv)
+                    : nCurv;
+                half3 nBase = normalize(half3(nShaped.xy + (half2)input.edge.xy * (_EdgeBevel * w), nShaped.z));
 
                 // Edge darken BEFORE the specular add (the Photoshop "inner glow, black,
                 // multiply" look) — bevel glints still fire on the darkened rim, which is
@@ -444,6 +479,16 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
+                // Form Shape: broad procedural form composited under the detail normal (RNM)
+                half _ShapeMode;
+                half _ShapeHeight;
+                half _ShapeRim;
+                half _ShapeProfile;
+                half _ShapeRect;
+                half _ShapeExtent;
+                half _ShapeAngle;
+                half _ShapeDetail;
+                half _ShapeBlur;
                 float _SortingLayerBit;
             CBUFFER_END
 
@@ -488,7 +533,14 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 }
                 if (_NormalMapOnce > 0.5h && (any(uvNrm < 0.0) || any(uvNrm > 1.0)))
                     normalTS = half3(0.0h, 0.0h, 1.0h);
-                normalTS = normalize(half3(normalTS.xy * _DiffNormalStrength + (half2)input.edge.xy * (_EdgeBevel * w), normalTS.z));
+
+                // Detail at diffuse depth first, then the Form Shape composed under it (the
+                // edge-band dome shades as real raised depth under every Light2D), then the
+                // legacy additive edge bevel on top — same order as the lit pass.
+                normalTS = ScaleRelief(normalTS, _DiffNormalStrength);
+                if (_ShapeMode > 0.5h)
+                    normalTS = BlendNormalsRNM(ComputeFormNormalEdge((half2)input.edge.xy, input.edge.z), normalTS);
+                normalTS = normalize(half3(normalTS.xy + (half2)input.edge.xy * (_EdgeBevel * w), normalTS.z));
                 return NormalsRenderingShared(mainTex, normalTS, input.tangentWS.xyz, input.bitangentWS.xyz, input.normalWS.xyz);
             }
             ENDHLSL
@@ -586,6 +638,16 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _NormalFreq;
                 float4 _NormalUVRect;
                 float4 _NormalTexST;
+                // Form Shape: broad procedural form composited under the detail normal (RNM)
+                half _ShapeMode;
+                half _ShapeHeight;
+                half _ShapeRim;
+                half _ShapeProfile;
+                half _ShapeRect;
+                half _ShapeExtent;
+                half _ShapeAngle;
+                half _ShapeDetail;
+                half _ShapeBlur;
                 float _SortingLayerBit;
             CBUFFER_END
 

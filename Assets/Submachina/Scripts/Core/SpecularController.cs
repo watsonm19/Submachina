@@ -75,6 +75,20 @@ namespace Submachina.Core
          */
         public enum ModTarget { ScaleBase = 0, Additive = 1, ScaleLight = 2, ScaleBaseAndLight = 3 }
 
+        /**
+         * The broad procedural 3D FORM composited UNDER the detail normal (via Reoriented
+         * Normal Mapping in the shader), so the whole sprite reads as a raised solid while
+         * the Normal Source keeps supplying the surface texture riding on it.
+         *   Shape          — the dome/bevel/pillow family; morph with Rim/Profile/Rectangularity.
+         *   Cylinder       — curved across ONE axis (aimed by Angle): pipes, ridges, hulls.
+         *   Slope          — a ramp along one axis: wedges, tilted panels.
+         *   SilhouetteDome — blurred ALPHA as the height field: the sprite inflates from its
+         *                    own outline whatever its shape (needs mipmaps on the texture).
+         * On spline-fill meshes every non-None mode instead uses the baked edge band as the
+         * distance field — the whole piece domes/bevels up from its own outline.
+         */
+        public enum FormShape { None = 0, Shape = 1, Cylinder = 2, Slope = 3, SilhouetteDome = 4 }
+
         // Cached shader property ids (avoids string hashing every write).
         // The handful a per-submesh subclass needs to re-point are protected.
         protected static readonly int SpecColorID = Shader.PropertyToID("_SpecColor");
@@ -128,6 +142,15 @@ namespace Submachina.Core
         private static readonly int NormalTexID = Shader.PropertyToID("_NormalTex");
         private static readonly int NormalTexSTID = Shader.PropertyToID("_NormalTexST");
         private static readonly int SortingLayerBitID = Shader.PropertyToID("_SortingLayerBit");
+        private static readonly int ShapeModeID = Shader.PropertyToID("_ShapeMode");
+        private static readonly int ShapeHeightID = Shader.PropertyToID("_ShapeHeight");
+        private static readonly int ShapeRimID = Shader.PropertyToID("_ShapeRim");
+        private static readonly int ShapeProfileID = Shader.PropertyToID("_ShapeProfile");
+        private static readonly int ShapeRectID = Shader.PropertyToID("_ShapeRect");
+        private static readonly int ShapeExtentID = Shader.PropertyToID("_ShapeExtent");
+        private static readonly int ShapeAngleID = Shader.PropertyToID("_ShapeAngle");
+        private static readonly int ShapeDetailID = Shader.PropertyToID("_ShapeDetail");
+        private static readonly int ShapeBlurID = Shader.PropertyToID("_ShapeBlur");
 
         // =====================
         // Baseline (per-instance look — variations without material copies)
@@ -446,6 +469,108 @@ namespace Submachina.Core
             || normalSource == NormalSource.AlbedoHeight;
 
         // =====================
+        // Form shape — a broad procedural 3D form composited UNDER the detail normal
+        // =====================
+
+        [FoldoutGroup("Form Shape")]
+        [InfoBox("Composites a broad 3D FORM under the Surface Normal above (Reoriented Normal " +
+                 "Mapping), so the whole sprite reads as a raised solid while the normal source " +
+                 "keeps supplying the surface texture riding on it. Pairs beautifully with " +
+                 "AlbedoHeight or a tiled Normal Texture: broad shape + textured detail. The form " +
+                 "feeds the specular AND the 2D light buffer, so it shades as real depth under " +
+                 "every Light2D. Pair with Ambient Relief to see the form with no light on it.")]
+        [Tooltip("Shape = the dome/bevel/pillow family (morph with Rim/Profile/Rectangularity). " +
+                 "Cylinder = curved across one axis (aim with Angle). Slope = a ramp. " +
+                 "SilhouetteDome = the sprite inflates from its own alpha outline, whatever its " +
+                 "shape (needs mipmaps). On spline-fill meshes every mode instead uses the baked " +
+                 "edge band — the piece domes up from its own outline.")]
+        [SerializeField] private FormShape formShape = FormShape.None;
+
+        // One-click starting points in the Rim/Profile/Height morph space (all editable after).
+        [FoldoutGroup("Form Shape"), ButtonGroup("Form Shape/Presets")]
+        private void Dome() => ApplyFormPreset(0f, 1f, 2f);
+        [ButtonGroup("Form Shape/Presets")]
+        private void Pillow() => ApplyFormPreset(0.45f, 1.8f, 2.5f);
+        [ButtonGroup("Form Shape/Presets")]
+        private void Bevel() => ApplyFormPreset(0.65f, 0.2f, 2f);
+        [ButtonGroup("Form Shape/Presets")]
+        private void Cone() => ApplyFormPreset(0f, 0f, 1.5f);
+
+        [FoldoutGroup("Form Shape"), ShowIf(nameof(HasForm)), Range(0f, 8f)]
+        [Tooltip("Overall steepness/depth of the form — the master 3D-ness dial.")]
+        [SerializeField] private float formHeight = 2f;
+
+        [FoldoutGroup("Form Shape"), ShowIf(nameof(HasProfiledForm)), Range(0f, 0.95f)]
+        [Tooltip("Where the slope starts. 0 = curvature from the very centre (dome); higher = a " +
+                 "flat plateau with the slope pushed out to a shoulder near the edge (bevel/pillow).")]
+        [SerializeField] private float formRim = 0f;
+
+        [FoldoutGroup("Form Shape"), ShowIf(nameof(HasProfiledForm)), Range(0f, 4f)]
+        [Tooltip("Slope curve outside the rim. 0 = constant slope (linear bevel / cone), ~1 = " +
+                 "parabolic dome, 2+ = slope packed at the edge (round inflated-cushion shoulder).")]
+        [SerializeField] private float formProfile = 1f;
+
+        [FoldoutGroup("Form Shape"), ShowIf(nameof(IsShapeForm)), Range(0f, 1f)]
+        [Tooltip("Footprint of the shape: 0 = round/elliptical, 1 = rectangular with the slope on " +
+                 "all four sides (a cushion/panel look). Blend between for rounded rects.")]
+        [SerializeField] private float formRectangularity = 0f;
+
+        [FoldoutGroup("Form Shape"), ShowIf(nameof(HasProfiledForm)), Range(0.1f, 4f)]
+        [Tooltip("Footprint scale. Sprites: >1 pulls the form's edge INSIDE the rect (art with " +
+                 "transparent padding), <1 spreads it past the rect (a gentler cap). Spline fills: " +
+                 "the fraction of the baked edge band the form spans, like Edge Effect Width.")]
+        [SerializeField] private float formExtent = 1f;
+
+        [FoldoutGroup("Form Shape"), ShowIf(nameof(HasOrientedForm)), Range(-180f, 180f)]
+        [Tooltip("Rotates the shape frame (degrees) — aims the cylinder axis / slope direction, " +
+                 "or tilts the rectangular footprint.")]
+        [SerializeField] private float formAngle = 0f;
+
+        [FoldoutGroup("Form Shape"), ShowIf(nameof(HasForm)), Range(0f, 1f)]
+        [Tooltip("How much of the detail relief (the Surface Normal above) survives on the form. " +
+                 "1 = full detail riding the shape; 0 = the bare smooth form.")]
+        [SerializeField] private float formDetail = 1f;
+
+        [FoldoutGroup("Form Shape"), ShowIf(nameof(IsSilhouetteForm))]
+        [InfoBox("The sprite's texture has no mipmaps, so the silhouette can't be blurred into a " +
+                 "rounded shoulder — enable 'Generate Mip Maps' in the texture's import settings.",
+                 InfoMessageType.Warning, nameof(SilhouetteNeedsMips))]
+        [Range(0f, 6f)]
+        [Tooltip("Mip level the alpha outline is blurred to. Higher = a wider, rounder inflated " +
+                 "shoulder reaching further inside the silhouette.")]
+        [SerializeField] private float formSilhouetteBlur = 3f;
+
+        // Which form dials are relevant to the current mode.
+        private bool HasForm => formShape != FormShape.None;
+        private bool HasProfiledForm => HasForm && formShape != FormShape.SilhouetteDome;
+        private bool IsShapeForm => formShape == FormShape.Shape;
+        private bool HasOrientedForm => IsShapeForm || formShape == FormShape.Cylinder || formShape == FormShape.Slope;
+        private bool IsSilhouetteForm => formShape == FormShape.SilhouetteDome;
+
+        // Warn when the silhouette inflate can't blur (same mip requirement as the height blur).
+        private bool SilhouetteNeedsMips
+        {
+            get
+            {
+                if (formShape != FormShape.SilhouetteDome) return false;
+                var sr = GetComponentInChildren<SpriteRenderer>();
+                var tex = sr != null && sr.sprite != null ? sr.sprite.texture : null;
+                return tex != null && tex.mipmapCount <= 1;
+            }
+        }
+
+        /** Preset jump into the Rim/Profile/Height morph space, applied immediately. */
+        private void ApplyFormPreset(float rim, float profile, float height)
+        {
+            formShape = FormShape.Shape;
+            formRim = rim;
+            formProfile = profile;
+            formHeight = height;
+            EnsureInitialized();
+            ApplyBaseline();
+        }
+
+        // =====================
         // Ambient relief — the relief you can see with NO light on the surface
         // =====================
 
@@ -741,6 +866,16 @@ namespace Submachina.Core
             mpb.SetFloat(HeightCompressID, heightCompress);
             // Whether the 2D light buffer reads the Normal Source too, or only _NormalMap.
             mpb.SetFloat(DiffFromModeID, diffuseUsesNormalMode ? 1f : 0f);
+            // Form Shape: the broad procedural form composited under the detail normal.
+            mpb.SetFloat(ShapeModeID, (float)(int)formShape);
+            mpb.SetFloat(ShapeHeightID, formHeight);
+            mpb.SetFloat(ShapeRimID, formRim);
+            mpb.SetFloat(ShapeProfileID, formProfile);
+            mpb.SetFloat(ShapeRectID, formRectangularity);
+            mpb.SetFloat(ShapeExtentID, formExtent);
+            mpb.SetFloat(ShapeAngleID, formAngle * Mathf.Deg2Rad);
+            mpb.SetFloat(ShapeDetailID, formDetail);
+            mpb.SetFloat(ShapeBlurID, formSilhouetteBlur);
             // Light-FOLLOWING relief: the emboss's grazing angle plus the directional groove
             // term. These live with the lights, so they're independent of the ambientRelief
             // toggle below (which only gates the light-independent terms).
