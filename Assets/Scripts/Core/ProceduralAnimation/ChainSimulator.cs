@@ -17,7 +17,7 @@ namespace Core.ProceduralAnimation
      * after this runs — see the DefaultExecutionOrder pairing.
      */
     [DefaultExecutionOrder(50)]
-    public class ChainSimulator : MonoBehaviour
+    public class ChainSimulator : MonoBehaviour, IProcPointSource
     {
         // =====================
         // Chain
@@ -378,6 +378,9 @@ namespace Core.ProceduralAnimation
 
         /** World-space left-perpendicular at point i — the ribbon width axis. */
         public Vector2 GetNormal(int i) => Chain.NormalAt(i);
+
+        /** IProcPointSource: rest pose = the chain laid straight behind the anchor. */
+        public void PrepareEditorPreview() => SnapToAnchor();
 
         /**
          * Goes limp (ragdoll) for a duration — the body stops imposing a facing, joints

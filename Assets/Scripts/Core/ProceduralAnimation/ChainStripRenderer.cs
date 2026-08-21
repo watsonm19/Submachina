@@ -27,8 +27,12 @@ namespace Core.ProceduralAnimation
         // =====================
 
         [FoldoutGroup("Source")]
-        [Tooltip("Chain to render. Auto-resolves from this object or its parents if left empty.")]
+        [Tooltip("Chain to render. Auto-resolves from this object or its parents if left empty — including any other IProcPointSource (e.g. an IKLeg) when no ChainSimulator is assigned.")]
         [SerializeField] private ChainSimulator chain;
+
+        // Resolved point source — the chain when assigned, else any IProcPointSource on
+        // this object or a parent (IK legs use this path).
+        private IProcPointSource _source;
 
         // =====================
         // Shape
@@ -82,8 +86,11 @@ namespace Core.ProceduralAnimation
         /** The MeshRenderer, exposed so creatures can drive MaterialPropertyBlocks (flash, emission pulses). */
         public MeshRenderer Renderer => _renderer;
 
-        /** The chain being rendered — creatures sometimes need it for effect placement (e.g. ink from a tentacle tip). */
+        /** The chain being rendered (null when driven by a non-chain source such as an IKLeg). */
         public ChainSimulator Chain => chain;
+
+        /** The resolved point source actually being skinned. */
+        public IProcPointSource Source => _source;
 
         private MeshFilter _filter;
         private MeshRenderer _renderer;
@@ -107,11 +114,18 @@ namespace Core.ProceduralAnimation
         {
             _filter = GetComponent<MeshFilter>();
             _renderer = GetComponent<MeshRenderer>();
-            if (chain == null) chain = GetComponentInParent<ChainSimulator>();
+            ResolveSource();
 
             EnsureMesh();
             ApplySorting();
             RebuildAll();
+        }
+
+        /** Explicit chain wins; otherwise adopt any IProcPointSource on self/parents (ChainSimulator or IKLeg alike). */
+        private void ResolveSource()
+        {
+            if (chain == null) chain = GetComponentInParent<ChainSimulator>();
+            _source = chain != null ? chain : GetComponentInParent<IProcPointSource>();
         }
 
         private void OnDisable()
@@ -140,12 +154,13 @@ namespace Core.ProceduralAnimation
 
         private void LateUpdate()
         {
-            if (chain == null) return;
+            if (_source == null) ResolveSource();
+            if (_source == null) return;
 
             // Edit mode: show the rest pose so widths/colors are tunable without playing.
             if (!Application.isPlaying)
             {
-                chain.SnapToAnchor();
+                _source.PrepareEditorPreview();
                 RebuildAll();
                 return;
             }
@@ -158,8 +173,22 @@ namespace Core.ProceduralAnimation
                 _nextOffscreenUpdate = Time.time + offscreenUpdateInterval;
             }
 
-            if (_builtPointCount != chain.PointCount || _builtCapSegments != capSegments) RebuildAll();
-            else UpdatePositions();
+            // Self-heal: play-mode transitions with domain/scene reload disabled can leave
+            // the filter pointing at a destroyed or cleared mesh while our cached fields
+            // still look valid (or vice versa). One full rebuild recovers any such state.
+            if (!MeshHealthy()) { RebuildAll(); return; }
+
+            UpdatePositions();
+        }
+
+        /** True when the mesh object, the filter binding, and the baked topology all agree. */
+        private bool MeshHealthy()
+        {
+            return _mesh != null
+                   && _filter.sharedMesh == _mesh
+                   && _builtPointCount == _source.PointCount
+                   && _builtCapSegments == capSegments
+                   && _mesh.vertexCount == _source.PointCount * 3 + capSegments * 2;
         }
 
         // -------------------------------------------------------
@@ -168,20 +197,26 @@ namespace Core.ProceduralAnimation
 
         private void EnsureMesh()
         {
-            if (_mesh != null) return;
-            _mesh = new Mesh { name = "ChainStrip (generated)", hideFlags = HideFlags.DontSave };
-            _mesh.MarkDynamic();
-            _filter.sharedMesh = _mesh;
+            if (_mesh == null)
+            {
+                _mesh = new Mesh { name = "ChainStrip (generated)", hideFlags = HideFlags.DontSave };
+                _mesh.MarkDynamic();
+            }
+
+            // Re-bind every time: a play-exit scene restore can reset the filter to a
+            // null/stale reference (DontSave meshes aren't part of the restore snapshot).
+            if (_filter != null && _filter.sharedMesh != _mesh) _filter.sharedMesh = _mesh;
         }
 
         /** Full rebuild: allocates buffers for the current topology and bakes all static data. */
         private void RebuildAll()
         {
-            if (chain == null) return;
-            if (chain.Chain == null) chain.SnapToAnchor();
+            if (_source == null) ResolveSource();
+            if (_source == null) return;
+            if (!Application.isPlaying) _source.PrepareEditorPreview();
             EnsureMesh();
 
-            int n = chain.PointCount;
+            int n = _source.PointCount;
             int caps = capSegments;
             int vertCount = n * 3 + caps * 2;
             int triCount = (n - 1) * 4 + (caps > 0 ? 2 * (caps + 1) : 2);
@@ -213,7 +248,7 @@ namespace Core.ProceduralAnimation
                 // (no caps) count longitudinal distance to the tip as well, so outlines close.
                 float spineDist = halfW;
                 if (caps == 0)
-                    spineDist = Mathf.Min(spineDist, Mathf.Min(i, n - 1 - i) * chain.SegmentLength);
+                    spineDist = Mathf.Min(spineDist, Mathf.Min(i, n - 1 - i) * _source.SegmentLength);
                 _uv1[v] = new Vector4(0f, 0f, 0f, 0f);
                 _uv1[v + 1] = new Vector4(0f, 0f, spineDist, 0f);
                 _uv1[v + 2] = new Vector4(0f, 0f, 0f, 0f);
@@ -251,7 +286,7 @@ namespace Core.ProceduralAnimation
         /** Per-frame path: only vertex positions change; everything else is baked. */
         private void UpdatePositions()
         {
-            int n = chain.PointCount;
+            int n = _source.PointCount;
             var t = transform;
 
             // Row verts: spine point ± normal × half-width, in this transform's local space.
@@ -259,8 +294,8 @@ namespace Core.ProceduralAnimation
             {
                 float along = i / (float)(n - 1);
                 float halfW = HalfWidth(along);
-                Vector2 c = chain.GetPoint(i);
-                Vector2 nrm = chain.GetNormal(i);
+                Vector2 c = _source.GetPoint(i);
+                Vector2 nrm = _source.GetNormal(i);
 
                 int v = i * 3;
                 _vertices[v] = t.InverseTransformPoint(c + nrm * halfW);
@@ -271,8 +306,8 @@ namespace Core.ProceduralAnimation
             // Rounded caps: semicircle fans beyond the first/last rows.
             if (capSegments > 0)
             {
-                WriteCapArc(0, -chain.GetTangent(0), HalfWidth(0f), n * 3);
-                WriteCapArc(n - 1, chain.GetTangent(n - 1), HalfWidth(1f), n * 3 + capSegments);
+                WriteCapArc(0, -_source.GetTangent(0), HalfWidth(0f), n * 3);
+                WriteCapArc(n - 1, _source.GetTangent(n - 1), HalfWidth(1f), n * 3 + capSegments);
             }
 
             if (Application.isPlaying && _builtPointCount == n)
@@ -288,8 +323,8 @@ namespace Core.ProceduralAnimation
          */
         private void WriteCapArc(int pointIndex, Vector2 forward, float radius, int firstVert)
         {
-            Vector2 c = chain.GetPoint(pointIndex);
-            Vector2 nrm = chain.GetNormal(pointIndex);
+            Vector2 c = _source.GetPoint(pointIndex);
+            Vector2 nrm = _source.GetNormal(pointIndex);
             if (pointIndex == 0) nrm = -nrm; // head cap sweeps the mirrored way so winding stays consistent
 
             var t = transform;

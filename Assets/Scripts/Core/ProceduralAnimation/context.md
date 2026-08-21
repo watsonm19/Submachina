@@ -66,19 +66,51 @@ Odin "Test Limp" / "Test Freeze Pose" buttons preview each in Play mode.
 Which creatures care: only chains in **Velocity** facing get the turn-around
 artifact — currently just the eel body. Jellyfish and squid tentacles are
 `FacingMode.None`, so limp only loosens them as a flinch.
+- **IProcPointSource** — the point-run contract renderers skin: implemented by
+  ChainSimulator and IKLeg, so ChainStripRenderer ribbons either. A renderer
+  with no explicit chain adopts any IProcPointSource on itself or a parent.
 - **ChainStripRenderer** (`[DefaultExecutionOrder(60)]`) — tapered ribbon mesh
-  over a ChainSimulator: 3 verts per point (edge/spine/edge) + rounded end caps.
-  UV0 maps head→tail × across; UV1.z carries world-space distance to the
+  over any IProcPointSource: 3 verts per point (edge/spine/edge) + rounded end
+  caps. UV0 maps head→tail × across; UV1.z carries world-space distance to the
   silhouette for the ProcCreature shader's constant-width outline. Vertex color
-  gradient along length (tentacle tip fades). Off-screen it throttles to an
-  interval. Edit-mode preview shows the rest pose.
+  gradient along length (tentacle tip fades); `SetTint()` for per-instance MPB
+  color. Off-screen it throttles to an interval. Edit-mode preview shows the
+  rest pose.
 - **ChainSpriteRenderer** — alternative renderer: one SpriteRenderer per chain
   segment (art-directed shells/plates/links), auto-managed children, batches
   through the normal sprite pipeline.
 - **RadialMeshRenderer** — deformable closed blob (jelly bells, squid mantles):
-  rim ring + center fan, silhouette authored as a radius-by-angle curve.
-  Runtime deform channels: `Squash` (Vector2), `UniformScale`, `RimOffsets[]`
+  rim ring + center fan, silhouette authored as a radius-by-angle curve OR baked
+  from an authored transparent PNG (see Sprite silhouettes below). Runtime
+  deform channels: `Squash` (Vector2), `UniformScale`, `RimOffsets[]`
   (per-vertex radial push). Same UV1 edge-distance convention.
+- **IKLeg** (`[DefaultExecutionOrder(55)]`) — analytic 2-bone leg (hip/knee/foot,
+  published as 5 points for a smooth knee bend). Something sets `FootTarget`
+  world-space each tick — LegGaitController for walking, or a brain directly
+  (crab claws). `bendSign` mirrors the knee side.
+- **LegGaitController** (`[DefaultExecutionOrder(52)]`) — stepping gait over a
+  set of IKLegs: body-relative home stances projected onto ground (Physics2D
+  raycast, `groundMask`), lifted arc swings when feet drift past threshold,
+  alternating parity groups so the body always has support, velocity-led foot
+  placement. Airborne legs paddle a slow staggered circle around their dangling
+  stance (`airborneWaveAmplitude`/`Frequency`, 0 = stiff dangle) so a falling
+  creature reads alive; `GroundedFraction` tells the brain.
+- **ProcCreatureColorOverride** — per-instance color overrides (fill/outline/
+  emission/flash color) via MaterialPropertyBlock, ExecuteAlways for edit-time
+  palette iteration; read-modify-write so it composes with brains animating
+  `_FlashAmount`/`_EmissionColor`. The creature equivalent of SplineFillOverride.
+
+## Sprite silhouettes
+
+RadialMeshRenderer's `SpriteSilhouette` mode turns an authored transparent image
+(e.g. a squid-mantle PNG) into a deformable body: one alpha ray-march per rim
+vertex from the sprite pivot bakes a radius-by-angle table plus texture-space
+UVs (serialized — no runtime texture reads). UVs stay pinned to the REST mapping
+so squash/rim-wobble stretch the artwork itself, and the sprite's texture is
+pushed into `_MainTex` via property block so many creatures share one material.
+Shapes should be roughly star-convex around the pivot (each outward ray crosses
+the silhouette once); re-bake is automatic on sprite change, or via the Bake
+button. `Art/Creatures/SilhouetteTest_Mantle.png` is a generated test shape.
 
 ## Rendering
 
@@ -95,3 +127,11 @@ other material works too — the outline just needs UV1 support.
   channels so state machines speak through body language.
 - `Submachina.Core.DistanceCullable` disables simulators/renderers far from all
   submarines; OnEnable re-snap prevents whip artifacts on restore.
+
+## Reliability
+
+Both mesh renderers self-heal every LateUpdate: if the generated mesh, the
+MeshFilter binding, or the baked topology disagree (play-mode transitions with
+domain/scene reload disabled can strand any of them), a full rebuild recovers in
+one frame. `EnsureMesh` also re-binds the filter on every rebuild, since the
+DontSave mesh is excluded from the play-exit restore snapshot.

@@ -103,6 +103,58 @@ namespace Submachina.Core.EditorTools
                       "Use 'Add Creature Rules To Default Profile' to enable them in normal play.");
         }
 
+        /**
+         * Second-wave content: crab + anglerfish, their materials/rules, the sprite-
+         * silhouette test image, and an additive patch that gives every existing
+         * creature prefab a ProcCreatureColorOverride (added only if missing — this
+         * path never rebuilds the original four prefabs, so hand-tuning survives).
+         */
+        [MenuItem("Tools/Submachina/Creatures/Build New Creatures (Crab + Anglerfish)")]
+        public static void BuildWaveTwo()
+        {
+            EnsureFolders();
+
+            Material matCrab = BuildCreatureMaterial("Mat_Crab",
+                fill: new Color(0.78f, 0.42f, 0.25f, 1f), outline: new Color(0.2f, 0.08f, 0.04f, 1f),
+                flash: new Color(1f, 0.9f, 0.7f, 1f), emission: Color.black, rimEmission: 0f);
+            Material matAngler = BuildCreatureMaterial("Mat_Angler",
+                fill: new Color(0.14f, 0.13f, 0.12f, 1f), outline: new Color(0.02f, 0.02f, 0.03f, 1f),
+                flash: new Color(0.9f, 0.95f, 1f, 1f), emission: Color.black, rimEmission: 0f);
+            Material matLure = BuildCreatureMaterial("Mat_AnglerLure",
+                fill: new Color(0.9f, 0.85f, 0.6f, 1f), outline: new Color(0.25f, 0.2f, 0.05f, 0.6f),
+                flash: Color.white, emission: Color.black, rimEmission: 1.5f);
+
+            GameObject o2Bubble = AssetDatabase.LoadAssetAtPath<GameObject>(O2BubblePath);
+
+            GameObject crab = BuildCrabPrefab(matCrab, o2Bubble);
+            GameObject angler = BuildAnglerfishPrefab(matAngler, matLure, o2Bubble);
+            BuildSilhouetteTestSprite();
+            AddColorOverridesToExistingPrefabs();
+
+            BuildSpawnRule("CreatureCrab", crab, minDepth: 40f,
+                notes: "Procedural crab — walks terrain via IK legs, claw-snap melee. Sinks to the nearest floor after spawn.",
+                configure: so =>
+                {
+                    SetEnum(so, "rule.count.kind", (int)CountKind.CurveRange);
+                    SetFloat(so, "rule.count.refMinDepth", 40f);
+                    SetFloat(so, "rule.count.refMaxDepth", 350f);
+                    SetFloat(so, "rule.count.countAtMinDepth", 0.3f);
+                    SetFloat(so, "rule.count.countAtMaxDepth", 1.5f);
+                    SetFloat(so, "rule.minSpacing", 6f);
+                });
+            BuildSpawnRule("CreatureAnglerfish", angler, minDepth: 250f,
+                notes: "Procedural anglerfish — near-invisible ambusher betrayed by its glowing lure. Deep water only.",
+                configure: so =>
+                {
+                    SetEnum(so, "rule.count.kind", (int)CountKind.SingleRoll);
+                    SetFloat(so, "rule.count.spawnChance", 0.25f);
+                });
+
+            AssetDatabase.SaveAssets();
+            Debug.Log("[CreatureBuilder] Wave two built: crab, anglerfish, silhouette test sprite, and color overrides " +
+                      "patched onto existing creature prefabs (additive — no existing tuning touched).");
+        }
+
         [MenuItem("Tools/Submachina/Creatures/Add Creature Rules To Default Profile")]
         public static void AddRulesToDefaultProfile()
         {
@@ -114,7 +166,7 @@ namespace Submachina.Core.EditorTools
             if (list == null) { Debug.LogError("[CreatureBuilder] SpawnProfile.sharedRules not found — field renamed?"); return; }
 
             int added = 0;
-            foreach (string name in new[] { "CreatureEel", "CreatureJellyfish", "CreatureSquid", "CreatureFishSchool" })
+            foreach (string name in new[] { "CreatureEel", "CreatureJellyfish", "CreatureSquid", "CreatureFishSchool", "CreatureCrab", "CreatureAnglerfish" })
             {
                 var rule = AssetDatabase.LoadAssetAtPath<SpawnRule>($"{RuleFolder}/{name}.asset");
                 if (rule == null) { Debug.LogWarning($"[CreatureBuilder] Rule {name} missing — run Build Sample Creatures first."); continue; }
@@ -141,14 +193,14 @@ namespace Submachina.Core.EditorTools
             Vector3 center = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.pivot : Vector3.zero;
             center.z = 0f;
 
-            string[] names = { "EelCreature", "JellyfishCreature", "SquidCreature", "FishSchool" };
+            string[] names = { "EelCreature", "JellyfishCreature", "SquidCreature", "FishSchool", "CrabCreature", "AnglerfishCreature" };
             for (int i = 0; i < names.Length; i++)
             {
                 var prefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PrefabFolder}/{names[i]}.prefab");
-                if (prefab == null) { Debug.LogWarning($"[CreatureBuilder] {names[i]} prefab missing — run Build Sample Creatures first."); continue; }
+                if (prefab == null) { Debug.LogWarning($"[CreatureBuilder] {names[i]} prefab missing — run the build menu items first."); continue; }
 
                 var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
-                instance.transform.position = center + new Vector3((i - 1.5f) * 7f, 0f, 0f);
+                instance.transform.position = center + new Vector3((i - (names.Length - 1) * 0.5f) * 7f, 0f, 0f);
                 Undo.RegisterCreatedObjectUndo(instance, "Spawn Sample Creatures");
             }
         }
@@ -546,6 +598,290 @@ namespace Submachina.Core.EditorTools
             Configure(school, so => SetRef(so, "fishPrefab", fishPrefab));
             AddCulling(root, school);
             return SavePrefab(root);
+        }
+
+        // =====================================================================
+        // Prefab: Crab
+        // =====================================================================
+
+        private static GameObject BuildCrabPrefab(Material mat, GameObject o2Bubble)
+        {
+            GameObject root = NewCreatureRoot("CrabCreature", out Rigidbody2D rb, out Health health, out HitReceiver hit);
+            rb.linearDamping = 2f;
+            SetInt(health, "maxHP", 8);
+
+            var col = root.AddComponent<CircleCollider2D>();
+            col.radius = 0.48f;
+
+            int defaultMask = LayerMask.GetMask("Default");
+
+            // Shell — wide armored oval, drawn above the legs.
+            GameObject shellGo = NewChild(root, "Shell");
+            var shell = shellGo.AddComponent<RadialMeshRenderer>();
+            Configure(shell, so =>
+            {
+                SetInt(so, "ringSegments", 26);
+                SetFloat(so, "baseRadius", 0.5f);
+                SetCurve(so, "radiusProfile", new AnimationCurve(
+                    new Keyframe(0f, 1.25f), new Keyframe(0.25f, 0.85f), new Keyframe(0.5f, 1.25f),
+                    new Keyframe(0.75f, 0.65f), new Keyframe(1f, 1.25f)));
+                SetInt(so, "sortingOrder", 2);
+            });
+            shell.GetComponent<MeshRenderer>().sharedMaterial = mat;
+
+            // Walking legs — order defines the alternating gait groups.
+            float[] hipXs = { -0.38f, -0.16f, 0.16f, 0.38f };
+            var walkLegs = new IKLeg[4];
+            for (int i = 0; i < 4; i++)
+                walkLegs[i] = BuildLeg(root, $"Leg_{i}", mat, new Vector2(hipXs[i], -0.06f),
+                    upper: 0.34f, lower: 0.4f, bendSign: hipXs[i] < 0f ? -1f : 1f, width: 0.09f, pincer: false);
+
+            // Claws — driven by the brain, NOT the gait; bulbous pincer tips.
+            var claws = new IKLeg[2];
+            claws[0] = BuildLeg(root, "Claw_L", mat, new Vector2(-0.3f, 0.12f), 0.3f, 0.36f, -1f, 0.16f, pincer: true);
+            claws[1] = BuildLeg(root, "Claw_R", mat, new Vector2(0.3f, 0.12f), 0.3f, 0.36f, 1f, 0.16f, pincer: true);
+
+            // Eyestalks — pure charm, ambient sway only.
+            for (int i = 0; i < 2; i++)
+            {
+                GameObject stalk = NewChild(root, $"Eyestalk_{i}");
+                var sim = stalk.AddComponent<ChainSimulator>();
+                var strip = stalk.AddComponent<ChainStripRenderer>();
+                Configure(sim, so =>
+                {
+                    SetInt(so, "pointCount", 4);
+                    SetFloat(so, "segmentLength", 0.08f);
+                    SetFloat(so, "maxBendDegrees", 40f);
+                    SetFloat(so, "straightenSpeed", 6f);
+                    SetRef(so, "anchor", root.transform);
+                    SetVec2(so, "anchorOffset", new Vector2(i == 0 ? -0.12f : 0.12f, 0.4f));
+                    SetEnum(so, "facing", (int)ChainSimulator.FacingMode.None);
+                    SetFloat(so, "idleWaveAmplitude", 0f);
+                    SetFloat(so, "swayAmplitude", 0.03f);
+                    SetFloat(so, "swayFrequency", 0.5f);
+                    SetVec2(so, "constantForce", new Vector2(0f, 0.6f)); // buoyant — stands up
+                });
+                Configure(strip, so =>
+                {
+                    SetRef(so, "chain", sim);
+                    SetFloat(so, "maxWidth", 0.06f);
+                    SetCurve(so, "widthProfile", new AnimationCurve(new Keyframe(0f, 0.7f), new Keyframe(0.85f, 0.5f), new Keyframe(1f, 1f)));
+                    SetInt(so, "capSegments", 3);
+                    SetInt(so, "sortingOrder", 3);
+                });
+                strip.GetComponent<MeshRenderer>().sharedMaterial = mat;
+            }
+
+            // Gait over the four walking legs only (claws stay brain-driven).
+            var gait = root.AddComponent<LegGaitController>();
+            Configure(gait, so =>
+            {
+                SetRefArray(so, "legs", walkLegs);
+                SetInt(so, "groundMask", defaultMask);
+            });
+
+            var brain = root.AddComponent<CrabEnemy>();
+            Configure(brain, so =>
+            {
+                SetRef(so, "gait", gait);
+                SetRefArray(so, "claws", claws);
+                SetRef(so, "shell", shell);
+                SetInt(so, "groundMask", defaultMask);
+            });
+            WireDeathDrops(brain, o2Bubble, count: 3);
+            root.AddComponent<ProcCreatureColorOverride>();
+
+            var suspend = new Behaviour[9];
+            suspend[0] = brain; suspend[1] = gait; suspend[2] = shell;
+            for (int i = 0; i < 4; i++) suspend[3 + i] = walkLegs[i];
+            suspend[7] = claws[0]; suspend[8] = claws[1];
+            AddCulling(root, suspend);
+
+            return SavePrefab(root);
+        }
+
+        /** One IK leg child: IKLeg + strip renderer; pincer legs get the bulb-tipped width profile. */
+        private static IKLeg BuildLeg(GameObject root, string name, Material mat, Vector2 hipOffset,
+            float upper, float lower, float bendSign, float width, bool pincer)
+        {
+            GameObject go = NewChild(root, name);
+            var leg = go.AddComponent<IKLeg>();
+            var strip = go.AddComponent<ChainStripRenderer>();
+
+            Configure(leg, so =>
+            {
+                SetFloat(so, "upperLength", upper);
+                SetFloat(so, "lowerLength", lower);
+                SetFloat(so, "bendSign", bendSign);
+                SetRef(so, "hipAnchor", root.transform);
+                SetVec2(so, "hipOffset", hipOffset);
+            });
+
+            AnimationCurve widthProfile = pincer
+                ? new AnimationCurve(new Keyframe(0f, 0.55f), new Keyframe(0.6f, 0.5f), new Keyframe(0.85f, 1f), new Keyframe(1f, 0.35f))
+                : new AnimationCurve(new Keyframe(0f, 1f), new Keyframe(1f, 0.35f));
+
+            Configure(strip, so =>
+            {
+                SetFloat(so, "maxWidth", width);
+                SetCurve(so, "widthProfile", widthProfile);
+                SetInt(so, "capSegments", 3);
+                SetInt(so, "sortingOrder", 1);
+            });
+            strip.GetComponent<MeshRenderer>().sharedMaterial = mat;
+            return leg;
+        }
+
+        // =====================================================================
+        // Prefab: Anglerfish
+        // =====================================================================
+
+        private static GameObject BuildAnglerfishPrefab(Material bodyMat, Material lureMat, GameObject o2Bubble)
+        {
+            GameObject root = NewCreatureRoot("AnglerfishCreature", out Rigidbody2D rb, out Health health, out HitReceiver hit);
+            rb.linearDamping = 1f;
+            SetInt(health, "maxHP", 7);
+
+            var col = root.AddComponent<CapsuleCollider2D>();
+            col.direction = CapsuleDirection2D.Horizontal;
+            col.size = new Vector2(1.1f, 0.6f);
+
+            // Body — chunky, murk-dark strip.
+            GameObject body = NewChild(root, "Body");
+            var bodySim = body.AddComponent<ChainSimulator>();
+            var bodyStrip = body.AddComponent<ChainStripRenderer>();
+            Configure(bodySim, so =>
+            {
+                SetInt(so, "pointCount", 11);
+                SetFloat(so, "segmentLength", 0.3f);
+                SetFloat(so, "maxBendDegrees", 30f);
+                SetFloat(so, "straightenSpeed", 3.5f);
+                SetRef(so, "anchor", root.transform);
+                SetFloat(so, "idleWaveAmplitude", 0.015f);
+                SetFloat(so, "waveAmplitudePerSpeed", 0.035f);
+                SetFloat(so, "waveFrequency", 1.8f);
+                SetFloat(so, "waveLength", 2f);
+                SetFloat(so, "swayAmplitude", 0.03f);
+                SetFloat(so, "swayFrequency", 0.25f);
+            });
+            Configure(bodyStrip, so =>
+            {
+                SetRef(so, "chain", bodySim);
+                SetFloat(so, "maxWidth", 0.85f);
+                SetCurve(so, "widthProfile", new AnimationCurve(
+                    new Keyframe(0f, 0.75f), new Keyframe(0.18f, 1f), new Keyframe(0.5f, 0.7f), new Keyframe(1f, 0.05f)));
+                SetInt(so, "capSegments", 5);
+            });
+            bodyStrip.GetComponent<MeshRenderer>().sharedMaterial = bodyMat;
+
+            // Lure — free-hanging chain floated upward by buoyant constant force; tip is the bulb.
+            GameObject lureGo = NewChild(root, "Lure");
+            var lureSim = lureGo.AddComponent<ChainSimulator>();
+            var lureStrip = lureGo.AddComponent<ChainStripRenderer>();
+            Configure(lureSim, so =>
+            {
+                SetInt(so, "pointCount", 6);
+                SetFloat(so, "segmentLength", 0.14f);
+                SetFloat(so, "maxBendDegrees", 55f);
+                SetFloat(so, "straightenSpeed", 1f);
+                SetRef(so, "anchor", root.transform);
+                SetVec2(so, "anchorOffset", new Vector2(0.4f, 0.28f));
+                SetEnum(so, "facing", (int)ChainSimulator.FacingMode.None);
+                SetFloat(so, "idleWaveAmplitude", 0.01f);
+                SetFloat(so, "waveFrequency", 0.8f);
+                SetFloat(so, "swayAmplitude", 0.05f);
+                SetFloat(so, "swayFrequency", 0.5f);
+                SetVec2(so, "constantForce", new Vector2(0.12f, 0.55f)); // buoyant arc up-forward
+            });
+            Configure(lureStrip, so =>
+            {
+                SetRef(so, "chain", lureSim);
+                SetFloat(so, "maxWidth", 0.16f);
+                SetCurve(so, "widthProfile", new AnimationCurve(
+                    new Keyframe(0f, 0.25f), new Keyframe(0.75f, 0.18f), new Keyframe(0.92f, 1f), new Keyframe(1f, 0.8f)));
+                SetInt(so, "capSegments", 4);
+                SetInt(so, "sortingOrder", 1);
+            });
+            lureStrip.GetComponent<MeshRenderer>().sharedMaterial = lureMat;
+
+            var brain = root.AddComponent<AnglerfishEnemy>();
+            Configure(brain, so =>
+            {
+                SetRef(so, "body", bodySim);
+                SetRef(so, "bodyRenderer", bodyStrip);
+                SetRef(so, "lure", lureSim);
+                SetRef(so, "lureRenderer", lureStrip);
+            });
+            WireDeathDrops(brain, o2Bubble, count: 3);
+            root.AddComponent<ProcCreatureColorOverride>();
+            AddCulling(root, brain, bodySim, bodyStrip, lureSim, lureStrip);
+
+            return SavePrefab(root);
+        }
+
+        // =====================================================================
+        // Silhouette test sprite + color-override patching
+        // =====================================================================
+
+        /** A squid-mantle-ish teardrop-with-fins PNG for trying the sprite-silhouette workflow. */
+        private static void BuildSilhouetteTestSprite()
+        {
+            string path = $"{ArtFolder}/SilhouetteTest_Mantle.png";
+            if (AssetDatabase.LoadAssetAtPath<Texture2D>(path) != null) return;
+
+            const int size = 128;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            Vector2 c = new Vector2(size * 0.42f, size * 0.5f);
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                // Teardrop: an ellipse whose x-radius stretches toward +X, plus two fin
+                // triangles near the tip. Alpha-only shape; fill is flat light grey so
+                // material tints read cleanly.
+                float dx = x - c.x, dy = y - c.y;
+                float stretch = dx > 0f ? 1.55f : 0.85f;
+                float rx = size * 0.3f * stretch, ry = size * 0.26f;
+                bool inBody = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1f;
+
+                // Fins: wedges above/below the tip half.
+                float tip01 = Mathf.InverseLerp(c.x, size * 0.95f, x);
+                bool inFin = tip01 > 0.35f && Mathf.Abs(dy) < ry * (0.4f + tip01 * 1.1f) && Mathf.Abs(dy) > ry * 0.55f;
+
+                tex.SetPixel(x, y, inBody || inFin ? new Color(0.85f, 0.85f, 0.85f, 1f) : Color.clear);
+            }
+            tex.Apply();
+            File.WriteAllBytes(path, tex.EncodeToPNG());
+            Object.DestroyImmediate(tex);
+            AssetDatabase.ImportAsset(path);
+
+            if (AssetImporter.GetAtPath(path) is TextureImporter importer)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.alphaIsTransparency = true;
+                importer.mipmapEnabled = false;
+                importer.SaveAndReimport();
+            }
+        }
+
+        /** Adds ProcCreatureColorOverride to the wave-one prefabs if missing — additive, never rebuilds. */
+        private static void AddColorOverridesToExistingPrefabs()
+        {
+            foreach (string name in new[] { "EelCreature", "JellyfishCreature", "SquidCreature" })
+            {
+                string path = $"{PrefabFolder}/{name}.prefab";
+                if (AssetDatabase.LoadAssetAtPath<GameObject>(path) == null) continue;
+
+                GameObject contents = PrefabUtility.LoadPrefabContents(path);
+                try
+                {
+                    if (contents.GetComponent<ProcCreatureColorOverride>() == null)
+                    {
+                        contents.AddComponent<ProcCreatureColorOverride>();
+                        PrefabUtility.SaveAsPrefabAsset(contents, path);
+                    }
+                }
+                finally { PrefabUtility.UnloadPrefabContents(contents); }
+            }
         }
 
         // =====================================================================

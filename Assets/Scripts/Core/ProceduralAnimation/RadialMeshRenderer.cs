@@ -39,6 +39,45 @@ namespace Core.ProceduralAnimation
         [SerializeField] private AnimationCurve radiusProfile = AnimationCurve.Constant(0f, 1f, 1f);
 
         // =====================
+        // Sprite Silhouette
+        // =====================
+
+        public enum SilhouetteSource
+        {
+            /** Silhouette authored via the radius-by-angle curve (plain color / tiled texture). */
+            RadiusProfile,
+            /** Silhouette + UVs baked from an authored transparent image — the artwork rides the deformation. */
+            SpriteSilhouette
+        }
+
+        [FoldoutGroup("Sprite Silhouette")]
+        [Tooltip("Where the blob's shape comes from. Sprite Silhouette samples an authored transparent PNG's alpha to bake both the outline and the texture mapping — squash/rim-wobble then deform the artwork itself.")]
+        [SerializeField] private SilhouetteSource silhouetteSource = SilhouetteSource.RadiusProfile;
+
+        [FoldoutGroup("Sprite Silhouette")]
+        [Tooltip("Authored image whose alpha defines the body shape (e.g. a squid-mantle PNG). The sprite's pivot is the deformation center — shapes should be roughly star-convex around it (each outward ray crosses the silhouette once).")]
+        [SerializeField, ShowIf(nameof(IsSpriteMode))] private Sprite silhouetteSprite;
+
+        [FoldoutGroup("Sprite Silhouette")]
+        [Tooltip("Alpha at or above this counts as inside the silhouette.")]
+        [SerializeField, Range(0.01f, 1f), ShowIf(nameof(IsSpriteMode))] private float alphaThreshold = 0.5f;
+
+        [FoldoutGroup("Sprite Silhouette")]
+        [Tooltip("Push the sprite's texture into _MainTex via property block so many silhouette creatures can share one ProcCreature material.")]
+        [SerializeField, ShowIf(nameof(IsSpriteMode))] private bool applySpriteTexture = true;
+
+        // Baked silhouette data — radii normalized to the longest ray (so Base Radius stays
+        // the size knob), plus absolute texture-space UVs for each rim vertex and the pivot.
+        [SerializeField, HideInInspector] private float[] bakedRadii;
+        [SerializeField, HideInInspector] private Vector2[] bakedRimUVs;
+        [SerializeField, HideInInspector] private Vector2 bakedPivotUV = new Vector2(0.5f, 0.5f);
+        [SerializeField, HideInInspector] private int bakedForSegments = -1;
+        [SerializeField, HideInInspector] private Sprite bakedFromSprite;
+
+        private bool IsSpriteMode => silhouetteSource == SilhouetteSource.SpriteSilhouette;
+        private bool HasBake => bakedRadii != null && bakedForSegments == ringSegments && bakedRadii.Length == ringSegments;
+
+        // =====================
         // Color
         // =====================
 
@@ -139,6 +178,12 @@ namespace Core.ProceduralAnimation
 
         private void OnValidate()
         {
+            // Auto-(re)bake when the sprite or ring resolution changed — edit-time only,
+            // so runtime never pays for texture reads (the bake is serialized data).
+            if (!Application.isPlaying && IsSpriteMode && silhouetteSprite != null
+                && (!HasBake || bakedFromSprite != silhouetteSprite))
+                BakeSilhouette();
+
             if (isActiveAndEnabled && _mesh != null)
             {
                 ApplySorting();
@@ -161,8 +206,21 @@ namespace Core.ProceduralAnimation
                 _nextOffscreenUpdate = Time.time + offscreenUpdateInterval;
             }
 
-            if (_builtSegments != ringSegments) RebuildAll();
-            else UpdatePositions();
+            // Self-heal: play-mode transitions with domain/scene reload disabled can leave
+            // the filter pointing at a destroyed or cleared mesh while cached fields still
+            // look valid. One full rebuild recovers any such state.
+            if (!MeshHealthy()) { RebuildAll(); return; }
+
+            UpdatePositions();
+        }
+
+        /** True when the mesh object, the filter binding, and the baked topology all agree. */
+        private bool MeshHealthy()
+        {
+            return _mesh != null
+                   && _filter.sharedMesh == _mesh
+                   && _builtSegments == ringSegments
+                   && _mesh.vertexCount == ringSegments + 1;
         }
 
         // -------------------------------------------------------
@@ -171,10 +229,15 @@ namespace Core.ProceduralAnimation
 
         private void EnsureMesh()
         {
-            if (_mesh != null) return;
-            _mesh = new Mesh { name = "RadialBlob (generated)", hideFlags = HideFlags.DontSave };
-            _mesh.MarkDynamic();
-            _filter.sharedMesh = _mesh;
+            if (_mesh == null)
+            {
+                _mesh = new Mesh { name = "RadialBlob (generated)", hideFlags = HideFlags.DontSave };
+                _mesh.MarkDynamic();
+            }
+
+            // Re-bind every time: a play-exit scene restore can reset the filter to a
+            // null/stale reference (DontSave meshes aren't part of the restore snapshot).
+            if (_filter != null && _filter.sharedMesh != _mesh) _filter.sharedMesh = _mesh;
         }
 
         /** Full rebuild: buffers + static channels (UVs, colors, edge distances, indices). */
@@ -216,23 +279,31 @@ namespace Core.ProceduralAnimation
             }
 
             UpdatePositions(pushStatic: true);
+            ApplySpriteTextureBlock();
             _builtSegments = n;
         }
 
-        /** Per-frame path: positions + planar UVs (the silhouette deforms, so UVs track it). */
+        /**
+         * Per-frame path: positions, plus UVs whose behavior depends on the mode.
+         * Profile mode maps UVs planar from the DEFORMED positions (texture stays
+         * put while the silhouette moves through it). Sprite mode pins UVs to the
+         * baked REST mapping, so the artwork itself stretches with squash/wobble —
+         * the whole point of the silhouette workflow.
+         */
         private void UpdatePositions(bool pushStatic = false)
         {
             int n = ringSegments;
+            bool spriteUVs = IsSpriteMode && HasBake && bakedRimUVs != null && bakedRimUVs.Length == n;
             float uvScale = 1f / (2f * Mathf.Max(0.01f, baseRadius));
 
             for (int i = 0; i < n; i++)
             {
                 Vector2 p = RimLocal(i);
                 _vertices[i] = p;
-                _uv0[i] = p * uvScale + new Vector2(0.5f, 0.5f);
+                _uv0[i] = spriteUVs ? bakedRimUVs[i] : p * uvScale + new Vector2(0.5f, 0.5f);
             }
             _vertices[n] = Vector3.zero;
-            _uv0[n] = new Vector2(0.5f, 0.5f);
+            _uv0[n] = spriteUVs ? bakedPivotUV : new Vector2(0.5f, 0.5f);
 
             if (pushStatic)
             {
@@ -254,6 +325,10 @@ namespace Core.ProceduralAnimation
         /** Rest-profile radius of rim vertex i (before squash/offsets/scale). */
         private float RestRadius(int i)
         {
+            // Sprite mode reads the baked normalized ray lengths; Base Radius stays the size knob.
+            if (IsSpriteMode && HasBake)
+                return Mathf.Max(0.01f, bakedRadii[i]) * baseRadius;
+
             float angle01 = i / (float)ringSegments;
             return Mathf.Max(0.01f, radiusProfile.Evaluate(angle01)) * baseRadius;
         }
@@ -274,5 +349,113 @@ namespace Core.ProceduralAnimation
             _renderer.sortingLayerName = sortingLayerName;
             _renderer.sortingOrder = sortingOrder;
         }
+
+        // -------------------------------------------------------
+        // Sprite silhouette baking
+        // -------------------------------------------------------
+
+        /**
+         * Samples the sprite's alpha to bake the silhouette: one ray per rim vertex
+         * marches outward from the sprite pivot recording the FURTHEST pixel at or
+         * above the alpha threshold (spanning interior holes/concavities), giving a
+         * radius-by-angle table plus the matching texture-space UV per rim vertex.
+         * Radii are normalized to the longest ray so Base Radius remains the world-size
+         * knob. Runs automatically when the sprite changes; also exposed as a button.
+         */
+        [FoldoutGroup("Sprite Silhouette")]
+        [Button("Bake Silhouette"), ShowIf(nameof(IsSpriteMode))]
+        public void BakeSilhouette()
+        {
+            if (silhouetteSprite == null)
+            {
+                Debug.LogWarning($"[RadialMeshRenderer] {name}: no silhouette sprite assigned — nothing to bake.");
+                return;
+            }
+
+            Texture2D readable = MakeReadableCopy(silhouetteSprite.texture);
+            try
+            {
+                Rect rect = silhouetteSprite.rect;
+                Vector2 centerPx = rect.min + silhouetteSprite.pivot;
+                float texW = readable.width, texH = readable.height;
+                float rayMax = Mathf.Sqrt(rect.width * rect.width + rect.height * rect.height);
+                int n = ringSegments;
+
+                bakedRadii = new float[n];
+                bakedRimUVs = new Vector2[n];
+                float maxLen = 0f;
+
+                // March each ray in ~1px steps, remembering the furthest opaque sample.
+                for (int i = 0; i < n; i++)
+                {
+                    float ang = i / (float)n * Mathf.PI * 2f;
+                    Vector2 dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang));
+
+                    float found = 0f;
+                    for (float d = 0.5f; d <= rayMax; d += 1f)
+                    {
+                        Vector2 px = centerPx + dir * d;
+                        if (px.x < rect.xMin || px.x >= rect.xMax || px.y < rect.yMin || px.y >= rect.yMax) continue;
+                        if (readable.GetPixel((int)px.x, (int)px.y).a >= alphaThreshold) found = d;
+                    }
+
+                    bakedRadii[i] = found;
+                    Vector2 edgePx = centerPx + dir * found;
+                    bakedRimUVs[i] = new Vector2(edgePx.x / texW, edgePx.y / texH);
+                    if (found > maxLen) maxLen = found;
+                }
+
+                if (maxLen < 1f)
+                {
+                    Debug.LogWarning($"[RadialMeshRenderer] {name}: silhouette bake found no opaque pixels above threshold {alphaThreshold} — check the sprite's alpha and pivot.");
+                    bakedForSegments = -1;
+                    return;
+                }
+
+                // Normalize so the longest ray = 1 (clamped so no ray collapses to zero).
+                for (int i = 0; i < n; i++) bakedRadii[i] = Mathf.Max(0.02f, bakedRadii[i] / maxLen);
+
+                bakedPivotUV = new Vector2(centerPx.x / texW, centerPx.y / texH);
+                bakedForSegments = n;
+                bakedFromSprite = silhouetteSprite;
+                if (_mesh != null) RebuildAll();
+            }
+            finally
+            {
+                if (Application.isPlaying) Destroy(readable);
+                else DestroyImmediate(readable);
+            }
+        }
+
+        /** GPU round-trip copy so the source texture never needs Read/Write enabled in its importer. */
+        private static Texture2D MakeReadableCopy(Texture2D src)
+        {
+            RenderTexture rt = RenderTexture.GetTemporary(src.width, src.height, 0,
+                RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+            Graphics.Blit(src, rt);
+
+            RenderTexture prev = RenderTexture.active;
+            RenderTexture.active = rt;
+            var copy = new Texture2D(src.width, src.height, TextureFormat.RGBA32, false);
+            copy.ReadPixels(new Rect(0, 0, src.width, src.height), 0, 0);
+            copy.Apply();
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+            return copy;
+        }
+
+        /** Pushes the silhouette sprite's texture into _MainTex via property block (shared material friendly). */
+        private void ApplySpriteTextureBlock()
+        {
+            if (!IsSpriteMode || !applySpriteTexture || silhouetteSprite == null || _renderer == null) return;
+
+            _texBlock ??= new MaterialPropertyBlock();
+            _renderer.GetPropertyBlock(_texBlock);
+            _texBlock.SetTexture(MainTexId, silhouetteSprite.texture);
+            _renderer.SetPropertyBlock(_texBlock);
+        }
+
+        private MaterialPropertyBlock _texBlock;
+        private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
     }
 }
