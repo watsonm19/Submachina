@@ -158,6 +158,7 @@ namespace Submachina.Core
         private static readonly int ShapeDetailID = Shader.PropertyToID("_ShapeDetail");
         private static readonly int ShapeBlurID = Shader.PropertyToID("_ShapeBlur");
         private static readonly int MainTexID = Shader.PropertyToID("_MainTex");
+        private static readonly int TintColorID = Shader.PropertyToID("_Color");
         private static readonly int MainTexSTID = Shader.PropertyToID("_MainTex_ST");
         private static readonly int NormalMapSTID = Shader.PropertyToID("_NormalMap_ST");
         private static readonly int SpecMaskSTID = Shader.PropertyToID("_SpecMask_ST");
@@ -278,7 +279,7 @@ namespace Submachina.Core
                  "Bound directly, so the sprite needs no _SpecMask Secondary Texture wiring. Sampled with " +
                  "the sprite's own UVs: standalone sprites line up 1:1, atlased sprites won't (use a " +
                  "Secondary Texture there so it atlases along). Empty = keep the sprite's Secondary " +
-                 "Texture / material default. For spline-fill meshes use SplineFillOverride's slot instead.")]
+                 "Texture / material default. For mesh fills use the Mesh Textures foldout's slot instead.")]
         [SerializeField] private Texture2D specMaskTexture;
 
         // =====================
@@ -292,6 +293,15 @@ namespace Submachina.Core
                  "and disabled toggles keep the material's values. Sprites ignore this section: " +
                  "a sprite's albedo IS the sprite; its normal/specmask overrides live in the " +
                  "Surface Normal and Spec Mask sections above.")]
+        [Tooltip("Override the whole-object multiply tint (_Color — the SpriteRenderer.color " +
+                 "equivalent for meshes): white = unchanged, grey darkens, alpha fades the object. " +
+                 "The specular glint colour is separate (Baseline above / ApplyTint).")]
+        [SerializeField] private bool overrideMeshTint = false;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideMeshTint")]
+        [SerializeField] private Color meshTint = Color.white;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf(nameof(DrivesMeshSurface))]
         [Tooltip("Tiling albedo for this object. Empty = keep the material's texture.")]
         [SerializeField] private Texture2D meshAlbedo;
 
@@ -1056,6 +1066,7 @@ namespace Submachina.Core
             // Unassigned slots / disabled toggles leave the material's values visible.
             if (r is MeshRenderer)
             {
+                if (overrideMeshTint) mpb.SetColor(TintColorID, meshTint);
                 if (meshAlbedo != null) mpb.SetTexture(MainTexID, meshAlbedo);
                 if (meshNormalMap != null) mpb.SetTexture(NormalMapID, meshNormalMap);
                 if (meshSpecMask != null) mpb.SetTexture(SpecMaskID, meshSpecMask);
@@ -1168,6 +1179,40 @@ namespace Submachina.Core
         {
             EnsureInitialized();
             ApplyBaseline();
+        }
+
+        /**
+         * Rescue hatch: property blocks live on the NATIVE renderer and can't remove
+         * single properties — clearing a texture slot here (normal override, spec mask,
+         * mesh albedo…) leaves the OLD texture bound in the block, so the removal never
+         * shows. This nukes every driven renderer's block (renderer-level AND the
+         * per-material-slot blocks a SpriteShape subclass writes), rewrites this
+         * controller's baseline fresh, and re-applies any EdgeBandOverride composing on
+         * the same renderers so its contribution isn't lost. Components that write per
+         * frame (creature flash/emission, tints) simply re-land on their next write.
+         */
+        [Button(ButtonSizes.Medium), PropertyOrder(100)]
+        public void ClearStaleBlocksAndReapply()
+        {
+            _renderers = null; // re-gather too, in case the hierarchy changed
+            EnsureInitialized();
+
+            foreach (var r in _renderers)
+            {
+                // Clear the renderer-level block plus every per-material-index block —
+                // a per-slot block REPLACES the renderer one for that submesh, so a
+                // stale slot block would survive the renderer-level clear.
+                r.SetPropertyBlock(null);
+                int slots = r.sharedMaterials != null ? r.sharedMaterials.Length : 0;
+                for (int i = 0; i < slots; i++) r.SetPropertyBlock(null, i);
+            }
+
+            ApplyBaseline();
+
+            // Sibling block-writers on the same renderers need a nudge to re-land.
+            // (global:: because inside Submachina.Core the bare "Core" binds to itself.)
+            foreach (var eb in GetComponentsInChildren<global::Core.Rendering.EdgeBandOverride>(true))
+                eb.Apply();
         }
     }
 }

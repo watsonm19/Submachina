@@ -95,10 +95,11 @@ artifact — currently just the eel body. Jellyfish and squid tentacles are
   placement. Airborne legs paddle a slow staggered circle around their dangling
   stance (`airborneWaveAmplitude`/`Frequency`, 0 = stiff dangle) so a falling
   creature reads alive; `GroundedFraction` tells the brain.
-- **ProcCreatureColorOverride** — per-instance color overrides (fill/outline/
-  emission/flash color) via MaterialPropertyBlock, ExecuteAlways for edit-time
-  palette iteration; read-modify-write so it composes with brains animating
-  `_FlashAmount`/`_EmissionColor`. The creature equivalent of SplineFillOverride.
+- Per-instance creature looks are driven by `SpecularController` (Submachina.Core)
+  — its Mesh Textures tint + "Outline & Emission" foldouts cover what the removed
+  ProcCreatureColorOverride did, plus the full specular/normal/Form-Shape stack.
+  Brains keep animating `_FlashAmount`/`_EmissionColor` via their own MPB writes
+  (read-modify-write, so everything composes).
 
 ## Sprite silhouettes
 

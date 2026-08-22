@@ -203,12 +203,12 @@ the **spline editor**; the visual is a generated mesh on a child object.
   the mask reads `_SpecMaskOnceBg` (match it to the stamp's border colour; the
   one-glowy-spot-at-a-position setup for reused decal-sized mask graphics).
 
-- **`SplineFillOverride.cs`** (`Core.Rendering`) — per-object overrides over ONE shared
-  material via MaterialPropertyBlock: texture set, fill tiling/offset, the edge-band look,
-  and a whole-object `tint` (the SpriteRenderer.color equivalent; the specular glint colour
-  is separate — dim it in step via SpecularController.ApplyTint). Free in this project:
-  every specular renderer already carries a property block. Compose-safe with
-  SpecularController (both read-modify-write the block).
+- **Per-object overrides** — the texture set / fill tiling / per-map STs / stamp-once
+  windows and the whole-object tint live in `SpecularController`'s "Mesh Textures"
+  foldout (Submachina.Core — the universal surface driver); the edge-band look lives in
+  **`EdgeBandOverride.cs`** (`Core.Rendering`, this folder) whose presence on the
+  renderer is the opt-in. Both compose-safe via read-modify-write property blocks.
+  (The old `SplineFillOverride` component was removed after all scenes were ported.)
 
 ## Gotchas
 

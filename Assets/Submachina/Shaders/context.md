@@ -20,9 +20,9 @@ One fragment brain, two thin shaders, one component driving them all.
   spline fills (SplineFillMeshBuilder), creature bodies (RadialMeshRenderer /
   ChainStripRenderer). Fill textures are first-class material slots with per-map STs and
   stamp-once windows, plus the edge band, outline/emission/flash, and everything shared.
-- **`ProcCreature2D.shader`** — DEPRECATED. Its features live in the core now and all
-  creature materials were flipped to Mesh2DLitSpecular; kept only as a lightweight
-  fallback (note: it predates the TEXCOORD1 w channel — see its header).
+- (`ProcCreature2D.shader` was REMOVED after its features were merged into the core
+  and every creature material flipped to Mesh2DLitSpecular — recover from git if a
+  stripped-down fallback is ever needed for creature GPU cost.)
 
 ## The TEXCOORD1 edge contract (all generated-mesh builders bake this)
 
@@ -40,15 +40,13 @@ refreshes `xy` per frame (the body bends); the other builders bake it statically
 
 - **`SpecularController`** (Submachina.Core) — THE per-instance surface driver for every
   renderer kind (auto-detects Sprite/SpriteShape/Mesh children). Owns all shared shader
-  params + the mesh-only fill texture set ("Mesh Textures") + "Outline & Emission".
-  Subclasses: `SpriteShapeSpecularController` (fill/edge submesh routing),
-  `OreSpecularController` (mining glow).
+  params + the mesh-only fill texture set, whole-object tint ("Mesh Textures") and
+  "Outline & Emission". Subclasses: `SpriteShapeSpecularController` (fill/edge submesh
+  routing), `OreSpecularController` (mining glow).
 - **`EdgeBandOverride`** (Core.Rendering) — small dedicated component for the edge-band
   look on generated meshes. Component presence = opt-in.
-- **`SplineFillOverride`** (Core.Rendering) — LEGACY, still functional; superseded by
-  SpecularController's Mesh Textures + EdgeBandOverride for new objects.
-- **`ProcCreatureColorOverride`** (Core.ProceduralAnimation) — creature recolor helper;
-  still works (property names unchanged on the unified shader).
+- (The old `SplineFillOverride` and `ProcCreatureColorOverride` components were removed
+  after every scene/prefab was ported to the two components above.)
 
 ## Rules that bite
 

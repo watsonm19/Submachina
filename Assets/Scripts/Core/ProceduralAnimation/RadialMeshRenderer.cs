@@ -80,18 +80,6 @@ namespace Core.ProceduralAnimation
         private bool HasBake => bakedRadii != null && bakedForSegments == ringSegments && bakedRadii.Length == ringSegments;
 
         // =====================
-        // Color
-        // =====================
-
-        [FoldoutGroup("Color")]
-        [Tooltip("Vertex color at the center of the blob (multiplied with the material).")]
-        [SerializeField] private Color centerColor = Color.white;
-
-        [FoldoutGroup("Color")]
-        [Tooltip("Vertex color at the rim — drop alpha for translucent jellyfish edges.")]
-        [SerializeField] private Color rimColor = Color.white;
-
-        // =====================
         // Sorting
         // =====================
 
@@ -266,13 +254,16 @@ namespace Core.ProceduralAnimation
             // UV1 follows the shared generated-mesh edge contract (Mesh2DLitSpecular):
             // xy = outward dir (local; the radial direction approximates the silhouette
             // normal), z = normalized edge distance (0 rim .. 1 center), w = world units.
+            // Vertex colors stay white: tint/rim looks are a SHADER concern now — the
+            // whole-object tint lives on SpecularController (Mesh Textures) and rim
+            // tint/translucency on EdgeBandOverride, both reading the edge data above.
             for (int i = 0; i < n; i++)
             {
-                _colors[i] = rimColor;
+                _colors[i] = Color.white;
                 float angle = i / (float)n * Mathf.PI * 2f;
                 _uv1[i] = new Vector4(Mathf.Cos(angle), Mathf.Sin(angle), 0f, 0f); // rim sits on the silhouette
             }
-            _colors[n] = centerColor;
+            _colors[n] = Color.white;
             _uv1[n] = new Vector4(0f, 0f, 1f, avgRadius);
 
             // Fan triangles around the center vertex.
