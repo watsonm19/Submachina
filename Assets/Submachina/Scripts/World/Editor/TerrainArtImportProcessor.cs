@@ -20,7 +20,7 @@ namespace Submachina.Core.EditorTools
      *   everything else       — colour albedo                        → sRGB.
      *
      * Data maps must match what TerrainObjectGenerator.ConfigureLinearImporter produces, because
-     * both feed the same shaders (SpriteLitSpecular / SplineFillLitSpecular). Those read the maps
+     * both feed the same shaders (SpriteLitSpecular / Mesh2DLitSpecular). Those read the maps
      * as straight RGB via UnpackNormal, so sRGB MUST be off and the alpha MUST be opaque — see
      * the per-setting notes below. Runs on every (re)import into those folders.
      */

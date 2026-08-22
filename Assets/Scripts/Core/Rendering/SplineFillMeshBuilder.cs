@@ -11,7 +11,7 @@ namespace Core.Rendering
     /**
      * Generates a filled 2D mesh from a SpriteShapeController's spline, replacing the
      * SpriteShapeRenderer's second-class tiling fill with a MeshRenderer whose material
-     * (Submachina/2D/SplineFillLitSpecular) treats the seamless albedo/normal/specmask
+     * (Submachina/2D/Mesh2DLitSpecular) treats the seamless albedo/normal/specmask
      * trio as first-class texture slots.
      *
      * Workflow: keep the SpriteShapeController purely as the SPLINE EDITOR (its renderer
@@ -23,9 +23,13 @@ namespace Core.Rendering
      *                  band quads between the two, ear-clipped interior inside the inset.
      *   - UV0        : planar tiling UVs (local or world space) — the seamless fill
      *                  textures repeat across the shape at uvTilesPerUnit.
-     *   - UV1 (edge) : xy = outward direction at the outline (object space, unit),
-     *                  z = edge distance (0 at the outline, 1 at the inset/interior).
-     *                  The shader shapes its edge darken / alpha fade / bevel from this.
+     *   - UV1 (edge) : the shared generated-mesh edge contract (Mesh2DLitSpecular):
+     *                  xy = outward direction at the outline (object space, unit),
+     *                  z = normalized edge distance (0 outline, 1 inset/interior),
+     *                  w = world-unit edge distance (0 outline, band width inside).
+     *                  Edge darken/fade/bevel + Form Shape read z; outline/rim read w.
+     *                  Meshes BAKED before w existed read w = 0 — re-bake before
+     *                  enabling the outline on them (everything else is unaffected).
      *   - Normals/tangents : flat -Z facing with +X tangents, so the NormalsRendering
      *                  pass feeds the 2D light buffer exactly like a sprite would.
      */
@@ -226,15 +230,20 @@ namespace Core.Rendering
             var verts = new List<Vector3>(n * 2);
             var uvs = new List<Vector2>(n * 2);
             var edge = new List<Vector4>(n * 2);
+            // TEXCOORD1 edge contract (shared by every generated-mesh builder — see
+            // Mesh2DLitSpecular.shader): xy = outward dir, z = NORMALIZED band distance
+            // (edge band / Form Shape), w = WORLD-UNIT edge distance (constant-width
+            // outline + rim emission). Interior verts reuse the inset ring, so they
+            // carry z = 1 / w = band width — outline widths should stay under the band.
             for (int i = 0; i < n; i++)
             {
                 verts.Add(outline[i]); uvs.Add(FillUV(outline[i]));
-                edge.Add(new Vector4(outDirs[i].x, outDirs[i].y, 0f, 0f)); // d = 0 at the rim
+                edge.Add(new Vector4(outDirs[i].x, outDirs[i].y, 0f, 0f)); // on the rim
             }
             for (int i = 0; i < n; i++)
             {
                 verts.Add(inset[i]); uvs.Add(FillUV(inset[i]));
-                edge.Add(new Vector4(outDirs[i].x, outDirs[i].y, 1f, 0f)); // d = 1 inside
+                edge.Add(new Vector4(outDirs[i].x, outDirs[i].y, 1f, edgeBandWidth)); // band's inner edge
             }
 
             // Band quads between the rings (CCW like the interior triangulation).

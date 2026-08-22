@@ -14,8 +14,10 @@ namespace Core.ProceduralAnimation
      * indices) is baked once; only positions move each frame.
      *
      * UV0: u = 0..1 head→tail, v = 0..1 across — a texture maps naturally along the body.
-     * UV1: xy = outward direction, z = world-space distance to the silhouette edge —
-     *      consumed by the ProcCreature2D shader for crisp world-width outlines.
+     * UV1: the shared generated-mesh edge contract (see Mesh2DLitSpecular.shader):
+     *      xy = outward direction (local space, refreshed per frame as the body bends),
+     *      z  = normalized edge distance (0 silhouette .. 1 spine — edge band / Form Shape),
+     *      w  = world-unit edge distance (constant-width outlines + rim emission).
      */
     [ExecuteAlways]
     [DefaultExecutionOrder(60)]
@@ -231,11 +233,11 @@ namespace Core.ProceduralAnimation
                 _indices = new int[triCount * 3];
             }
 
-            // ---- Static per-row data: UVs, colors, edge distances ----
+            // ---- Static per-row data: UVs and colors (UV1 edge data is written by
+            // UpdatePositions each refresh, since the outward directions bend with the body) ----
             for (int i = 0; i < n; i++)
             {
                 float along = i / (float)(n - 1);
-                float halfW = HalfWidth(along);
                 Color32 col = colorAlongLength.Evaluate(along);
                 int v = i * 3;
 
@@ -243,15 +245,6 @@ namespace Core.ProceduralAnimation
                 _uv0[v + 1] = new Vector2(along, 0.5f);
                 _uv0[v + 2] = new Vector2(along, 1f);
                 _colors[v] = col; _colors[v + 1] = col; _colors[v + 2] = col;
-
-                // Edge distance: 0 at the silhouette, half-width at the spine. Flat ends
-                // (no caps) count longitudinal distance to the tip as well, so outlines close.
-                float spineDist = halfW;
-                if (caps == 0)
-                    spineDist = Mathf.Min(spineDist, Mathf.Min(i, n - 1 - i) * _source.SegmentLength);
-                _uv1[v] = new Vector4(0f, 0f, 0f, 0f);
-                _uv1[v + 1] = new Vector4(0f, 0f, spineDist, 0f);
-                _uv1[v + 2] = new Vector4(0f, 0f, 0f, 0f);
             }
 
             // ---- Static cap data: arc verts sit on the silhouette ----
@@ -263,8 +256,6 @@ namespace Core.ProceduralAnimation
                 _uv0[tail] = new Vector2(1f, (k + 1f) / (caps + 1f));
                 _colors[head] = colorAlongLength.Evaluate(0f);
                 _colors[tail] = colorAlongLength.Evaluate(1f);
-                _uv1[head] = Vector4.zero;
-                _uv1[tail] = Vector4.zero;
             }
 
             BuildIndices(n, caps);
@@ -283,13 +274,18 @@ namespace Core.ProceduralAnimation
             _builtCapSegments = caps;
         }
 
-        /** Per-frame path: only vertex positions change; everything else is baked. */
+        /**
+         * Per-frame path: vertex positions plus the UV1 edge data — the outward
+         * directions rotate with the body as the chain bends, so they can't be baked.
+         * One extra Vector4 channel upload per refresh; still zero allocations.
+         */
         private void UpdatePositions()
         {
             int n = _source.PointCount;
             var t = transform;
 
             // Row verts: spine point ± normal × half-width, in this transform's local space.
+            // UV1 rows follow the shared edge contract: edges (±dir, 0, 0), spine (0, z, w).
             for (int i = 0; i < n; i++)
             {
                 float along = i / (float)(n - 1);
@@ -301,6 +297,19 @@ namespace Core.ProceduralAnimation
                 _vertices[v] = t.InverseTransformPoint(c + nrm * halfW);
                 _vertices[v + 1] = t.InverseTransformPoint(c);
                 _vertices[v + 2] = t.InverseTransformPoint(c - nrm * halfW);
+
+                // Outward dir in LOCAL space (mesh verts are local); the chain normal is world.
+                Vector2 dir = ((Vector2)t.InverseTransformDirection(nrm)).normalized;
+
+                // Spine distance: half-width, and near flat (capless) ends also the
+                // longitudinal distance to the tip so outlines close around them.
+                float spineDist = halfW;
+                if (capSegments == 0)
+                    spineDist = Mathf.Min(spineDist, Mathf.Min(i, n - 1 - i) * _source.SegmentLength);
+
+                _uv1[v] = new Vector4(dir.x, dir.y, 0f, 0f);
+                _uv1[v + 1] = new Vector4(0f, 0f, spineDist / Mathf.Max(halfW, 1e-4f), spineDist);
+                _uv1[v + 2] = new Vector4(-dir.x, -dir.y, 0f, 0f);
             }
 
             // Rounded caps: semicircle fans beyond the first/last rows.
@@ -313,6 +322,7 @@ namespace Core.ProceduralAnimation
             if (Application.isPlaying && _builtPointCount == n)
             {
                 _mesh.vertices = _vertices;
+                _mesh.SetUVs(1, _uv1);
                 _mesh.RecalculateBounds();
             }
         }
@@ -334,6 +344,10 @@ namespace Core.ProceduralAnimation
                 float a = (k + 1f) / (capSegments + 1f) * Mathf.PI; // 0..π exclusive
                 Vector2 dir = nrm * Mathf.Cos(a) + forward * Mathf.Sin(a);
                 _vertices[firstVert + k] = t.InverseTransformPoint(c + dir * radius);
+
+                // Arc verts sit ON the silhouette: outward dir radial, both distances zero.
+                Vector2 local = ((Vector2)t.InverseTransformDirection(dir)).normalized;
+                _uv1[firstVert + k] = new Vector4(local.x, local.y, 0f, 0f);
             }
         }
 

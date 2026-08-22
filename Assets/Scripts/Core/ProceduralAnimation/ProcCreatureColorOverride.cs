@@ -4,10 +4,16 @@ using UnityEngine;
 namespace Core.ProceduralAnimation
 {
     /**
-     * Per-instance color overrides for ProcCreature materials — the creature
-     * equivalent of SplineFillOverride. One shared material serves every
-     * creature variant; each instance dials its own fill/outline/emission/flash
-     * through a MaterialPropertyBlock, so nothing is instanced or leaked.
+     * Per-instance color overrides for creature materials (now on the unified
+     * Submachina/2D/Mesh2DLitSpecular shader — the property names are unchanged,
+     * so this component keeps working exactly as before). Still the convenient
+     * multi-renderer recolor tool for creatures; for the full surface feature set
+     * (specular, normal detail, Form Shape, mesh textures) add a SpecularController,
+     * whose "Outline & Emission" foldout covers this component's channels too.
+     *
+     * One shared material serves every creature variant; each instance dials its
+     * own fill/outline/emission/flash through a MaterialPropertyBlock, so nothing
+     * is instanced or leaked.
      *
      * Works in edit mode (ExecuteAlways) for instant palette iteration on
      * prefab instances. Only the toggled channels are written, and writes are

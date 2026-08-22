@@ -1,4 +1,8 @@
-// URP 2D-lit shader for GENERATED SPLINE-FILL MESHES (see Core.Rendering.SplineFillMeshBuilder).
+// URP 2D-lit shader for GENERATED MESHES — spline fills (SplineFillMeshBuilder),
+// procedural creature bodies (RadialMeshRenderer / ChainStripRenderer), and any
+// other MeshRenderer that follows the TEXCOORD1 contract below. Formerly named
+// SplineFillLitSpecular; also absorbs the ProcCreature2D feature set (outline,
+// emission + rim boost, flash), so one mesh shader serves the whole family.
 //
 // This is the MeshRenderer sibling of Submachina/2D/SpriteLitSpecular: the same
 // normal-mapped 2D diffuse lighting + the full specular glint pipeline (shared via
@@ -7,10 +11,16 @@
 // seamless albedo/normal/specmask trio is just assigned on the material and repeats
 // across the shape. No sprite Secondary Textures, no fill/edge submesh split.
 //
-// On top of that, the mesh bakes an EDGE BAND into TEXCOORD1:
-//   xy = outward direction at the nearest outline point (object space, unit)
-//   z  = edge distance: 0 at the outline, 1 at the inner edge of the band (and interior)
-// which drives three composable edge effects:
+// THE TEXCOORD1 EDGE CONTRACT (baked by every generated-mesh builder):
+//   xy = outward direction at the nearest silhouette point (local space, unit)
+//   z  = NORMALIZED edge distance: 0 at the silhouette, 1 at the band's inner
+//        edge / body core (drives the edge band + Form Shape)
+//   w  = WORLD-UNIT edge distance: 0 at the silhouette (drives the constant-width
+//        outline + rim emission, taper-independent)
+// Older BAKED spline mesh assets predate w (it reads 0) — the outline defaults
+// off, so they render unchanged; re-bake before enabling outline on them.
+//
+// The baked band drives three composable edge effects:
 //   - Edge Darken : multiply toward _EdgeColor near the rim (Photoshop "inner glow,
 //                   black, multiply" look). Applied BEFORE the specular add, so bevel
 //                   glints still fire on the darkened rim — reads as shadowed 3D form.
@@ -24,7 +34,7 @@
 // (MeshRenderer has none of those); vertex color × _Color is the tint path instead of
 // unity_SpriteColor. All three passes share an identical UnityPerMaterial CBUFFER
 // layout or the SRP Batcher breaks — the spec + edge properties are declared in every pass.
-Shader "Submachina/2D/SplineFillLitSpecular"
+Shader "Submachina/2D/Mesh2DLitSpecular"
 {
     Properties
     {
@@ -63,6 +73,21 @@ Shader "Submachina/2D/SplineFillLitSpecular"
         _EdgeFalloff("Edge Falloff Exponent", Range(0.25, 8)) = 2
         _EdgeAlphaFade("Edge Alpha Fade (melt into background)", Range(0, 1)) = 0
         _EdgeBevel("Edge Bevel (normal rounding)", Range(0, 4)) = 0
+
+        [Header(Outline Emission and Flash)]
+        // Merged from ProcCreature2D (single source of truth in SpecularLitCore.hlsl).
+        // Outline: constant-world-width band keyed off TEXCOORD1.w (the world-unit edge
+        // distance every generated mesh bakes) — width 0 = off. Emission: flat HDR glow
+        // plus a rim-concentrated boost. Flash: override toward a solid color (creature
+        // code drives _FlashAmount per frame via MPB). All defaults are neutral.
+        _OutlineColor("Outline Color (A = strength)", Color) = (0, 0, 0, 1)
+        _OutlineWidth("Outline Width (world units, 0 = off)", Float) = 0
+        _OutlineSoftness("Outline Softness", Range(0, 1)) = 0.25
+        [HDR] _EmissionColor("Emission (HDR)", Color) = (0, 0, 0, 1)
+        _RimEmission("Rim Emission Boost", Float) = 0
+        _RimWidth("Rim Width (world units)", Float) = 0.15
+        _FlashColor("Flash Color", Color) = (1, 1, 1, 1)
+        _FlashAmount("Flash Amount", Range(0, 1)) = 0
 
         [Header(Metallic Specular)]
         [HDR] _SpecColor("Specular Color (HDR)", Color) = (1.3, 1.4, 1.6, 1)
@@ -234,67 +259,9 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _EdgeFalloff;
                 half _EdgeAlphaFade;
                 half _EdgeBevel;
-                half4 _SpecColor;
-                half4 _SpecLightDir;
-                half _SpecPower;
-                half _SpecIntensity;
-                half _LightResponse;
-                half _SpecBoost;
-                half _SpecReplace;
-                half _SpecClamp;
-                half _SpecAlbedoTint;
-                half _SpecScreen;
-                half _SpecViewBias;
-                half _GlowThreshold;
-                half _GlowKnee;
-                half _GlowViewBias;
-                half _GlowPower;
-                half _GlowGain;
-                half _ShimmerAmp;
-                half _ShimmerSpeed;
-                half _ShimmerPhase;
-                half _ShimmerWave;
-                half _ShimmerMode;
-                half4 _DirWobble;
-                half _NormalMode;
-                half _NormalStrength;
-                half _DiffNormalStrength;
-                half _NormalEmboss;
-                half _EmbossElevation;
-                half _DirCavity;
-                half _DirCavityScale;
-                half _CavityLitFade;
-                // Ambient relief (ungated fill light + cavity/slope AO) — SpecularLitCore.hlsl
-                half4 _AmbientDir;
-                half _AmbientFill;
-                half _SlopeAO;
-                half _CavityAmount;
-                half _CavityRidge;
-                half _CavityScale;
-                half _CavitySpec;
-                // Albedo-as-height normal (mode 9). Deliberately NOT named _MainTex_TexelSize —
-                // the 2D SRP Batcher rejects materials carrying a _TexelSize property.
-                float4 _HeightTexel;
-                half _HeightRadius;
-                half _HeightStrength;
-                half _HeightBlur;
-                half _HeightDetail;
-                half _HeightCompress;
-                half _DiffFromMode;
-                half _NormalFreq;
-                float4 _NormalUVRect;
-                float4 _NormalTexST;
-                // Form Shape: broad procedural form composited under the detail normal (RNM)
-                half _ShapeMode;
-                half _ShapeHeight;
-                half _ShapeRim;
-                half _ShapeProfile;
-                half _ShapeRect;
-                half _ShapeExtent;
-                half _ShapeAngle;
-                half _ShapeDetail;
-                half _ShapeBlur;
-                float _SortingLayerBit;
+                // Everything shared with the sprite shader lives in one include so the
+                // six CBUFFERs across the family can never drift apart.
+                #include "SpecularLitProperties.hlsl"
             CBUFFER_END
 
             // Shared specular core (global lights, surface normals, ApplySpecular).
@@ -366,6 +333,11 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 // what sells the rim as shadowed 3D form instead of a painted border.
                 c.rgb *= lerp(half3(1.0h, 1.0h, 1.0h), _EdgeColor.rgb, w * _EdgeDarken);
 
+                // Outline band (merged ProcCreature feature): constant world width via the
+                // baked world-unit edge distance. Before the specular for the same reason
+                // as the darken — glints riding the band read as shaded form.
+                c = ApplyEdgeOutline(c, (half)input.edge.w);
+
                 // Spec mask on its own UV; Stamp Once reads the configurable background
                 // colour outside the window (match the stamp's border: white = neutral
                 // spec elsewhere, black = dull rock everywhere except the glowy spot).
@@ -377,8 +349,12 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half3 texel = (half3)SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).rgb * input.color.rgb;
                 c = ApplySpecularMasked(c, nBase, nCurv, texel, specMask, uvEff, input.worldPos.xy);
 
-                // Alpha fade LAST, over everything (lit base + glints), so the whole
-                // surface melts toward the background at the rim.
+                // Emission (+ rim boost) and flash AFTER the specular — self-lit glow the
+                // relief terms must not darken, and a full flash overrides glints too.
+                c = ApplyEmissionFlash(c, (half)input.edge.w);
+
+                // Alpha fade LAST, over everything (lit base + glints + glow), so the
+                // whole surface melts toward the background at the rim.
                 c.a *= lerp(1.0h, dd, _EdgeAlphaFade);
                 return c;
             }
@@ -415,7 +391,7 @@ Shader "Submachina/2D/SplineFillLitSpecular"
             #include "Packages/com.unity.render-pipelines.universal/Shaders/2D/Include/Normals2DCommon.hlsl"
 
             // NOTE: Do not ifdef the properties here as SRP batcher can not handle different layouts.
-            CBUFFER_START( UnityPerMaterial )
+            CBUFFER_START(UnityPerMaterial)
                 half4 _Color;
                 float4 _MainTex_ST;   // fill tiling/offset (material inspector or per-object override)
                 float4 _NormalMap_ST; // normal-map tiling/offset RELATIVE to the fill UV ((1,0) = follow fill)
@@ -429,67 +405,9 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _EdgeFalloff;
                 half _EdgeAlphaFade;
                 half _EdgeBevel;
-                half4 _SpecColor;
-                half4 _SpecLightDir;
-                half _SpecPower;
-                half _SpecIntensity;
-                half _LightResponse;
-                half _SpecBoost;
-                half _SpecReplace;
-                half _SpecClamp;
-                half _SpecAlbedoTint;
-                half _SpecScreen;
-                half _SpecViewBias;
-                half _GlowThreshold;
-                half _GlowKnee;
-                half _GlowViewBias;
-                half _GlowPower;
-                half _GlowGain;
-                half _ShimmerAmp;
-                half _ShimmerSpeed;
-                half _ShimmerPhase;
-                half _ShimmerWave;
-                half _ShimmerMode;
-                half4 _DirWobble;
-                half _NormalMode;
-                half _NormalStrength;
-                half _DiffNormalStrength;
-                half _NormalEmboss;
-                half _EmbossElevation;
-                half _DirCavity;
-                half _DirCavityScale;
-                half _CavityLitFade;
-                // Ambient relief (ungated fill light + cavity/slope AO) — SpecularLitCore.hlsl
-                half4 _AmbientDir;
-                half _AmbientFill;
-                half _SlopeAO;
-                half _CavityAmount;
-                half _CavityRidge;
-                half _CavityScale;
-                half _CavitySpec;
-                // Albedo-as-height normal (mode 9). Deliberately NOT named _MainTex_TexelSize —
-                // the 2D SRP Batcher rejects materials carrying a _TexelSize property.
-                float4 _HeightTexel;
-                half _HeightRadius;
-                half _HeightStrength;
-                half _HeightBlur;
-                half _HeightDetail;
-                half _HeightCompress;
-                half _DiffFromMode;
-                half _NormalFreq;
-                float4 _NormalUVRect;
-                float4 _NormalTexST;
-                // Form Shape: broad procedural form composited under the detail normal (RNM)
-                half _ShapeMode;
-                half _ShapeHeight;
-                half _ShapeRim;
-                half _ShapeProfile;
-                half _ShapeRect;
-                half _ShapeExtent;
-                half _ShapeAngle;
-                half _ShapeDetail;
-                half _ShapeBlur;
-                float _SortingLayerBit;
+                // Everything shared with the sprite shader lives in one include so the
+                // six CBUFFERs across the family can never drift apart.
+                #include "SpecularLitProperties.hlsl"
             CBUFFER_END
 
             // Shared core, for ComputeSurfaceNormal when _DiffFromMode is on.
@@ -588,67 +506,9 @@ Shader "Submachina/2D/SplineFillLitSpecular"
                 half _EdgeFalloff;
                 half _EdgeAlphaFade;
                 half _EdgeBevel;
-                half4 _SpecColor;
-                half4 _SpecLightDir;
-                half _SpecPower;
-                half _SpecIntensity;
-                half _LightResponse;
-                half _SpecBoost;
-                half _SpecReplace;
-                half _SpecClamp;
-                half _SpecAlbedoTint;
-                half _SpecScreen;
-                half _SpecViewBias;
-                half _GlowThreshold;
-                half _GlowKnee;
-                half _GlowViewBias;
-                half _GlowPower;
-                half _GlowGain;
-                half _ShimmerAmp;
-                half _ShimmerSpeed;
-                half _ShimmerPhase;
-                half _ShimmerWave;
-                half _ShimmerMode;
-                half4 _DirWobble;
-                half _NormalMode;
-                half _NormalStrength;
-                half _DiffNormalStrength;
-                half _NormalEmboss;
-                half _EmbossElevation;
-                half _DirCavity;
-                half _DirCavityScale;
-                half _CavityLitFade;
-                // Ambient relief (ungated fill light + cavity/slope AO) — SpecularLitCore.hlsl
-                half4 _AmbientDir;
-                half _AmbientFill;
-                half _SlopeAO;
-                half _CavityAmount;
-                half _CavityRidge;
-                half _CavityScale;
-                half _CavitySpec;
-                // Albedo-as-height normal (mode 9). Deliberately NOT named _MainTex_TexelSize —
-                // the 2D SRP Batcher rejects materials carrying a _TexelSize property.
-                float4 _HeightTexel;
-                half _HeightRadius;
-                half _HeightStrength;
-                half _HeightBlur;
-                half _HeightDetail;
-                half _HeightCompress;
-                half _DiffFromMode;
-                half _NormalFreq;
-                float4 _NormalUVRect;
-                float4 _NormalTexST;
-                // Form Shape: broad procedural form composited under the detail normal (RNM)
-                half _ShapeMode;
-                half _ShapeHeight;
-                half _ShapeRim;
-                half _ShapeProfile;
-                half _ShapeRect;
-                half _ShapeExtent;
-                half _ShapeAngle;
-                half _ShapeDetail;
-                half _ShapeBlur;
-                float _SortingLayerBit;
+                // Everything shared with the sprite shader lives in one include so the
+                // six CBUFFERs across the family can never drift apart.
+                #include "SpecularLitProperties.hlsl"
             CBUFFER_END
 
             Varyings UnlitVertex(Attributes input)

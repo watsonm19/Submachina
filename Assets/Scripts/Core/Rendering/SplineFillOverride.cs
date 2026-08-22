@@ -4,7 +4,14 @@ using Sirenix.OdinInspector;
 namespace Core.Rendering
 {
     /**
-     * Per-object overrides for a spline-fill renderer sharing ONE SplineFillLitSpecular
+     * LEGACY — kept for the scenes that already use it; prefer the split replacements
+     * for new objects: the texture set / tiling / stamp-once overrides now live in
+     * SpecularController's "Mesh Textures" foldout (which drives every surface kind),
+     * and the edge-band look lives in the small dedicated EdgeBandOverride component.
+     * This component keeps working indefinitely (it writes the same properties into
+     * the same block), so porting existing objects is optional and can happen anytime.
+     *
+     * Per-object overrides for a spline-fill renderer sharing ONE Mesh2DLitSpecular
      * material, via MaterialPropertyBlock: texture set, fill tiling/offset, the edge-band
      * look, and a whole-object tint. One material serves every level piece; each object
      * dials in its own appearance here.
@@ -32,7 +39,7 @@ namespace Core.Rendering
     [RequireComponent(typeof(Renderer))]
     public class SplineFillOverride : MonoBehaviour
     {
-        // Cached shader property ids (the SplineFillLitSpecular slots).
+        // Cached shader property ids (the Mesh2DLitSpecular slots).
         private static readonly int MainTexID = Shader.PropertyToID("_MainTex");
         private static readonly int NormalMapID = Shader.PropertyToID("_NormalMap");
         private static readonly int SpecMaskID = Shader.PropertyToID("_SpecMask");

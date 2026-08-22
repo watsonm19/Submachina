@@ -1,6 +1,6 @@
 // Shared specular core for the Submachina 2D specular shaders:
 //   - SpriteLitSpecular.shader      (SpriteRenderers / SpriteShapeRenderers)
-//   - SplineFillLitSpecular.shader  (generated spline-fill MeshRenderers)
+//   - Mesh2DLitSpecular.shader  (generated spline-fill MeshRenderers)
 //
 // Holds everything that is identical between them: the global specular-light
 // uniforms published by SpecularLight2DManager, the procedural/texture surface
@@ -727,6 +727,44 @@ half4 ApplySpecular(half4 c, half3 nBase, half3 nCurv, half3 texel, float2 uv, f
 {
     half3 specMask = (half3)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, uv).rgb;
     return ApplySpecularMasked(c, nBase, nCurv, texel, specMask, uvEff, wpos);
+}
+
+// ---------------------------------------------------------------------------------
+// OUTLINE / EMISSION / FLASH — the ProcCreature2D feature block, now shared by the
+// whole family. Outline + rim emission key off the WORLD-UNIT edge distance
+// (TEXCOORD1.w on generated meshes) so they hold constant width regardless of body
+// taper; flat emission and the flash channel need no edge data and work everywhere,
+// sprites included. All defaults are neutral, so surfaces that never touch these
+// properties render exactly as before the merge.
+// ---------------------------------------------------------------------------------
+
+// Constant-world-width outline band inside the silhouette. Runs BEFORE the specular
+// pipeline (like the edge darken) so glints still fire over the outline band —
+// that's what sells the band as shaded form instead of a flat painted border.
+// _OutlineWidth 0 (default) = off; the explicit gate also protects meshes whose
+// baked w channel predates the TEXCOORD1 contract (older baked spline assets).
+half4 ApplyEdgeOutline(half4 c, half edgeWorldDist)
+{
+    if (_OutlineWidth <= 0.0h) return c;
+    half soft = max(_OutlineWidth * _OutlineSoftness, 1e-4h);
+    half outline = (1.0h - smoothstep(_OutlineWidth - soft, _OutlineWidth + soft, edgeWorldDist)) * _OutlineColor.a;
+    c.rgb = lerp(c.rgb, _OutlineColor.rgb, outline);
+    return c;
+}
+
+// Flat HDR body glow plus a rim-concentrated boost (e.g. a jellyfish whose edge
+// burns brighter than its core), then the flash override channel (hit flash /
+// chromatophore flicker — creature code drives _FlashAmount per frame via MPB).
+// Runs AFTER the specular pipeline: emission is self-lit so the relief and cavity
+// terms must not darken it, and a full flash has to override the glints too.
+// Callers with no edge data (the sprite shader) pass a large distance: the rim
+// term collapses to zero while flat emission and flash keep working.
+half4 ApplyEmissionFlash(half4 c, half edgeWorldDist)
+{
+    half rim = pow(saturate(1.0h - edgeWorldDist / max(_RimWidth, 1e-3h)), 2.0h) * _RimEmission;
+    c.rgb += _EmissionColor.rgb * (1.0h + rim) * c.a;
+    c.rgb = lerp(c.rgb, _FlashColor.rgb * c.a, _FlashAmount);
+    return c;
 }
 
 #endif // SUBMACHINA_SPECULAR_LIT_CORE_INCLUDED

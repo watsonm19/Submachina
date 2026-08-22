@@ -6,10 +6,16 @@ using Sirenix.OdinInspector;
 namespace Submachina.Core
 {
     /**
-     * Generic per-instance driver for the SpriteLitSpecular material (shader
-     * Submachina/2D/SpriteLitSpecular) using a MaterialPropertyBlock. Drop it on any
-     * shiny sprite (metal, gems, ice, wet rock…) that should glint when a `SpecularLight2D`
-     * sweeps over it.
+     * THE per-instance surface driver for the whole 2D specular shader family, via
+     * MaterialPropertyBlock. One component covers every surface kind:
+     *   - SpriteRenderer          → Submachina/2D/SpriteLitSpecular
+     *   - SpriteShapeRenderer     → SpriteLitSpecular (use SpriteShapeSpecularController)
+     *   - MeshRenderer (generated: spline fills, creature bodies) → Submachina/2D/Mesh2DLitSpecular
+     * It auto-detects the renderer types under itself (EnsureInitialized) and drives all
+     * the shared shader features — specular baseline/glow/animation, surface normal +
+     * Form Shape, ambient relief, outline/emission/flash — plus the mesh-only fill
+     * texture set (Mesh Textures foldout). The edge-band LOOK for spline fills lives in
+     * the small dedicated EdgeBandOverride component instead.
      *
      * Scope: this base drives ONE look across the whole renderer. It writes a single
      * renderer-level property block, which every submesh reads. That is exactly right for
@@ -151,6 +157,20 @@ namespace Submachina.Core
         private static readonly int ShapeAngleID = Shader.PropertyToID("_ShapeAngle");
         private static readonly int ShapeDetailID = Shader.PropertyToID("_ShapeDetail");
         private static readonly int ShapeBlurID = Shader.PropertyToID("_ShapeBlur");
+        private static readonly int MainTexID = Shader.PropertyToID("_MainTex");
+        private static readonly int MainTexSTID = Shader.PropertyToID("_MainTex_ST");
+        private static readonly int NormalMapSTID = Shader.PropertyToID("_NormalMap_ST");
+        private static readonly int SpecMaskSTID = Shader.PropertyToID("_SpecMask_ST");
+        private static readonly int NormalMapOnceID = Shader.PropertyToID("_NormalMapOnce");
+        private static readonly int SpecMaskOnceID = Shader.PropertyToID("_SpecMaskOnce");
+        private static readonly int SpecMaskOnceBgID = Shader.PropertyToID("_SpecMaskOnceBg");
+        private static readonly int OutlineColorID = Shader.PropertyToID("_OutlineColor");
+        private static readonly int OutlineWidthID = Shader.PropertyToID("_OutlineWidth");
+        private static readonly int OutlineSoftnessID = Shader.PropertyToID("_OutlineSoftness");
+        private static readonly int EmissionColorID = Shader.PropertyToID("_EmissionColor");
+        private static readonly int RimEmissionID = Shader.PropertyToID("_RimEmission");
+        private static readonly int RimWidthID = Shader.PropertyToID("_RimWidth");
+        private static readonly int FlashColorID = Shader.PropertyToID("_FlashColor");
 
         // =====================
         // Baseline (per-instance look — variations without material copies)
@@ -260,6 +280,126 @@ namespace Submachina.Core
                  "Secondary Texture there so it atlases along). Empty = keep the sprite's Secondary " +
                  "Texture / material default. For spline-fill meshes use SplineFillOverride's slot instead.")]
         [SerializeField] private Texture2D specMaskTexture;
+
+        // =====================
+        // Mesh textures — the per-instance fill texture set for generated meshes
+        // (Mesh2DLitSpecular renderers: spline fills, creature bodies)
+        // =====================
+
+        [FoldoutGroup("Mesh Textures"), ShowIf(nameof(DrivesMeshSurface))]
+        [InfoBox("Per-instance fill TEXTURE SET for generated meshes on the Mesh2DLitSpecular " +
+                 "shader — one shared material, each object dials its own set here. Empty slots " +
+                 "and disabled toggles keep the material's values. Sprites ignore this section: " +
+                 "a sprite's albedo IS the sprite; its normal/specmask overrides live in the " +
+                 "Surface Normal and Spec Mask sections above.")]
+        [Tooltip("Tiling albedo for this object. Empty = keep the material's texture.")]
+        [SerializeField] private Texture2D meshAlbedo;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf(nameof(DrivesMeshSurface))]
+        [Tooltip("Tiling normal map (straight RGB, sRGB off). Empty = keep the material's texture.")]
+        [SerializeField] private Texture2D meshNormalMap;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf(nameof(DrivesMeshSurface))]
+        [Tooltip("Tiling specular mask (RGB tint × strength). Empty = keep the material's texture.")]
+        [SerializeField] private Texture2D meshSpecMask;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf(nameof(DrivesMeshSurface))]
+        [Tooltip("Also override the fill's UV tiling/offset for this object (all three textures " +
+                 "move together — they're a matched set). Off = keep the material's Tiling/Offset.")]
+        [SerializeField] private bool overrideFillTiling = false;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideFillTiling")]
+        [Tooltip("UV scale on top of the mesh's baked tiles-per-unit (2 = repeats twice as often).")]
+        [SerializeField] private Vector2 fillTiling = Vector2.one;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideFillTiling")]
+        [Tooltip("UV offset — slides the pattern across the shape (de-syncs neighbours sharing a set).")]
+        [SerializeField] private Vector2 fillOffset = Vector2.zero;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf(nameof(DrivesMeshSurface))]
+        [Tooltip("Give the normal map its own tiling/offset RELATIVE to the fill UV. " +
+                 "Off = the normal map follows the fill exactly.")]
+        [SerializeField] private bool overrideNormalMapUVs = false;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideNormalMapUVs")]
+        [Tooltip("Tiling relative to the fill UV (values < 1 enlarge the map's features).")]
+        [SerializeField] private Vector2 meshNormalMapTiling = Vector2.one;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideNormalMapUVs")]
+        [Tooltip("Offset relative to the fill UV — slides the map across the shape.")]
+        [SerializeField] private Vector2 meshNormalMapOffset = Vector2.zero;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideNormalMapUVs")]
+        [Tooltip("Place the map ONCE at its window instead of tiling — flat outside it.")]
+        [SerializeField] private bool meshNormalMapStampOnce = false;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf(nameof(DrivesMeshSurface))]
+        [Tooltip("Give the spec mask its own tiling/offset RELATIVE to the fill UV. " +
+                 "Off = the mask follows the fill exactly.")]
+        [SerializeField] private bool overrideSpecMaskUVs = false;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideSpecMaskUVs")]
+        [Tooltip("Tiling relative to the fill UV (a small stamp graphic usually wants well below 1).")]
+        [SerializeField] private Vector2 meshSpecMaskTiling = Vector2.one;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideSpecMaskUVs")]
+        [Tooltip("Offset relative to the fill UV — positions the mask on this shape.")]
+        [SerializeField] private Vector2 meshSpecMaskOffset = Vector2.zero;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideSpecMaskUVs")]
+        [Tooltip("Place the mask ONCE at its window instead of tiling. The one-glowy-spot switch.")]
+        [SerializeField] private bool meshSpecMaskStampOnce = false;
+
+        [FoldoutGroup("Mesh Textures"), ShowIf("@this.DrivesMeshSurface && this.overrideSpecMaskUVs && this.meshSpecMaskStampOnce")]
+        [Tooltip("What the mask reads OUTSIDE the stamp window — white = neutral spec elsewhere, " +
+                 "black = dull everywhere except the stamp, grey = dimmed.")]
+        [SerializeField] private Color meshSpecMaskStampBackground = Color.white;
+
+        // Whether any driven renderer is a generated mesh (edit-time inspector gating only —
+        // the actual writes are gated per renderer inside WriteBaselineProperties).
+        private bool DrivesMeshSurface => GetComponentInChildren<MeshRenderer>(true) != null;
+
+        // =====================
+        // Outline & emission — the merged ProcCreature feature block
+        // =====================
+
+        [FoldoutGroup("Outline & Emission")]
+        [InfoBox("The merged ProcCreature feature block, on every specular surface: flat HDR " +
+                 "emission + the flash channel work everywhere (sprites included); the outline " +
+                 "band and rim boost key off the world-unit edge distance generated meshes bake, " +
+                 "so they only act on Mesh2DLitSpecular renderers. Off = the material's own " +
+                 "values stay untouched (creature materials keep their authored look).")]
+        [Tooltip("Override the material's outline/emission/flash set for this instance.")]
+        [SerializeField] private bool overrideOutlineEmission = false;
+
+        [FoldoutGroup("Outline & Emission"), ShowIf(nameof(overrideOutlineEmission))]
+        [Tooltip("Outline colour; ALPHA = strength of the band.")]
+        [SerializeField] private Color outlineColor = new Color(0f, 0f, 0f, 1f);
+
+        [FoldoutGroup("Outline & Emission"), ShowIf(nameof(overrideOutlineEmission)), Min(0f)]
+        [Tooltip("Outline band width in world units — constant regardless of body taper. 0 = off.")]
+        [SerializeField] private float outlineWidth = 0f;
+
+        [FoldoutGroup("Outline & Emission"), ShowIf(nameof(overrideOutlineEmission)), Range(0f, 1f)]
+        [Tooltip("Fraction of the width used as a smoothstep falloff so thin tapers don't shimmer.")]
+        [SerializeField] private float outlineSoftness = 0.25f;
+
+        [FoldoutGroup("Outline & Emission"), ShowIf(nameof(overrideOutlineEmission))]
+        [ColorUsage(true, true)]
+        [Tooltip("Flat HDR body glow (black = off). Creature code may drive this per frame via MPB.")]
+        [SerializeField] private Color emissionColor = Color.black;
+
+        [FoldoutGroup("Outline & Emission"), ShowIf(nameof(overrideOutlineEmission)), Min(0f)]
+        [Tooltip("Extra emission concentrated at the rim (jellyfish edge glow). Mesh surfaces only.")]
+        [SerializeField] private float rimEmission = 0f;
+
+        [FoldoutGroup("Outline & Emission"), ShowIf(nameof(overrideOutlineEmission)), Min(0.001f)]
+        [Tooltip("Falloff distance of the rim boost, in world units.")]
+        [SerializeField] private float rimWidth = 0.15f;
+
+        [FoldoutGroup("Outline & Emission"), ShowIf(nameof(overrideOutlineEmission))]
+        [Tooltip("Colour the flash channel overrides toward (drive _FlashAmount at runtime via MPB).")]
+        [SerializeField] private Color flashColor = Color.white;
 
         // =====================
         // Animation (living, shimmering sprite) — computed in-shader from _Time, zero CPU cost
@@ -911,6 +1051,40 @@ namespace Submachina.Core
             // shiny default) shows through.
             if (specMaskTexture != null) mpb.SetTexture(SpecMaskID, specMaskTexture);
             if (overrideColor) mpb.SetColor(SpecColorID, specColor);
+            // Mesh fill texture set — gated to MeshRenderers: _MainTex very much exists on
+            // the sprite shader too, and stomping a sprite's own texture would be a bug.
+            // Unassigned slots / disabled toggles leave the material's values visible.
+            if (r is MeshRenderer)
+            {
+                if (meshAlbedo != null) mpb.SetTexture(MainTexID, meshAlbedo);
+                if (meshNormalMap != null) mpb.SetTexture(NormalMapID, meshNormalMap);
+                if (meshSpecMask != null) mpb.SetTexture(SpecMaskID, meshSpecMask);
+                if (overrideFillTiling)
+                    mpb.SetVector(MainTexSTID, new Vector4(fillTiling.x, fillTiling.y, fillOffset.x, fillOffset.y));
+                if (overrideNormalMapUVs)
+                {
+                    mpb.SetVector(NormalMapSTID, new Vector4(meshNormalMapTiling.x, meshNormalMapTiling.y, meshNormalMapOffset.x, meshNormalMapOffset.y));
+                    mpb.SetFloat(NormalMapOnceID, meshNormalMapStampOnce ? 1f : 0f);
+                }
+                if (overrideSpecMaskUVs)
+                {
+                    mpb.SetVector(SpecMaskSTID, new Vector4(meshSpecMaskTiling.x, meshSpecMaskTiling.y, meshSpecMaskOffset.x, meshSpecMaskOffset.y));
+                    mpb.SetFloat(SpecMaskOnceID, meshSpecMaskStampOnce ? 1f : 0f);
+                    mpb.SetColor(SpecMaskOnceBgID, meshSpecMaskStampBackground);
+                }
+            }
+            // Outline / emission / flash — opt-in, so materials that author these values
+            // themselves (e.g. creature materials) keep their look unless overridden here.
+            if (overrideOutlineEmission)
+            {
+                mpb.SetColor(OutlineColorID, outlineColor);
+                mpb.SetFloat(OutlineWidthID, outlineWidth);
+                mpb.SetFloat(OutlineSoftnessID, outlineSoftness);
+                mpb.SetColor(EmissionColorID, emissionColor);
+                mpb.SetFloat(RimEmissionID, rimEmission);
+                mpb.SetFloat(RimWidthID, rimWidth);
+                mpb.SetColor(FlashColorID, flashColor);
+            }
             // Sorting layer bit so the shader only responds to lights targeting this layer
             mpb.SetFloat(SortingLayerBitID, (float)SpecularLight2DManager.SortingLayerBit(r.sortingLayerID));
         }
@@ -977,7 +1151,7 @@ namespace Submachina.Core
         {
             // Gather only the renderer types the specular shaders target: plain sprites,
             // SpriteShape terrain, and generated spline-fill meshes (MeshRenderer +
-            // SplineFillLitSpecular) — skipping particles/lines/etc. in the hierarchy.
+            // Mesh2DLitSpecular) — skipping particles/lines/etc. in the hierarchy.
             if (_renderers == null)
             {
                 var all = GetComponentsInChildren<Renderer>(true);

@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Mat_Angler
-  m_Shader: {fileID: 4800000, guid: c0a59142cb0f4f442ab5a45e21582379, type: 3}
+  m_Shader: {fileID: 4800000, guid: 788c8ceb49920ca4fb257ad68fae5dd3, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -27,18 +27,99 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _MaskTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _SpecMask:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _AmbientFill: 0
+    - _CavityAmount: 0
+    - _CavityLitFade: 0
+    - _CavityRidge: 0
+    - _CavityScale: 1
+    - _CavitySpec: 0
+    - _DiffFromMode: 0
+    - _DiffNormalStrength: 1
+    - _DirCavity: 0
+    - _DirCavityScale: 1
+    - _EdgeAlphaFade: 0
+    - _EdgeBevel: 0
+    - _EdgeDarken: 0
+    - _EdgeFalloff: 2
+    - _EdgeWidth: 1
+    - _EmbossElevation: 0.5
     - _FlashAmount: 0
+    - _GlowGain: 2
+    - _GlowKnee: 0.15
+    - _GlowPower: 8
+    - _GlowThreshold: 2
+    - _GlowViewBias: 4
+    - _HeightBlur: 1
+    - _HeightCompress: 2
+    - _HeightDetail: 0.5
+    - _HeightRadius: 1
+    - _HeightStrength: 8
+    - _LightResponse: 1
+    - _NormalEmboss: 0
+    - _NormalFreq: 8
+    - _NormalMapOnce: 0
+    - _NormalMode: 0
+    - _NormalStrength: 1
     - _OutlineSoftness: 0.25
     - _OutlineWidth: 0.05
     - _RimEmission: 0
     - _RimWidth: 0.18
+    - _ShapeAngle: 0
+    - _ShapeBlur: 3
+    - _ShapeDetail: 1
+    - _ShapeExtent: 1
+    - _ShapeHeight: 1.5
+    - _ShapeMode: 0
+    - _ShapeProfile: 1
+    - _ShapeRect: 0
+    - _ShapeRim: 0
+    - _ShimmerAmp: 0
+    - _ShimmerMode: 0
+    - _ShimmerPhase: 0
+    - _ShimmerSpeed: 1
+    - _ShimmerWave: 0
+    - _SlopeAO: 0
+    - _SortingLayerBit: 16777215
+    - _SpecAlbedoTint: 0
+    - _SpecBoost: 0
+    - _SpecClamp: 0
+    - _SpecIntensity: 0
+    - _SpecMaskOnce: 0
+    - _SpecPower: 64
+    - _SpecReplace: 0
+    - _SpecScreen: 0
+    - _SpecViewBias: 0.66
     - _ZWrite: 0
     m_Colors:
+    - _AmbientDir: {r: -0.45, g: 0.6, b: 0.5, a: 0}
     - _Color: {r: 0.14, g: 0.13, b: 0.12, a: 1}
+    - _DirWobble: {r: 0, g: 1, b: 0, a: 0}
+    - _EdgeColor: {r: 0, g: 0, b: 0, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _FlashColor: {r: 0.9, g: 0.95, b: 1, a: 1}
+    - _NormalTexST: {r: 1, g: 1, b: 0, a: 0}
+    - _NormalUVRect: {r: 0, g: 0, b: 1, a: 1}
     - _OutlineColor: {r: 0.02, g: 0.02, b: 0.03, a: 1}
+    - _SpecColor: {r: 1.3, g: 1.4, b: 1.6, a: 1}
+    - _SpecLightDir: {r: -0.45, g: 0.6, b: 0.66, a: 0}
+    - _SpecMaskOnceBg: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

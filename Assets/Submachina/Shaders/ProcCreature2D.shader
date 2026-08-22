@@ -1,3 +1,13 @@
+// DEPRECATED — the outline/emission/flash feature set moved into the shared core
+// (SpecularLitCore.hlsl) and ships in Submachina/2D/Mesh2DLitSpecular, which also
+// brings the full specular/normal/Form-Shape stack to creature meshes. All creature
+// materials have been flipped to that shader and CreatureBuilder targets it; this
+// file is kept only as a lightweight fallback if creature GPU cost ever becomes a
+// problem. NOTE: it still reads TEXCOORD1.z as WORLD units, which predates the
+// unified edge contract (z = normalized, w = world) — the builders now bake the
+// new contract, so this shader's outline would need the one-line switch to .w
+// before being revived.
+//
 // Procedural creature shader — flat-color / textured fill with a crisp world-space
 // outline, HDR emission with a rim boost, and a hit/chromatophore flash channel.
 //

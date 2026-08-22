@@ -24,7 +24,9 @@ namespace Submachina.Core.EditorTools
         private const string ArtFolder = "Assets/Submachina/Art/Creatures";
         private const string PrefabFolder = "Assets/Submachina/Prefabs/World/Enemy/Procedural";
         private const string RuleFolder = "Assets/Submachina/Data/SpawnProfiles/SpawnRules";
-        private const string ShaderName = "Submachina/2D/ProcCreature";
+        // Creatures render with the unified mesh shader (outline/emission/flash merged
+        // from the old ProcCreature2D, plus the full specular/normal/Form-Shape stack).
+        private const string ShaderName = "Submachina/2D/Mesh2DLitSpecular";
         private const string O2BubblePath = "Assets/Submachina/Prefabs/World/O2Bubble.prefab";
         private const string DefaultProfilePath = "Assets/Submachina/Data/SpawnProfiles/DefaultSpawnProfile.asset";
 
@@ -213,7 +215,7 @@ namespace Submachina.Core.EditorTools
         private static Material BuildCreatureMaterial(string name, Color fill, Color outline, Color flash, Color emission, float rimEmission)
         {
             Shader shader = Shader.Find(ShaderName);
-            if (shader == null) { Debug.LogError($"[CreatureBuilder] Shader '{ShaderName}' not found — did ProcCreature2D.shader compile?"); return null; }
+            if (shader == null) { Debug.LogError($"[CreatureBuilder] Shader '{ShaderName}' not found — did Mesh2DLitSpecular.shader compile?"); return null; }
 
             string path = $"{ArtFolder}/{name}.mat";
             var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -231,6 +233,12 @@ namespace Submachina.Core.EditorTools
             mat.SetColor("_EmissionColor", emission);
             mat.SetFloat("_RimEmission", rimEmission);
             mat.SetFloat("_RimWidth", 0.18f);
+            // Neutralize the mesh shader's non-creature defaults so a fresh creature
+            // material renders exactly like the old ProcCreature look (the spline-fill
+            // edge band defaults to a strong darken that creatures never asked for).
+            mat.SetFloat("_EdgeDarken", 0f);
+            mat.SetFloat("_EdgeBevel", 0f);
+            mat.SetFloat("_EdgeAlphaFade", 0f);
             EditorUtility.SetDirty(mat);
             return mat;
         }

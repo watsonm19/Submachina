@@ -14,8 +14,10 @@ namespace Core.ProceduralAnimation
      *   • RimOffsets — per-vertex radial push (rim wobble, tentacle bumps)
      *   • UniformScale — whole-body scale (growth, breathing)
      *
-     * UV0 maps the local bounding square to 0..1 for body textures. UV1.z carries
-     * world-ish edge distance for the ProcCreature2D outline, like ChainStripRenderer.
+     * UV0 maps the local bounding square to 0..1 for body textures. UV1 carries the
+     * shared generated-mesh edge contract (see Mesh2DLitSpecular.shader): xy = outward
+     * dir, z = normalized edge distance, w = world-unit edge distance — approximate on
+     * this fan topology (one interior vertex), but plenty for outlines/rim glow/forms.
      */
     [ExecuteAlways]
     [DefaultExecutionOrder(60)]
@@ -261,13 +263,17 @@ namespace Core.ProceduralAnimation
             for (int i = 0; i < n; i++) avgRadius += RestRadius(i);
             avgRadius /= n;
 
+            // UV1 follows the shared generated-mesh edge contract (Mesh2DLitSpecular):
+            // xy = outward dir (local; the radial direction approximates the silhouette
+            // normal), z = normalized edge distance (0 rim .. 1 center), w = world units.
             for (int i = 0; i < n; i++)
             {
                 _colors[i] = rimColor;
-                _uv1[i] = Vector4.zero; // rim sits on the silhouette
+                float angle = i / (float)n * Mathf.PI * 2f;
+                _uv1[i] = new Vector4(Mathf.Cos(angle), Mathf.Sin(angle), 0f, 0f); // rim sits on the silhouette
             }
             _colors[n] = centerColor;
-            _uv1[n] = new Vector4(0f, 0f, avgRadius, 0f);
+            _uv1[n] = new Vector4(0f, 0f, 1f, avgRadius);
 
             // Fan triangles around the center vertex.
             int idx = 0;
