@@ -12,6 +12,7 @@ namespace Core.ProceduralAnimation
      * Child renderers are created and pooled automatically at runtime; position,
      * rotation, scale, and color track the solved chain every LateUpdate.
      */
+    [ExecuteAlways]
     [DefaultExecutionOrder(60)]
     public class ChainSpriteRenderer : MonoBehaviour
     {
@@ -87,10 +88,21 @@ namespace Core.ProceduralAnimation
             EnsureSegments();
         }
 
+        private void OnValidate()
+        {
+            // Domain reload is disabled in this project — force a refresh on inspector
+            // tweaks so sprite/color/sorting changes aren't stuck showing stale values.
+            if (isActiveAndEnabled) EnsureSegments();
+        }
+
         private void LateUpdate()
         {
+            if (chain == null) chain = GetComponentInParent<ChainSimulator>();
             if (chain == null || chain.Chain == null) return;
             if (_segments == null || _segments.Length != chain.PointCount - 1) EnsureSegments();
+
+            // Edit mode: solve the rest pose each refresh so the preview stays live while tuning.
+            if (!Application.isPlaying) chain.PrepareEditorPreview();
 
             // Each segment sits at its midpoint, rotated along the local tangent.
             int count = _segments.Length;
@@ -129,7 +141,11 @@ namespace Core.ProceduralAnimation
             // Tear down extras, keep/create the rest — segments are plain hidden children.
             if (_segments != null)
                 for (int i = needed; i < _segments.Length; i++)
-                    if (_segments[i] != null) Destroy(_segments[i].gameObject);
+                    if (_segments[i] != null)
+                    {
+                        if (Application.isPlaying) Destroy(_segments[i].gameObject);
+                        else DestroyImmediate(_segments[i].gameObject);
+                    }
 
             var arr = new SpriteRenderer[needed];
             for (int i = 0; i < needed; i++)
