@@ -41,7 +41,7 @@ namespace Core.ProceduralAnimation
         // =====================
 
         [FoldoutGroup("Shape")]
-        [Tooltip("Body width in world units at the widest point of the profile.")]
+        [Tooltip("Body width in world units at the widest point of the profile (at transform scale 1 — hierarchy scale multiplies this).")]
         [SerializeField, Min(0.01f)] private float maxWidth = 0.5f;
 
         [FoldoutGroup("Shape")]
@@ -107,6 +107,12 @@ namespace Core.ProceduralAnimation
         private int _builtPointCount = -1;
         private int _builtCapSegments = -1;
         private float _nextOffscreenUpdate;
+
+        // Hierarchy scale factor applied to the width. The chain points already carry the
+        // scale (ChainSimulator scales its lengths), and the world→local round trip through
+        // InverseTransformPoint cancels the transform's own scale — so without this the
+        // ribbon renders at the same world size no matter how the hierarchy is scaled.
+        private float _hierarchyScale = 1f;
 
         // -------------------------------------------------------
         // Lifecycle
@@ -284,6 +290,10 @@ namespace Core.ProceduralAnimation
             int n = _source.PointCount;
             var t = transform;
 
+            // Refresh the width scale each pass (flip scales are size-neutral, non-uniform averages).
+            Vector3 ls = t.lossyScale;
+            _hierarchyScale = (Mathf.Abs(ls.x) + Mathf.Abs(ls.y)) * 0.5f;
+
             // Row verts: spine point ± normal × half-width, in this transform's local space.
             // UV1 rows follow the shared edge contract: edges (±dir, 0, 0), spine (0, z, w).
             for (int i = 0; i < n; i++)
@@ -413,8 +423,9 @@ namespace Core.ProceduralAnimation
         private MaterialPropertyBlock _tintBlock;
         private static readonly int ColorId = Shader.PropertyToID("_Color");
 
+        /** World-space half-width at a point along the body, hierarchy scale included. */
         private float HalfWidth(float along01) =>
-            Mathf.Max(0.001f, widthProfile.Evaluate(along01)) * maxWidth * 0.5f;
+            Mathf.Max(0.001f, widthProfile.Evaluate(along01)) * maxWidth * 0.5f * _hierarchyScale;
 
         private void ApplySorting()
         {

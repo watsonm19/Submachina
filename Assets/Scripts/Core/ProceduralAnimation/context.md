@@ -29,7 +29,11 @@ topology and persistent buffers; only vertex positions are written per frame.
   sway / constant-force drivers, then solves. Public runtime channels for
   creature brains: `WaveFrequencyMultiplier`, `WaveAmplitudeMultiplier`,
   `SnapToAnchor()` (call after teleports / cull-restore; also runs OnEnable),
-  plus the two hit reactions below.
+  plus the two hit reactions below. The anchor defaults to the simulator's own
+  transform, so parenting + leaving it empty is the normal way to place a chain;
+  an explicit anchor pins across hierarchies (physics bodies, bones), and its
+  `applyLocalPositionOffset` toggle re-adds the simulator's own position so the
+  head stays placeable by moving the GameObject in the scene view.
 
 ## Hit reactions
 
@@ -66,6 +70,15 @@ Odin "Test Limp" / "Test Freeze Pose" buttons preview each in Play mode.
 Which creatures care: only chains in **Velocity** facing get the turn-around
 artifact — currently just the eel body. Jellyfish and squid tentacles are
 `FacingMode.None`, so limp only loosens them as a flinch.
+- **Hierarchy scale**: the chain simulates in world space, so ChainSimulator
+  multiplies its world-unit dimensions (segment length, wave/sway amplitudes,
+  constant force) by a uniform factor from `transform.lossyScale`, and
+  ChainStripRenderer scales its width the same way — scaling a creature's
+  transform (or any parent) resizes the whole body. Flip scales (negative axes)
+  are size-neutral; non-uniform scales average the two axes (the world→local
+  round trip in the renderer cancels the transform's own scale, so non-uniform
+  stretching can't survive this pipeline anyway). IKLeg does NOT yet follow this
+  convention — its bone lengths stay fixed world units.
 - **IProcPointSource** — the point-run contract renderers skin: implemented by
   ChainSimulator and IKLeg, so ChainStripRenderer ribbons either. A renderer
   with no explicit chain adopts any IProcPointSource on itself or a parent.

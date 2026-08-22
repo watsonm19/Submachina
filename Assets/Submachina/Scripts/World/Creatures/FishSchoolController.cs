@@ -144,11 +144,11 @@ namespace Submachina.Core
         // Depth (2.5D illusion)
         // =====================
 
-        [FoldoutGroup("Depth (2.5D)")]
+        [FoldoutGroup("Depth (2_5D)")]
         [Tooltip("Tint blended in for fish at maximum simulated far-depth. Near fish stay untinted (white).")]
         [SerializeField] private Color backTint = new Color(0.55f, 0.68f, 0.78f, 1f);
 
-        [FoldoutGroup("Depth (2.5D)")]
+        [FoldoutGroup("Depth (2_5D)")]
         [Tooltip("Sorting-order spread (+/-) applied across the near/far depth range, added on top of each fish visual's own base sorting order.")]
         [SerializeField, Min(0)] private int depthSortingRange = 10;
 

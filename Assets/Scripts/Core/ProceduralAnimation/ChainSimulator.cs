@@ -28,7 +28,7 @@ namespace Core.ProceduralAnimation
         [SerializeField, Range(2, 64)] private int pointCount = 12;
 
         [FoldoutGroup("Chain")]
-        [Tooltip("World-space distance between consecutive points. Total chain length = segmentLength × (points - 1).")]
+        [Tooltip("World-space distance between consecutive points at transform scale 1 — hierarchy scale multiplies this, so scaling the creature resizes the chain. Total chain length = segmentLength × (points - 1).")]
         [SerializeField, Min(0.01f)] private float segmentLength = 0.25f;
 
         [FoldoutGroup("Chain")]
@@ -50,6 +50,17 @@ namespace Core.ProceduralAnimation
         [FoldoutGroup("Anchor")]
         [Tooltip("Local-space offset from the anchor where the head sits (e.g. the rim of a jellyfish bell).")]
         [SerializeField] private Vector2 anchorOffset = Vector2.zero;
+
+        [FoldoutGroup("Anchor")]
+        [EnableIf(nameof(HasExplicitAnchor))]
+        [Tooltip("When an explicit Anchor is assigned, also offset the head by this GameObject's own position — " +
+                 "so the head can be placed by moving this object in the scene view (Anchor Offset still adds on top). " +
+                 "Without this, assigning an anchor makes this object's own transform irrelevant. " +
+                 "No effect when Anchor is empty: the head already follows this transform then.")]
+        [SerializeField] private bool applyLocalPositionOffset = false;
+
+        // The toggle above only means something when the head is pinned to some OTHER transform.
+        private bool HasExplicitAnchor => anchor != null && anchor != transform;
 
         [FoldoutGroup("Anchor")]
         [Tooltip("Head facing used for the first segment's bend limit. Velocity: face travel direction (swimmers). " +
@@ -170,8 +181,25 @@ namespace Core.ProceduralAnimation
         /** Number of points in the chain. */
         public int PointCount => pointCount;
 
-        /** World-space distance between consecutive points. */
-        public float SegmentLength => segmentLength;
+        /** World-space distance between consecutive points, hierarchy scale included. */
+        public float SegmentLength => segmentLength * HierarchyScale;
+
+        /**
+         * Uniform scale factor from the transform hierarchy. All world-unit dimensions
+         * (segment length, wave/sway amplitudes, droop) are authored at scale 1 and
+         * multiplied by this, so scaling the creature's transform — or any parent —
+         * resizes the whole simulation. Flip scales (negative axes) are size-neutral;
+         * non-uniform scales average the two axes, since a world-space chain has no
+         * stable local axis to stretch along.
+         */
+        public float HierarchyScale
+        {
+            get
+            {
+                Vector3 s = transform.lossyScale;
+                return (Mathf.Abs(s.x) + Mathf.Abs(s.y)) * 0.5f;
+            }
+        }
 
         /** Smoothed anchor velocity estimated from position deltas (world units/sec). */
         public Vector2 AnchorVelocity { get; private set; }
@@ -271,7 +299,9 @@ namespace Core.ProceduralAnimation
             if (!_limpWindowOpen) UpdateFacing(dt);
 
             // ---- Drivers: nudge points, then let the constraint pass shape it ----
-            ApplyDrivers(dt);
+            // Hierarchy scale resizes every world-unit dimension so scaled creatures keep their proportions.
+            float scale = HierarchyScale;
+            ApplyDrivers(dt, scale);
 
             // Both reactions relax the solve toward a floppy rope — looser joints, no
             // straightening — and tighten back over the shared recovery window. Only the limp
@@ -289,7 +319,7 @@ namespace Core.ProceduralAnimation
             // still loose, so realigning reads as gathering itself rather than a snap.
             Vector2 solveFacing = _limpWindowOpen || facing == FacingMode.None ? Vector2.zero : Facing;
 
-            Chain.SegmentLength = segmentLength;
+            Chain.SegmentLength = segmentLength * scale;
             Chain.Solve(anchorPos, solveFacing, bendDegrees * Mathf.Deg2Rad, straighten);
         }
 
@@ -458,7 +488,7 @@ namespace Core.ProceduralAnimation
             AnchorVelocity = Vector2.zero;
             Speed = 0f;
             Facing = ResolveFacing();
-            Chain.SegmentLength = segmentLength;
+            Chain.SegmentLength = SegmentLength;
             Chain.Teleport(anchorPos, facing == FacingMode.None ? Vector2.down : -Facing);
         }
 
@@ -475,6 +505,13 @@ namespace Core.ProceduralAnimation
         private Vector2 AnchorWorldPosition()
         {
             Transform a = anchor != null ? anchor : transform;
+
+            // Explicit anchor + toggle: pin at this object's own world position, with Anchor
+            // Offset added in the anchor's space — the head is placeable by moving this
+            // GameObject in the scene view while still tracking the anchor's motion.
+            if (applyLocalPositionOffset && HasExplicitAnchor)
+                return (Vector2)transform.position + (Vector2)a.TransformVector(anchorOffset);
+
             return a.TransformPoint(anchorOffset);
         }
 
@@ -505,8 +542,11 @@ namespace Core.ProceduralAnimation
          * normal (sideways), which the following constraint pass converts into
          * clean S-curves — e.g. a 0.1 amplitude at waveLength 2 over a 3-unit chain
          * yields about one and a half visible body waves.
+         *
+         * 'scale' is the hierarchy scale factor: amplitudes and the droop force are
+         * lengths, so they scale with the creature to keep the motion proportional.
          */
-        private void ApplyDrivers(float dt)
+        private void ApplyDrivers(float dt, float scale)
         {
             _wavePhase += waveFrequency * WaveFrequencyMultiplier * Mathf.PI * 2f * dt;
 
@@ -515,10 +555,10 @@ namespace Core.ProceduralAnimation
             // its swim wave, which is what stops it reading as deliberate swimming.
             float amp = Mathf.Min(
                 (idleWaveAmplitude + Speed * waveAmplitudePerSpeed) * WaveAmplitudeMultiplier,
-                maxWaveAmplitude) * Mathf.Lerp(1f, limpWaveMultiplier, LimpWeight);
+                maxWaveAmplitude) * Mathf.Lerp(1f, limpWaveMultiplier, LimpWeight) * scale;
 
             // Sway goes the other way — loose wobble takes over as the wave drops out.
-            float swayAmp = swayAmplitude * Mathf.Lerp(1f, limpSwayMultiplier, LimpWeight);
+            float swayAmp = swayAmplitude * Mathf.Lerp(1f, limpSwayMultiplier, LimpWeight) * scale;
             float noiseT = Time.time * swayFrequency + _noiseSeed;
 
             var points = Chain.Points;
@@ -528,6 +568,8 @@ namespace Core.ProceduralAnimation
                 Vector2 normal = Chain.NormalAt(i);
 
                 // Traveling wave: phase marches backward along the body so crests flow head → tail.
+                // Wave spatial term stays unscaled: hierarchy scale would multiply distAlong AND
+                // waveLength equally, so the number of body waves is scale-invariant either way.
                 float wave = 0f;
                 if (amp > 0f)
                 {
@@ -543,7 +585,7 @@ namespace Core.ProceduralAnimation
 
                 // Sideways drivers displace along the normal; constant force is plain world drift.
                 points[i] += normal * ((wave + sway) * dt * 60f * 0.1f)
-                             + constantForce * (forceRamp.Evaluate(along01) * dt);
+                             + constantForce * (forceRamp.Evaluate(along01) * dt * scale);
             }
         }
 
@@ -583,10 +625,11 @@ namespace Core.ProceduralAnimation
             else
             {
                 Transform a = anchor != null ? anchor : transform;
-                Vector2 head = a.TransformPoint(anchorOffset);
+                Vector2 head = AnchorWorldPosition(); // includes the local-position offset toggle
                 Vector2 back = -(Vector2)a.right;
+                float seg = SegmentLength; // scaled, so the preview matches the runtime chain size
                 for (int i = 0; i < pointCount - 1; i++)
-                    Gizmos.DrawLine(head + back * (segmentLength * i), head + back * (segmentLength * (i + 1)));
+                    Gizmos.DrawLine(head + back * (seg * i), head + back * (seg * (i + 1)));
             }
         }
     }
