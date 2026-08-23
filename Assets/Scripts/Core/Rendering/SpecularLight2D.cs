@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.Rendering.Universal;
 using Sirenix.OdinInspector;
 
-namespace Submachina.Core
+namespace Core.Rendering
 {
     /**
      * Marks a Light2D as a driver of the SpriteLitSpecular glint. Lives on the light's

@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Submachina.Core
+namespace Core.Rendering
 {
     /**
      * A component whose per-instance appearance can't be reached through

@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.U2D;
 using Sirenix.OdinInspector;
 
-namespace Submachina.Core
+namespace Core.Rendering
 {
     /**
      * THE per-instance surface driver for the whole 2D specular shader family, via
@@ -53,7 +53,7 @@ namespace Submachina.Core
      * then calling `Wake()` when their contribution turns on. See `OreSpecularController`,
      * which adds a mining glow on top of this.
      */
-    public class SpecularController : MonoBehaviour, ITintReceiver
+    public class SpecularController : MonoBehaviour, ITintReceiver, IChildRenderersChangedListener
     {
         /**
          * Where the specular's surface normal comes from. `SpriteNormalMap` uses the sprite's
@@ -1210,9 +1210,15 @@ namespace Submachina.Core
             ApplyBaseline();
 
             // Sibling block-writers on the same renderers need a nudge to re-land.
-            // (global:: because inside Submachina.Core the bare "Core" binds to itself.)
-            foreach (var eb in GetComponentsInChildren<global::Core.Rendering.EdgeBandOverride>(true))
+            foreach (var eb in GetComponentsInChildren<EdgeBandOverride>(true))
                 eb.Apply();
         }
+
+        /**
+         * IChildRenderersChangedListener — something below (or on) this object rebuilt the
+         * renderers it spawns (e.g. ChainSpriteRenderer segments); re-gather and re-drive them
+         * so brand-new renderers pick up the property-block baseline without manual pokes.
+         */
+        public void OnChildRenderersChanged() => ClearStaleBlocksAndReapply();
     }
 }

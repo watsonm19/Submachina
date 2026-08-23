@@ -89,9 +89,14 @@ artifact — currently just the eel body. Jellyfish and squid tentacles are
   gradient along length (tentacle tip fades); `SetTint()` for per-instance MPB
   color. Off-screen it throttles to an interval. Edit-mode preview shows the
   rest pose.
-- **ChainSpriteRenderer** — alternative renderer: one SpriteRenderer per chain
-  segment (art-directed shells/plates/links), auto-managed children, batches
-  through the normal sprite pipeline.
+- **ChainSpriteRenderer** — alternative renderer: SpriteRenderers placed by arc
+  length along the chain (art-directed shells/plates/links), auto-managed
+  children, batches through the normal sprite pipeline. Segment count + spacing/
+  width/length curves (or a fixed-aspect mode) shape the run independently of
+  sim resolution; segments can share a material or clone a Segment Template
+  prefab/scene child that carries extra components. On rebuild it notifies
+  Core.Rendering.IChildRenderersChangedListener components up the hierarchy
+  (SpecularController implements it) so renderer caches/property blocks re-sync automatically.
 - **RadialMeshRenderer** — deformable closed blob (jelly bells, squid mantles):
   rim ring + center fan, silhouette authored as a radius-by-angle curve OR baked
   from an authored transparent PNG (see Sprite silhouettes below). Runtime
@@ -108,7 +113,7 @@ artifact — currently just the eel body. Jellyfish and squid tentacles are
   placement. Airborne legs paddle a slow staggered circle around their dangling
   stance (`airborneWaveAmplitude`/`Frequency`, 0 = stiff dangle) so a falling
   creature reads alive; `GroundedFraction` tells the brain.
-- Per-instance creature looks are driven by `SpecularController` (Submachina.Core)
+- Per-instance creature looks are driven by `SpecularController` (Core.Rendering)
   — its Mesh Textures tint + "Outline & Emission" foldouts cover what the removed
   ProcCreatureColorOverride did, plus the full specular/normal/Form-Shape stack.
   Brains keep animating `_FlashAmount`/`_EmissionColor` via their own MPB writes

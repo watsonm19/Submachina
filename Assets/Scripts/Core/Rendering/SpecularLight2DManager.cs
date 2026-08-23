@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Submachina.Core
+namespace Core.Rendering
 {
     /**
      * Collects every active SpecularLight2D and pushes them into GLOBAL shader uniforms

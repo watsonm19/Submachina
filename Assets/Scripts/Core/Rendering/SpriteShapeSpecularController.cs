@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.U2D;
 using Sirenix.OdinInspector;
 
-namespace Submachina.Core
+namespace Core.Rendering
 {
     /**
      * `SpecularController` for SpriteShape terrain, with EXPLICIT per-submesh routing.
@@ -72,7 +72,7 @@ namespace Submachina.Core
                      "at all unless you supply the map below.")]
             public NormalSource normalSource = NormalSource.SpriteNormalMap;
 
-            [ShowIf("@enabled && overrideNormal && normalSource == Submachina.Core.SpecularController.NormalSource.SpriteNormalMap")]
+            [ShowIf("@enabled && overrideNormal && normalSource == Core.Rendering.SpecularController.NormalSource.SpriteNormalMap")]
             [BoxGroup("Normal")]
             [Tooltip("Normal map bound into the _NormalMap slot for this submesh — the same slot the " +
                      "edge sprites' secondary textures land in, so the submesh gets specular relief AND " +
