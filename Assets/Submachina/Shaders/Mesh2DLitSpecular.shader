@@ -112,6 +112,9 @@ Shader "Submachina/2D/Mesh2DLitSpecular"
         _GlowViewBias("Glow View Bias (omnidirectionality)", Range(0, 10)) = 4
         _GlowPower("Glow Tightness", Range(1, 200)) = 8
         _GlowGain("Glow Gain (HDR multiplier)", Float) = 2
+        // Straightforward self-lit glow: adds the spec mask's own RGB as flat emission,
+        // independent of normals and lights. >1 pushes past white and feeds bloom. 0 = off.
+        _MaskEmission("Mask Emission (self-lit glow gain)", Float) = 0
 
         [Header(Animation)]
         _ShimmerAmp("Intensity Mod Amplitude", Float) = 0
@@ -127,6 +130,7 @@ Shader "Submachina/2D/Mesh2DLitSpecular"
         // 7 = World Facets, 8 = World Ripples (world-space, always seam-free).
         // 9 = AlbedoHeight — derive the relief from the fill albedo treated as a height map
         // (the Laigter / Material Maker trick), for texture sets with no authored normal.
+        // 10 = Flat — a programmatic (0,0,1) normal, no relief: the spec mask alone shapes the glint.
         _NormalMode("Normal Mode (0=texture)", Float) = 0
         // Mode 9: tap distance in TEXELS (1 = finest detail, larger reads broader forms) and
         // the gradient -> slope gain (NEGATIVE inverts, so dark reads as high).
@@ -249,10 +253,7 @@ Shader "Submachina/2D/Mesh2DLitSpecular"
                 half4 _Color;
                 float4 _MainTex_ST;   // fill tiling/offset (material inspector or per-object override)
                 float4 _NormalMap_ST; // normal-map tiling/offset RELATIVE to the fill UV ((1,0) = follow fill)
-                float4 _SpecMask_ST;  // spec-mask tiling/offset RELATIVE to the fill UV ((1,0) = follow fill)
                 half _NormalMapOnce;  // 1 = stamp once (flat normal outside the 0..1 window)
-                half _SpecMaskOnce;   // 1 = stamp once (mask reads _SpecMaskOnceBg outside the window)
-                half4 _SpecMaskOnceBg;
                 half4 _EdgeColor;
                 half _EdgeDarken;
                 half _EdgeWidth;
@@ -341,7 +342,10 @@ Shader "Submachina/2D/Mesh2DLitSpecular"
                 // Spec mask on its own UV; Stamp Once reads the configurable background
                 // colour outside the window (match the stamp's border: white = neutral
                 // spec elsewhere, black = dull rock everywhere except the glowy spot).
-                half3 specMask = (half3)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, uvSpec).rgb;
+                // Premultiplied by the mask's ALPHA so a transparent-background stamp PNG
+                // gates the spec off instead of leaking its (often white) hidden RGB.
+                half4 specSample = SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, uvSpec);
+                half3 specMask = (half3)(specSample.rgb * specSample.a);
                 if (_SpecMaskOnce > 0.5h && (any(uvSpec < 0.0) || any(uvSpec > 1.0)))
                     specMask = _SpecMaskOnceBg.rgb;
 
@@ -395,10 +399,7 @@ Shader "Submachina/2D/Mesh2DLitSpecular"
                 half4 _Color;
                 float4 _MainTex_ST;   // fill tiling/offset (material inspector or per-object override)
                 float4 _NormalMap_ST; // normal-map tiling/offset RELATIVE to the fill UV ((1,0) = follow fill)
-                float4 _SpecMask_ST;  // spec-mask tiling/offset RELATIVE to the fill UV ((1,0) = follow fill)
                 half _NormalMapOnce;  // 1 = stamp once (flat normal outside the 0..1 window)
-                half _SpecMaskOnce;   // 1 = stamp once (mask reads _SpecMaskOnceBg outside the window)
-                half4 _SpecMaskOnceBg;
                 half4 _EdgeColor;
                 half _EdgeDarken;
                 half _EdgeWidth;
@@ -496,10 +497,7 @@ Shader "Submachina/2D/Mesh2DLitSpecular"
                 half4 _Color;
                 float4 _MainTex_ST;   // fill tiling/offset (material inspector or per-object override)
                 float4 _NormalMap_ST; // normal-map tiling/offset RELATIVE to the fill UV ((1,0) = follow fill)
-                float4 _SpecMask_ST;  // spec-mask tiling/offset RELATIVE to the fill UV ((1,0) = follow fill)
                 half _NormalMapOnce;  // 1 = stamp once (flat normal outside the 0..1 window)
-                half _SpecMaskOnce;   // 1 = stamp once (mask reads _SpecMaskOnceBg outside the window)
-                half4 _SpecMaskOnceBg;
                 half4 _EdgeColor;
                 half _EdgeDarken;
                 half _EdgeWidth;

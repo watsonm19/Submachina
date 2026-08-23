@@ -288,6 +288,12 @@ half3 ComposeFormNormal(half3 nForm, half3 nDetail)
 half3 ComputeSurfaceNormal(float2 uv, float2 uvAlbedo, float2 wpos, out float2 uvEff)
 {
     uvEff = uv; // every branch below overwrites this; seeded so no path can leave it unset
+
+    // Mode 10: programmatically FLAT (0,0,1) — the explicit "no relief" choice. Every
+    // pixel answers a light identically, so the spec mask alone decides what glints —
+    // the right base for simple glow-mask setups. No texture sample at all.
+    if (_NormalMode > 9.5h) return half3(0.0h, 0.0h, 1.0h);
+
     // Mode 0: the sprite's own normal map. UnpackNormal decodes BOTH encodings:
     // Unity-imported "Normal map" textures (BC5/DXT5nm channel-packed, z rebuilt
     // from xy) and our straight-RGB baked maps (opaque alpha -> plain xy*2-1).
@@ -715,17 +721,32 @@ half4 ApplySpecularMasked(half4 c, half3 nBase, half3 nCurv, half3 texel, half3 
     half3 additive = c.rgb + lerp(glint, soft * saturate(1.0h - c.rgb), screen);
     half3 replaced = lerp(c.rgb, specColor, saturate(cover));
     c.rgb = lerp(additive, replaced, replace);
+
+    // Self-lit mask glow: the mask's own colour added as flat HDR emission — the
+    // straightforward "make this area glow" channel, independent of normals, lights,
+    // and every occlusion term above. Gains > 1 feed bloom; 0 (default) = off.
+    c.rgb += specMask * _MaskEmission * c.a;
     return c;
 }
 
-// Convenience wrapper for callers whose spec mask simply shares the main UV
-// (the sprite shader): samples _SpecMask at uv and runs the full pipeline. nCurv is
-// the normal BEFORE the form-shape compose — a broad form is a wide smooth ramp that
-// would register as false curvature (the same reason the spline fill excludes its
-// edge bevel); pass nBase when the caller composes no form.
+// Convenience wrapper for callers whose spec mask rides the main UV (the sprite
+// shader): applies the mask's own tiling/offset + stamp-once window, samples
+// _SpecMask, and runs the full pipeline. nCurv is the normal BEFORE the form-shape
+// compose — a broad form is a wide smooth ramp that would register as false
+// curvature (the same reason the spline fill excludes its edge bevel); pass nBase
+// when the caller composes no form.
 half4 ApplySpecular(half4 c, half3 nBase, half3 nCurv, half3 texel, float2 uv, float2 uvEff, float2 wpos)
 {
-    half3 specMask = (half3)SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, uv).rgb;
+    // Per-instance mask placement: _SpecMask_ST scales/slides the mask over the caller's
+    // UV (identity default = the old 1:1 behaviour); Stamp Once windows it to a single
+    // 0..1 tile, reading the configurable background colour everywhere else.
+    float2 uvSpec = uv * _SpecMask_ST.xy + _SpecMask_ST.zw;
+    // Premultiplied by the mask's ALPHA so a transparent-background stamp PNG gates the
+    // spec off instead of leaking its (often white) hidden RGB.
+    half4 m = SAMPLE_TEXTURE2D(_SpecMask, sampler_SpecMask, uvSpec);
+    half3 specMask = (half3)(m.rgb * m.a);
+    if (_SpecMaskOnce > 0.5h && (any(uvSpec < 0.0) || any(uvSpec > 1.0)))
+        specMask = (half3)_SpecMaskOnceBg.rgb;
     return ApplySpecularMasked(c, nBase, nCurv, texel, specMask, uvEff, wpos);
 }
 

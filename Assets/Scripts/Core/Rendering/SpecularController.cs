@@ -64,9 +64,11 @@ namespace Core.Rendering
          * geometry (SpriteShape fill + edges), so sparkle never seams or resets per segment.
          * `AlbedoHeight` derives the relief from the sprite's own albedo treated as a height
          * map (the Laigter / Material Maker trick) — real relief that follows the actual art,
-         * with no authored normal map and no bake step.
+         * with no authored normal map and no bake step. `Flat` is a programmatic (0,0,1)
+         * normal — explicitly NO relief, so every pixel answers a light identically and the
+         * spec mask alone decides what glints (the right base for simple glow-mask setups).
          */
-        public enum NormalSource { SpriteNormalMap = 0, Dome = 1, Bevel = 2, Ripples = 3, Radial = 4, Facets = 5, NormalTexture = 6, WorldFacets = 7, WorldRipples = 8, AlbedoHeight = 9 }
+        public enum NormalSource { SpriteNormalMap = 0, Dome = 1, Bevel = 2, Ripples = 3, Radial = 4, Facets = 5, NormalTexture = 6, WorldFacets = 7, WorldRipples = 8, AlbedoHeight = 9, Flat = 10 }
 
         /** Waveform shape for the animated modulation (intensity and/or direction). */
         public enum ModWaveform { Sine = 0, PingPong = 1, Noise = 2 }
@@ -165,6 +167,7 @@ namespace Core.Rendering
         private static readonly int NormalMapOnceID = Shader.PropertyToID("_NormalMapOnce");
         private static readonly int SpecMaskOnceID = Shader.PropertyToID("_SpecMaskOnce");
         private static readonly int SpecMaskOnceBgID = Shader.PropertyToID("_SpecMaskOnceBg");
+        private static readonly int MaskEmissionID = Shader.PropertyToID("_MaskEmission");
         private static readonly int OutlineColorID = Shader.PropertyToID("_OutlineColor");
         private static readonly int OutlineWidthID = Shader.PropertyToID("_OutlineWidth");
         private static readonly int OutlineSoftnessID = Shader.PropertyToID("_OutlineSoftness");
@@ -277,10 +280,45 @@ namespace Core.Rendering
                  "light up under a sweeping light ('hidden gold'). Pairs well with the Glow Zone (bright " +
                  "speckles bloom) and a Facets normal (each speckle answers a different light angle). " +
                  "Bound directly, so the sprite needs no _SpecMask Secondary Texture wiring. Sampled with " +
-                 "the sprite's own UVs: standalone sprites line up 1:1, atlased sprites won't (use a " +
-                 "Secondary Texture there so it atlases along). Empty = keep the sprite's Secondary " +
-                 "Texture / material default. For mesh fills use the Mesh Textures foldout's slot instead.")]
+                 "the sprite's own UVs (size/place it with the Placement override below): standalone " +
+                 "sprites line up 1:1, atlased sprites won't (use a Secondary Texture there so it atlases " +
+                 "along). The mask's ALPHA gates it too, so a transparent-background PNG works as a stamp. " +
+                 "Empty = keep the sprite's Secondary Texture / material default. For mesh fills use the " +
+                 "Mesh Textures foldout's slot instead.")]
         [SerializeField] private Texture2D specMaskTexture;
+
+        [FoldoutGroup("Spec Mask"), Min(0f)]
+        [Tooltip("Straightforward self-lit glow: adds the mask's own colour as flat emission — bright " +
+                 "mask pixels glow their colour regardless of normals, lights, or occlusion. Values " +
+                 "above 1 push past white and feed bloom. 0 = off.\n\n" +
+                 "For a pure 'make this area glow' setup: pair with a Flat normal source and set Light " +
+                 "Response / base intensity to 0 so no directional specular muddies the glow.")]
+        [SerializeField] private float maskEmission = 0f;
+
+        [FoldoutGroup("Spec Mask")]
+        [Tooltip("Size and place the spec mask instead of stretching it 1:1 across the sprite. " +
+                 "Off = the mask simply follows the sprite's UVs (the previous behaviour). " +
+                 "Sprite path only — mesh fills have their own set in Mesh Textures.")]
+        [SerializeField] private bool overrideSpecMaskPlacement = false;
+
+        [FoldoutGroup("Spec Mask"), ShowIf(nameof(overrideSpecMaskPlacement))]
+        [Tooltip("Tiling (scale) of the mask across the sprite. 1 = fits the sprite exactly; below 1 " +
+                 "enlarges the stamp, above 1 shrinks/repeats it. X and Y scale independently to fix aspect.")]
+        [SerializeField] private Vector2 specMaskTiling = Vector2.one;
+
+        [FoldoutGroup("Spec Mask"), ShowIf(nameof(overrideSpecMaskPlacement))]
+        [Tooltip("Offset (in sprite UV, 0..1) sliding the mask so it lands where you want on the sprite.")]
+        [SerializeField] private Vector2 specMaskOffset = Vector2.zero;
+
+        [FoldoutGroup("Spec Mask"), ShowIf(nameof(overrideSpecMaskPlacement))]
+        [Tooltip("Sample the mask only inside its single 0..1 window (no repeating) — outside it the " +
+                 "mask reads the Background colour below. The classic one-glowy-spot setup.")]
+        [SerializeField] private bool specMaskStampOnce = false;
+
+        [FoldoutGroup("Spec Mask"), ShowIf("@this.overrideSpecMaskPlacement && this.specMaskStampOnce")]
+        [Tooltip("What the mask reads OUTSIDE the stamp window: black = no specular anywhere but the " +
+                 "stamp, white = fully responsive elsewhere, grey = dimmed.")]
+        [SerializeField] private Color specMaskStampBackground = Color.black;
 
         // =====================
         // Mesh textures — the per-instance fill texture set for generated meshes
@@ -475,7 +513,9 @@ namespace Core.Rendering
                  "generated in-shader (no texture needed). Dome = round bulge, Bevel = rim only, " +
                  "Ripples = wavy bands, Radial = concentric rings, Facets = sparkly cells — all in sprite UV space. " +
                  "WorldFacets/WorldRipples are the same patterns in WORLD space: seam-free on SpriteShape terrain " +
-                 "(stitched fill + edge sprites) where the UV-space modes would jump per segment.")]
+                 "(stitched fill + edge sprites) where the UV-space modes would jump per segment. " +
+                 "Flat = a programmatic no-relief normal: every pixel answers a light identically, so the " +
+                 "spec mask alone decides what glints — the right base for simple glow-mask setups.")]
         [SerializeField] private NormalSource normalSource = NormalSource.SpriteNormalMap;
 
         [FoldoutGroup("Surface Normal"), ShowIf(nameof(normalSource), NormalSource.NormalTexture)]
@@ -612,11 +652,11 @@ namespace Core.Rendering
                  "For the World modes this is cells/waves PER WORLD UNIT instead (e.g. 8 = 8 sparkle cells per metre).")]
         [SerializeField, Min(0.01f)] private float normalFrequency = 8f;
 
-        // Frequency only matters for the procedural patterns — not the texture modes, and not
-        // AlbedoHeight (which has its own texel-space radius instead).
+        // Frequency only matters for the procedural patterns — not the texture modes, not
+        // AlbedoHeight (which has its own texel-space radius instead), and not Flat.
         private bool IsBaselineNormalMode =>
             normalSource == NormalSource.SpriteNormalMap || normalSource == NormalSource.NormalTexture
-            || normalSource == NormalSource.AlbedoHeight;
+            || normalSource == NormalSource.AlbedoHeight || normalSource == NormalSource.Flat;
 
         // =====================
         // Form shape — a broad procedural 3D form composited UNDER the detail normal
@@ -1060,6 +1100,16 @@ namespace Core.Rendering
             // Texture wiring. Left empty, the sprite's own _SpecMask (or the "white" = fully
             // shiny default) shows through.
             if (specMaskTexture != null) mpb.SetTexture(SpecMaskID, specMaskTexture);
+            // Self-lit mask glow — the mask's RGB added as flat emission, shared by both shaders.
+            mpb.SetFloat(MaskEmissionID, maskEmission);
+            // Spec-mask placement (sprite path — mesh fills get theirs from Mesh Textures below):
+            // tiling/offset in sprite UV plus the optional stamp-once window.
+            if (!(r is MeshRenderer) && overrideSpecMaskPlacement)
+            {
+                mpb.SetVector(SpecMaskSTID, new Vector4(specMaskTiling.x, specMaskTiling.y, specMaskOffset.x, specMaskOffset.y));
+                mpb.SetFloat(SpecMaskOnceID, specMaskStampOnce ? 1f : 0f);
+                mpb.SetColor(SpecMaskOnceBgID, specMaskStampBackground);
+            }
             if (overrideColor) mpb.SetColor(SpecColorID, specColor);
             // Mesh fill texture set — gated to MeshRenderers: _MainTex very much exists on
             // the sprite shader too, and stomping a sprite's own texture would be a bug.

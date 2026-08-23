@@ -36,9 +36,16 @@ Shader "Submachina/2D/SpriteLitSpecular"
         _MainTex("Diffuse", 2D) = "white" {}
         _MaskTex("Mask", 2D) = "white" {}
         _NormalMap("Normal Map", 2D) = "bump" {}
-        // Per-pixel specular gate (RGB tints + scales all specular). Bound automatically when a
-        // sprite carries a "_SpecMask" Secondary Texture; white default leaves sprites unchanged.
-        _SpecMask("Specular Mask (RGB)", 2D) = "white" {}
+        // Per-pixel specular gate (RGB × alpha tints + scales all specular). Bound automatically
+        // when a sprite carries a "_SpecMask" Secondary Texture; white default leaves sprites
+        // unchanged. The slot's Tiling/Offset scales/slides the mask over the sprite's UV
+        // (SpecularController drives it per instance via _SpecMask_ST).
+        _SpecMask("Specular Mask (RGB x A)", 2D) = "white" {}
+        // Stamp Once: sample the mask only inside its single 0..1 UV window (no repeating) —
+        // outside it the mask reads the background colour below (white = neutral spec
+        // elsewhere, black = dull everywhere except the stamp).
+        [MaterialToggle] _SpecMaskOnce("Spec Mask Stamp Once (no tiling)", Float) = 0
+        _SpecMaskOnceBg("Spec Mask Stamp Background", Color) = (1, 1, 1, 1)
         [MaterialToggle] _ZWrite("ZWrite", Float) = 0
 
         [Header(Metallic Specular)]
@@ -85,6 +92,9 @@ Shader "Submachina/2D/SpriteLitSpecular"
         _GlowViewBias("Glow View Bias (omnidirectionality)", Range(0, 10)) = 4
         _GlowPower("Glow Tightness", Range(1, 200)) = 8
         _GlowGain("Glow Gain (HDR multiplier)", Float) = 2
+        // Straightforward self-lit glow: adds the spec mask's own RGB as flat emission,
+        // independent of normals and lights. >1 pushes past white and feeds bloom. 0 = off.
+        _MaskEmission("Mask Emission (self-lit glow gain)", Float) = 0
 
         [Header(Animation)]
         _ShimmerAmp("Intensity Mod Amplitude", Float) = 0
@@ -106,6 +116,8 @@ Shader "Submachina/2D/SpriteLitSpecular"
         // geometry like SpriteShape fill + edges, where sprite-local UV modes would jump per segment).
         // 9 = AlbedoHeight — derive the relief from the albedo treated as a height map (the
         // Laigter / Material Maker trick), for sprites with no authored normal.
+        // 10 = Flat — a programmatic (0,0,1) normal, no relief at all: every pixel answers a
+        // light identically, so the spec mask alone decides what glints.
         _NormalMode("Normal Mode (0=texture)", Float) = 0
         // Mode 9 controls. Radius is the central-difference tap distance in TEXELS (1 =
         // adjacent texel = finest detail; larger reads broader forms and suppresses noise).

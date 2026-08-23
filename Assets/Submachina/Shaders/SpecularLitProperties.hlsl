@@ -97,5 +97,16 @@ half _RimWidth;
 half4 _FlashColor;
 half _FlashAmount;
 
+// ---- Spec mask placement + self-lit mask glow ----
+// Tiling/offset of the spec mask plus the stamp-once window (outside the mask's
+// single 0..1 window it reads _SpecMaskOnceBg). Shared by both shaders: the mesh
+// fill applies the ST relative to the fill UV, the sprite shader relative to the
+// sprite's own UV. _MaskEmission adds the mask's RGB as flat self-lit emission —
+// the "just make this area glow" channel, independent of normals and lights.
+float4 _SpecMask_ST;
+half _SpecMaskOnce;
+half4 _SpecMaskOnceBg;
+half _MaskEmission;
+
 // ---- Sorting layer gate for the specular lights ----
 float _SortingLayerBit;
