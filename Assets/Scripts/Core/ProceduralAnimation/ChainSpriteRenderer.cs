@@ -48,7 +48,7 @@ namespace Core.ProceduralAnimation
         [SerializeField] private SpriteVariantMode variantMode = SpriteVariantMode.HeadToTail;
 
         [FoldoutGroup("Sprites")]
-        [Tooltip("Extra rotation (degrees) if the sprite art doesn't point along +X.")]
+        [Tooltip("Extra rotation (degrees) if the sprite art doesn't point along +X. Width and length stay chain-relative: an offset near ±90° automatically swaps which sprite axis carries the length so art drawn pointing up still sizes correctly.")]
         [SerializeField] private float rotationOffset = 0f;
 
         [FoldoutGroup("Sprites")]
@@ -195,6 +195,13 @@ namespace Core.ProceduralAnimation
             for (int i = 0; i < count; i++) weightSum += SlotWeight(i, count);
             if (weightSum <= 0f) return;
 
+            // Rotation Offset re-aims the art relative to the chain. When it puts the sprite's
+            // Y axis along the chain (offset nearer ±90° than 0/180°), length and width swap
+            // which local scale axis they drive — so "width" is always across the chain and
+            // "length" always along it, no matter how the source art is drawn.
+            bool sideways = Mathf.Abs(Mathf.Sin(rotationOffset * Mathf.Deg2Rad)) >
+                            Mathf.Abs(Mathf.Cos(rotationOffset * Mathf.Deg2Rad));
+
             float s = 0f;
             for (int i = 0; i < count; i++)
             {
@@ -223,10 +230,14 @@ namespace Core.ProceduralAnimation
                     tr.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg + extra);
                 }
 
-                // Scale sprite art to the target world size (with optional alternating mirror).
+                // Scale sprite art to the target world size in chain space (with optional
+                // alternating mirror): length lands on whichever sprite axis the Rotation
+                // Offset aims down the chain, and the mirror always flips across the chain.
                 Vector2 size = SpriteWorldSize(sr.sprite);
                 float flip = alternateFlipY && (i & 1) == 1 ? -1f : 1f;
-                tr.localScale = new Vector3(len / size.x, flip * wid / size.y, 1f);
+                tr.localScale = sideways
+                    ? new Vector3(flip * wid / size.x, len / size.y, 1f)
+                    : new Vector3(len / size.x, flip * wid / size.y, 1f);
             }
         }
 

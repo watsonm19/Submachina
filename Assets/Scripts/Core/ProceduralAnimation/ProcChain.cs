@@ -67,10 +67,16 @@ namespace Core.ProceduralAnimation
          *                   segment unconstrained (free-hanging tentacle root).
          *   maxBendRad    — per-joint angle limit in radians (e.g. 0.5 ≈ 30°).
          *                   Larger = floppier, smaller = stiffer rod.
-         *   straighten    — 0..1 fraction each segment eases toward its parent's
+         *   straighten    — 0..1 fraction each segment eases toward its rest
          *                   direction this step (whip relaxation). 0 = pure trailing.
+         *   bendBiasRad   — shifts each joint's rest angle and clamp window off
+         *                   center (radians, CCW positive). The allowed bend becomes
+         *                   [bias - max, bias + max] and the straightener pulls
+         *                   toward the bias — so a biased chain both PREFERS to curl
+         *                   that way and may be LIMITED to it. e.g. bias 30° with
+         *                   max 30° = a joint that only bends 0-60° CCW.
          */
-        public void Solve(Vector2 head, Vector2 headFacing, float maxBendRad, float straighten)
+        public void Solve(Vector2 head, Vector2 headFacing, float maxBendRad, float straighten, float bendBiasRad = 0f)
         {
             Points[0] = head;
 
@@ -84,21 +90,26 @@ namespace Core.ProceduralAnimation
                 Vector2 raw = Points[i] - Points[i - 1];
                 Vector2 dir = raw.sqrMagnitude > 1e-8f ? raw.normalized : Directions[i];
 
-                // Straightening bias — ease toward the parent segment's direction, then re-normalize.
+                // Straightening bias — ease toward the rest direction (parent's direction
+                // rotated by the bend bias, giving a natural resting curl), then re-normalize.
                 if (straighten > 0f)
                 {
-                    dir = Vector2.Lerp(dir, prevDir, straighten);
-                    if (dir.sqrMagnitude < 1e-8f) dir = prevDir;
+                    Vector2 restDir = bendBiasRad != 0f ? Rotate(prevDir, bendBiasRad) : prevDir;
+                    dir = Vector2.Lerp(dir, restDir, straighten);
+                    if (dir.sqrMagnitude < 1e-8f) dir = restDir;
                     dir.Normalize();
                 }
 
-                // Bend limit — clamp the signed angle between parent and this segment.
-                // e.g. parent pointing right, maxBend 30°: this segment stays within ±30° of right.
+                // Bend limit — clamp the signed angle between parent and this segment to a
+                // window centered on the bias. e.g. parent pointing right, bias 0, maxBend 30°:
+                // stays within ±30° of right; bias 20° shifts that window to -10°..+50°.
                 if (maxBendRad < Mathf.PI)
                 {
                     float angle = SignedAngle(prevDir, dir);
-                    if (angle > maxBendRad) dir = Rotate(prevDir, maxBendRad);
-                    else if (angle < -maxBendRad) dir = Rotate(prevDir, -maxBendRad);
+                    float hi = bendBiasRad + maxBendRad;
+                    float lo = bendBiasRad - maxBendRad;
+                    if (angle > hi) dir = Rotate(prevDir, hi);
+                    else if (angle < lo) dir = Rotate(prevDir, lo);
                 }
 
                 Points[i] = Points[i - 1] + dir * SegmentLength;

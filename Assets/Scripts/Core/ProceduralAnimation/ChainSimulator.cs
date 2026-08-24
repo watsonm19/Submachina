@@ -36,6 +36,10 @@ namespace Core.ProceduralAnimation
         [SerializeField, Range(1f, 180f)] private float maxBendDegrees = 35f;
 
         [FoldoutGroup("Chain")]
+        [Tooltip("Shifts each joint's rest angle and bend window off center (degrees, CCW positive). The chain both PREFERS to curl this way (the straightener pulls toward it) and is LIMITED to bias ± Max Bend — e.g. bias 20 with max 30 allows only -10°..+50° per joint. Mirror the sign across a bank of tentacles (+ on one side, - on the other) for a symmetric outward splay. Fades to 0 while limp.")]
+        [SerializeField, Range(-90f, 90f)] private float bendBiasDegrees = 0f;
+
+        [FoldoutGroup("Chain")]
         [Tooltip("How strongly each segment eases back toward straight (per second). 0 = pure trailing rope; higher values spring the body straight when it stops turning.")]
         [SerializeField, Range(0f, 20f)] private float straightenSpeed = 3f;
 
@@ -68,6 +72,10 @@ namespace Core.ProceduralAnimation
                  "squid/jellyfish, or anything dragged backwards). TransformRight: follow the anchor's rotation " +
                  "(mounted tentacles). None: free-hanging.")]
         [SerializeField] private FacingMode facing = FacingMode.Velocity;
+
+        [FoldoutGroup("Anchor")]
+        [Tooltip("Rotates the resolved head facing (degrees, CCW positive) — fan a bank of tentacles into a symmetric splay (e.g. ±15, ±40 across four tentacles) without needing dedicated rotated anchor transforms. Applies to every facing mode except None.")]
+        [SerializeField, Range(-180f, 180f)] private float facingOffsetDegrees = 0f;
 
         // Appended-only: Unity serializes enums by index, so new modes go on the end to avoid re-mapping prefabs.
         public enum FacingMode { Velocity, TransformRight, TransformUp, None, ReverseVelocity }
@@ -181,8 +189,8 @@ namespace Core.ProceduralAnimation
         /** Number of points in the chain. */
         public int PointCount => pointCount;
 
-        /** World-space distance between consecutive points, hierarchy scale included. */
-        public float SegmentLength => segmentLength * HierarchyScale;
+        /** World-space distance between consecutive points — hierarchy scale and the runtime length multiplier included. */
+        public float SegmentLength => segmentLength * HierarchyScale * Mathf.Clamp(LengthMultiplier, 0.05f, 2f);
 
         /**
          * Uniform scale factor from the transform hierarchy. All world-unit dimensions
@@ -215,6 +223,27 @@ namespace Core.ProceduralAnimation
 
         /** Runtime gain on wave amplitude — pairs with the frequency multiplier for agitated swimming. */
         public float WaveAmplitudeMultiplier { get; set; } = 1f;
+
+        /**
+         * Runtime gain on segment length. Ease below 1 to physically retract the chain
+         * toward its anchor (e.g. a squid gathering its tentacles before a pulse kick),
+         * back to 1 to re-extend. The constraint pass drags the points in/out, so the
+         * change reads as real motion rather than a scale pop. Clamped to 0.05-2.
+         */
+        public float LengthMultiplier { get; set; } = 1f;
+
+        /**
+         * Runtime world-space drift force (units/sec) applied along the chain with a
+         * tip-weighted ramp — creature brains drive this for reach/flick gestures
+         * (e.g. a squid throwing its tentacles toward prey). The constraint pass turns
+         * the raw drift into a natural reach: tips lead, the body trails after them.
+         * Zero it when the gesture ends. Faded out by LimpWeight — a ragdolled body
+         * doesn't reach.
+         */
+        public Vector2 ExternalForce { get; set; }
+
+        /** Tip weighting exponent for ExternalForce: 1 = linear head→tip ramp, 2-3 concentrates the throw in the tips. */
+        public float ExternalForceTipPower { get; set; } = 1f;
 
         /** 0 = normal, 1 = fully ragdolled. Eases back to 0 after a Limp() window expires. */
         public float LimpWeight { get; private set; }
@@ -319,8 +348,11 @@ namespace Core.ProceduralAnimation
             // still loose, so realigning reads as gathering itself rather than a snap.
             Vector2 solveFacing = _limpWindowOpen || facing == FacingMode.None ? Vector2.zero : Facing;
 
-            Chain.SegmentLength = segmentLength * scale;
-            Chain.Solve(anchorPos, solveFacing, bendDegrees * Mathf.Deg2Rad, straighten);
+            // The curl bias fades out with the loosen weight — a ragdolled body has no preferred curl.
+            float bendBias = bendBiasDegrees * (1f - loosen);
+
+            Chain.SegmentLength = segmentLength * scale * Mathf.Clamp(LengthMultiplier, 0.05f, 2f);
+            Chain.Solve(anchorPos, solveFacing, bendDegrees * Mathf.Deg2Rad, straighten, bendBias * Mathf.Deg2Rad);
         }
 
         /**
@@ -520,20 +552,29 @@ namespace Core.ProceduralAnimation
             Transform a = anchor != null ? anchor : transform;
             switch (facing)
             {
-                case FacingMode.TransformRight: return a.right;
-                case FacingMode.TransformUp: return a.up;
+                case FacingMode.TransformRight: return RotateByOffset(a.right);
+                case FacingMode.TransformUp: return RotateByOffset(a.up);
                 case FacingMode.None: return Facing;
                 default:
                     // Velocity facing holds the last heading below a small speed floor
                     // so a paused creature doesn't spin from jitter. Below the floor we keep
-                    // the stored facing, which is already sign-corrected from a previous frame.
+                    // the stored facing, which already includes the offset from a previous frame.
                     if (Speed <= 0.15f) return Facing;
 
                     // ReverseVelocity flips the heading: the head aims backwards, so the chain
                     // (which lays out opposite the facing) trails out ahead of the travel direction.
                     Vector2 heading = AnchorVelocity / Speed;
-                    return facing == FacingMode.ReverseVelocity ? -heading : heading;
+                    return RotateByOffset(facing == FacingMode.ReverseVelocity ? -heading : heading);
             }
+        }
+
+        /** Applies the facing offset — the per-tentacle fan angle — to a freshly resolved facing. */
+        private Vector2 RotateByOffset(Vector2 dir)
+        {
+            if (facingOffsetDegrees == 0f) return dir;
+            float rad = facingOffsetDegrees * Mathf.Deg2Rad;
+            float c = Mathf.Cos(rad), s = Mathf.Sin(rad);
+            return new Vector2(dir.x * c - dir.y * s, dir.x * s + dir.y * c);
         }
 
         /**
@@ -561,6 +602,11 @@ namespace Core.ProceduralAnimation
             float swayAmp = swayAmplitude * Mathf.Lerp(1f, limpSwayMultiplier, LimpWeight) * scale;
             float noiseT = Time.time * swayFrequency + _noiseSeed;
 
+            // External gesture force (reach/flick), pre-scaled once — limp fades it out
+            // the same way it kills the swim wave, so knockbacks override gestures.
+            Vector2 extForce = ExternalForce * ((1f - LimpWeight) * dt * scale);
+            bool hasExtForce = extForce.sqrMagnitude > 1e-10f;
+
             var points = Chain.Points;
             for (int i = 1; i < points.Length; i++)
             {
@@ -586,6 +632,10 @@ namespace Core.ProceduralAnimation
                 // Sideways drivers displace along the normal; constant force is plain world drift.
                 points[i] += normal * ((wave + sway) * dt * 60f * 0.1f)
                              + constantForce * (forceRamp.Evaluate(along01) * dt * scale);
+
+                // Gesture force: tip-power ramp instead of forceRamp so reaches stay
+                // independent of each creature's authored droop curve.
+                if (hasExtForce) points[i] += extForce * Mathf.Pow(along01, ExternalForceTipPower);
             }
         }
 

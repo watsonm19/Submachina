@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Events;
 using DG.Tweening;
 using Core.ProceduralAnimation;
 using Sirenix.OdinInspector;
@@ -155,6 +156,18 @@ namespace Submachina.Core
         [SerializeField, Range(0.1f, 1f)] private float retargetSwitchAdvantage = 0.8f;
 
         // =====================
+        // Events (shared)
+        // =====================
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when this enemy notices a target and shifts from idle behavior into active pursuit/engagement. Subclasses report the transition via NotifyPursuitStart().")]
+        public UnityEvent onPursuitStart;
+
+        [FoldoutGroup("Events")]
+        [Tooltip("Fired when this enemy loses interest and returns to idle behavior (or dies mid-pursuit). Subclasses report the transition via NotifyPursuitEnd().")]
+        public UnityEvent onPursuitEnd;
+
+        // =====================
         // Debug (shared)
         // =====================
 
@@ -197,6 +210,9 @@ namespace Submachina.Core
 
         /** True after OnDeath fires — FixedUpdate stops calling UpdateAI. */
         protected bool IsDead { get; private set; }
+
+        /** True between NotifyPursuitStart and NotifyPursuitEnd — the enemy considers itself engaged. */
+        protected bool IsPursuing { get; private set; }
 
         /** Next time (Time.time) this enemy is allowed to re-scan for a target. Phase-staggered per instance. */
         private float _nextRetargetTime;
@@ -288,6 +304,9 @@ namespace Submachina.Core
         protected virtual void OnDeath()
         {
             IsDead = true;
+
+            // A pursuit cut short by death still ends — lets wired-up effects (music, indicators) reset.
+            NotifyPursuitEnd();
 
             // Death launch: the killing blow was a knockback, so the corpse keeps that
             // momentum and flies. HitReceiver applies knockback *before* damage, so the
@@ -445,6 +464,26 @@ namespace Submachina.Core
                 if (chainReaction == ChainHitReaction.Limp) chain.Limp(duration);
                 else chain.FreezePose(duration);
             }
+        }
+
+        /**
+         * Reports that this enemy has shifted from idle into active pursuit. Call from the
+         * subclass state machine at its own detection transition (e.g. Lurk → Hover).
+         * Guarded — re-entering engaged states while already pursuing won't re-fire the event.
+         */
+        protected void NotifyPursuitStart()
+        {
+            if (IsPursuing) return;
+            IsPursuing = true;
+            onPursuitStart?.Invoke();
+        }
+
+        /** Reports that this enemy lost interest and went back to idle. Guarded like NotifyPursuitStart. */
+        protected void NotifyPursuitEnd()
+        {
+            if (!IsPursuing) return;
+            IsPursuing = false;
+            onPursuitEnd?.Invoke();
         }
 
         /** Knockback landed — flinch the body for the configured window. */
