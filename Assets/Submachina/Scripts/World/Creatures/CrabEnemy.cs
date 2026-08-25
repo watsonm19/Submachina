@@ -172,6 +172,11 @@ namespace Submachina.Core
         [SerializeField] private RadialMeshRenderer shell;
 
         [FoldoutGroup("Animation Coupling")]
+        [Tooltip("Shell flash telegraph during the wind-up — the brightening flicker just before a snap. " +
+                 "Turn off for a silent tell: the claw cock-back and the intent indicator still read the attack.")]
+        [SerializeField] private bool shellFlashTelegraph = true;
+
+        [FoldoutGroup("Animation Coupling")]
         [Tooltip("Claw rest pose relative to the body: x = outward from center, y = height.")]
         [SerializeField] private Vector2 clawRestPose = new Vector2(0.75f, 0.05f);
 
@@ -222,6 +227,7 @@ namespace Submachina.Core
         private int _liltDir = 1;
         private float _tilt;
         private MaterialPropertyBlock _mpb;
+        private float _flashAmount = -1f; // last value pushed to the shell; -1 forces the first write
         private static readonly int FlashAmountId = Shader.PropertyToID("_FlashAmount");
 
         protected override string CurrentState => _state.ToString();
@@ -540,13 +546,29 @@ namespace Submachina.Core
             }
         }
 
-        /** Shell flash via property block (no material instancing). */
+        /**
+         * Shell flash via property block (no material instancing). With the
+         * telegraph switched off every request collapses to 0, so the shell is
+         * driven flat rather than left stuck at whatever it flashed to last.
+         * Repeat values are skipped — TickWindUp calls this every fixed frame.
+         */
         private void SetFlash(float amount)
         {
+            if (!shellFlashTelegraph) amount = 0f;
             if (shell == null || shell.Renderer == null) return;
+            if (Mathf.Approximately(_flashAmount, amount)) return;
+
+            _flashAmount = amount;
             shell.Renderer.GetPropertyBlock(_mpb);
             _mpb.SetFloat(FlashAmountId, amount);
             shell.Renderer.SetPropertyBlock(_mpb);
+        }
+
+        /** Toggling the telegraph off mid-play clears any flash already on the shell. */
+        private void OnValidate()
+        {
+            if (!Application.isPlaying || shellFlashTelegraph) return;
+            SetFlash(0f);
         }
 
         // -------------------------------------------------------
