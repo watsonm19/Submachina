@@ -85,8 +85,12 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float strafeFrequency = 0.5f;
 
         [FoldoutGroup("Movement")]
-        [Tooltip("Steering responsiveness (per second) of the glide component and the posture intent. Higher = snappier; lower = big flowing arcs.")]
+        [Tooltip("Acceleration responsiveness (per second): how quickly the glide component and the aim SPEED track their targets. Does NOT govern turning (see Aim Turn Rate) — so cranking either knob never affects the other: turning can be instant without moving faster, and vice versa.")]
         [SerializeField, Range(0.5f, 20f)] private float steering = 5f;
+
+        [FoldoutGroup("Movement")]
+        [Tooltip("Turn rate of the travel aim (degrees/sec) — a true turning circle for where the squid is going/pushing. Sudden target reversals sweep around at this capped rate instead of flipping, no matter how close the target crosses. Gated to the steerDuring beats at full pulse.")]
+        [SerializeField, Range(10f, 1080f)] private float aimTurnRate = 240f;
 
         // =====================
         // Posture
@@ -117,8 +121,24 @@ namespace Submachina.Core
         [SerializeField] private bool burstsFaceTravel = true;
 
         [FoldoutGroup("Posture")]
-        [Tooltip("How fast visualRoot rotates toward its posture target (per second).")]
+        [Tooltip("How fast visualRoot eases toward its posture target (per second).")]
         [SerializeField, Range(0.5f, 20f)] private float visualTurnSpeed = 6f;
+
+        [FoldoutGroup("Posture")]
+        [Tooltip("Hard cap (degrees/sec) on how fast the body can visually rotate, layered over the ease — kills the instant flip when a posture target jumps to the far side. Applies to every posture target, burst aiming included.")]
+        [SerializeField, Range(30f, 1440f)] private float maxVisualTurnRate = 360f;
+
+        [FoldoutGroup("Posture")]
+        [Tooltip("FaceTravel only: the desired course must be within this many degrees of where the head currently points for thrust to fire at full strength. Beyond it (plus the falloff band), a fully limited squid turns instead of moving until the head comes to bear. 180 = never limited.")]
+        [SerializeField, Range(5f, 180f)] private float burstAlignAngle = 45f;
+
+        [FoldoutGroup("Posture")]
+        [Tooltip("Degrees past the cone over which thrust fades from full to zero — e.g. cone 45 with falloff 20: full thrust inside 45°, none beyond 65°. Small = crisp go/no-go edge, large = gradual.")]
+        [SerializeField, Range(1f, 90f)] private float burstAlignFalloff = 20f;
+
+        [FoldoutGroup("Posture")]
+        [Tooltip("How strongly misalignment suppresses thrust (burst kick AND glide): 0 = alignment ignored entirely, 1 = a misaligned squid only turns, with thrust blending in as the head swings onto the course. Mid values mostly turn but still push a little.")]
+        [SerializeField, Range(0f, 1f)] private float burstAlignLimit = 1f;
 
         [FoldoutGroup("Posture")]
         [Tooltip("Rotational sway (± degrees) riding the pulse clock while swimming — the side-to-side body wobble. 0 = off.")]
@@ -399,7 +419,8 @@ namespace Submachina.Core
         private Vector2 _lurkTarget;
         private Vector2 _jetDirection;
         private Vector2 _fleeDirection;
-        private Vector2 _steeringIntent;    // smoothed travel intent — what FaceTravel posture faces; kicks/drag never touch it
+        private float _aimAngle;            // world angle (deg) of the travel aim — turns at aimTurnRate, physically cannot snap
+        private float _aimSpeed;            // smoothed speed the aim carries — sets kick magnitude, independent of turning
         private Vector3 _visualBasePos;     // authored visualRoot local position the bob offsets from
         private float _tentacleBaseAmp = 1f;    // per-state baseline the pulse retract/push multiplies
         private bool _hasHitThisJet;
@@ -416,6 +437,9 @@ namespace Submachina.Core
 
         /** Runtime access for tweening glide↔pulse (e.g. DOTween.To on this property). */
         public float PropulsionBlend { get => propulsionBlend; set => propulsionBlend = Mathf.Clamp01(value); }
+
+        /** Unit vector of the current travel aim. */
+        private Vector2 AimDirection => new Vector2(Mathf.Cos(_aimAngle * Mathf.Deg2Rad), Mathf.Sin(_aimAngle * Mathf.Deg2Rad));
 
         // -------------------------------------------------------
         // Lifecycle
@@ -440,6 +464,9 @@ namespace Submachina.Core
             // Random clock phases so multiple squids don't pulse/sway in lockstep.
             _strafePhase = Random.value * Mathf.PI * 2f;
             _pulsePhase = Random.value;
+
+            // Rest aim = wherever the head points at spawn, so the first turn starts from the pose.
+            _aimAngle = neutralPostureAngle + headAngle;
         }
 
         protected override void Start()
@@ -560,7 +587,7 @@ namespace Submachina.Core
         private void TickRecover()
         {
             Rb.linearVelocity *= 0.92f;
-            _steeringIntent *= 0.92f; // intent decays with the drift so posture settles toward neutral too
+            _aimSpeed *= 0.92f; // aim speed decays with the drift so posture settles toward neutral too
             if (mantle != null)
                 mantle.Squash = Vector2.Lerp(mantle.Squash, Vector2.one, 1f - Mathf.Exp(-squashEaseSpeed * Time.fixedDeltaTime));
 
@@ -614,23 +641,37 @@ namespace Submachina.Core
             // aim during the beats enabled in steerDuring, freezing it otherwise.
             bool steerNow = (steerDuring & ToBeatMask(beat)) != 0;
             float gate = Mathf.Lerp(1f, steerNow ? 1f : 0f, propulsionBlend);
-            float intentT = 1f - Mathf.Exp(-steering * gate * dt);
-            _steeringIntent = Vector2.Lerp(_steeringIntent, desiredVelocity, intentT);
 
-            // Glide: eased acceleration toward the target, weakening as blend → 1.
+            // Aim: DIRECTION turns at a capped deg/sec rate (a real turning circle —
+            // a reversed target sweeps around, never snaps) while SPEED eases toward
+            // the target speed separately, so turn settings never change how fast it
+            // moves and acceleration settings never change how fast it turns.
+            float desiredSpeed = desiredVelocity.magnitude;
+            if (desiredSpeed > 0.05f)
+            {
+                float desiredAngle = Mathf.Atan2(desiredVelocity.y, desiredVelocity.x) * Mathf.Rad2Deg;
+                _aimAngle = Mathf.MoveTowardsAngle(_aimAngle, desiredAngle, aimTurnRate * gate * dt);
+            }
+            _aimSpeed = Mathf.Lerp(_aimSpeed, desiredSpeed, 1f - Mathf.Exp(-steering * gate * dt));
+
+            // FaceTravel alignment: how much thrust the current facing "authorizes"
+            // toward the desired course — a misaligned squid turns first, then moves.
+            float alignScale = AlignmentThrustScale(desiredVelocity);
+
+            // Glide: eased acceleration toward the (alignment-scaled) target, weakening as blend → 1.
             float glideT = 1f - Mathf.Exp(-steering * (1f - propulsionBlend) * dt);
-            Rb.linearVelocity = Vector2.Lerp(Rb.linearVelocity, desiredVelocity, glideT);
+            Rb.linearVelocity = Vector2.Lerp(Rb.linearVelocity, desiredVelocity * alignScale, glideT);
 
             // Pulse thrust: the kick spread evenly across the burst beat as real
             // acceleration along the (possibly frozen) aim — e.g. hoverSpeed 2.5 ×
             // pulseKick 1.8 gains ~4.5 u/s over the burst, then drag bleeds it off.
+            // Alignment-scaled too, so an off-course burst is a turning beat.
             if (beat == PulseBeat.Burst && propulsionBlend > 0f)
             {
-                float aimSpeed = _steeringIntent.magnitude;
                 GetBeatFractions(out float _g, out float _p, out float b);
                 float burstDuration = b / pulseFrequency;
-                if (aimSpeed > 0.05f && burstDuration > 0f)
-                    Rb.linearVelocity += _steeringIntent.normalized * (aimSpeed * pulseKick * propulsionBlend * dt / burstDuration);
+                if (_aimSpeed > 0.05f && burstDuration > 0f)
+                    Rb.linearVelocity += AimDirection * (_aimSpeed * pulseKick * propulsionBlend * alignScale * dt / burstDuration);
             }
 
             // Pulse coast: exponential drag bleeds each kick off, strengthening as blend → 1.
@@ -668,6 +709,30 @@ namespace Submachina.Core
 
         /** PulseBeatMask flag for a beat — the enums share ordering, so it's a bit shift. */
         private static PulseBeatMask ToBeatMask(PulseBeat beat) => (PulseBeatMask)(1 << (int)beat);
+
+        /**
+         * FaceTravel only: 0..1 thrust authorization from how far the head currently
+         * points off the DESIRED course. Deliberately measured against the desired
+         * velocity, not the internal aim — the head chases the aim closely, so
+         * head-vs-aim would almost never register as misaligned.
+         *
+         * Full thrust inside burstAlignAngle, fading to zero across the
+         * burstAlignFalloff band past it — e.g. cone 45, falloff 20: full to 45°,
+         * nothing beyond 65°. burstAlignLimit blends the whole effect in, so a fully
+         * limited off-course squid spends its beats turning instead of moving.
+         */
+        private float AlignmentThrustScale(Vector2 desiredVelocity)
+        {
+            if (postureMode != PostureMode.FaceTravel || burstAlignLimit <= 0f || visualRoot == null) return 1f;
+            if (desiredVelocity.sqrMagnitude < 0.0025f) return 1f;
+
+            float headWorldAngle = visualRoot.eulerAngles.z + headAngle;
+            float desiredAngle = Mathf.Atan2(desiredVelocity.y, desiredVelocity.x) * Mathf.Rad2Deg;
+            float misalign = Mathf.Abs(Mathf.DeltaAngle(headWorldAngle, desiredAngle));
+
+            float align = 1f - Mathf.Clamp01((misalign - burstAlignAngle) / burstAlignFalloff);
+            return Mathf.Lerp(1f, align, burstAlignLimit);
+        }
 
         /**
          * Drives mantle squash, tentacle wave, and tentacle length from the pulse
@@ -748,7 +813,7 @@ namespace Submachina.Core
                 // Player-directed reach only makes sense while engaged; lurking falls back to the aim.
                 bool atPlayer = reachTarget == ReachTarget.Player && _state != AiState.Lurk;
                 Vector2 dir = atPlayer ? DirectionToPlayer()
-                    : _steeringIntent.sqrMagnitude > 0.01f ? _steeringIntent.normalized : Vector2.zero;
+                    : _aimSpeed > 0.05f ? AimDirection : Vector2.zero;
 
                 force = dir * (reachStrength * envelope);
             }
@@ -756,11 +821,11 @@ namespace Submachina.Core
             SetTentacleReachForce(force);
         }
 
-        /** Eases the Rigidbody and the posture intent to a stop — used by the Aim telegraph. */
+        /** Eases the Rigidbody and the aim speed to a stop — used by the Aim telegraph. The aim angle holds. */
         private void BleedToStop()
         {
             float t = 1f - Mathf.Exp(-steering * Time.fixedDeltaTime);
-            _steeringIntent = Vector2.Lerp(_steeringIntent, Vector2.zero, t);
+            _aimSpeed = Mathf.Lerp(_aimSpeed, 0f, t);
             Rb.linearVelocity = Vector2.Lerp(Rb.linearVelocity, Vector2.zero, t);
         }
 
@@ -962,11 +1027,10 @@ namespace Submachina.Core
                 }
             }
 
-            // FaceTravel: head along the smoothed intent (falls through to neutral near rest).
-            if (postureMode == PostureMode.FaceTravel && _steeringIntent.sqrMagnitude > 0.09f)
+            // FaceTravel: head along the rate-limited aim (falls through to neutral near rest).
+            if (postureMode == PostureMode.FaceTravel && _aimSpeed > 0.3f)
             {
-                float travelAngle = Mathf.Atan2(_steeringIntent.y, _steeringIntent.x) * Mathf.Rad2Deg;
-                RotateToward(travelAngle - headAngle + sway, visualTurnSpeed);
+                RotateToward(_aimAngle - headAngle + sway, visualTurnSpeed);
                 return;
             }
 
@@ -974,12 +1038,23 @@ namespace Submachina.Core
             RotateToward(neutralPostureAngle + sway, visualTurnSpeed);
         }
 
-        /** Exponentially eases visualRoot's Z rotation toward a target angle along the shortest arc. */
+        /**
+         * Eases visualRoot's Z rotation toward a target angle along the shortest arc,
+         * with the per-frame step hard-capped at maxVisualTurnRate — exponential ease
+         * gives the soft landing on small corrections, the cap stops big target jumps
+         * from reading as an instant flip (the ease alone turns proportionally faster
+         * the larger the delta, which is exactly the jank the cap removes).
+         */
         private void RotateToward(float targetAngle, float speed)
         {
+            float current = visualRoot.eulerAngles.z;
             float t = 1f - Mathf.Exp(-speed * Time.deltaTime);
-            float next = Mathf.LerpAngle(visualRoot.eulerAngles.z, targetAngle, t);
-            visualRoot.rotation = Quaternion.Euler(0f, 0f, next);
+            float eased = Mathf.LerpAngle(current, targetAngle, t);
+
+            float step = Mathf.DeltaAngle(current, eased);
+            float maxStep = maxVisualTurnRate * Time.deltaTime;
+            step = Mathf.Clamp(step, -maxStep, maxStep);
+            visualRoot.rotation = Quaternion.Euler(0f, 0f, current + step);
         }
 
         // -------------------------------------------------------
