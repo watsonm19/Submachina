@@ -156,6 +156,42 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float snapCooldown = 2f;
 
         // =====================
+        // Squash & Stretch
+        // =====================
+
+        [FoldoutGroup("Squash & Stretch")]
+        [Tooltip("Master switch for the shell squash & stretch riding the snap sequence — the anticipation crouch through the wind-up and the stretch release on the hop.")]
+        [SerializeField] private bool enableSquashStretch = true;
+
+        [FoldoutGroup("Squash & Stretch")]
+        [Tooltip("Master intensity: scales how far BOTH poses deviate from neutral. 0 = feature effectively off, 1 = the authored poses below, >1 exaggerates them for cartoonier snaps.")]
+        [SerializeField, Range(0f, 1.5f)] private float squashIntensity = 1f;
+
+        [FoldoutGroup("Squash & Stretch")]
+        [Tooltip("Shell Squash (x = width, y = height) at the peak of the wind-up — the cocked anticipation pose. Default rears tall and narrow, loading the spring the lunge releases.")]
+        [SerializeField] private Vector2 windUpSquash = new Vector2(0.88f, 1.12f);
+
+        [FoldoutGroup("Squash & Stretch")]
+        [Tooltip("Shell Squash held through the snap hop — the release. Default stretches long and flat along the lunge.")]
+        [SerializeField] private Vector2 snapSquash = new Vector2(1.22f, 0.85f);
+
+        [FoldoutGroup("Squash & Stretch")]
+        [Tooltip("TIMING of the crouch across the wind-up: sampled with normalized telegraph progress 0→1, output 0 = neutral shell, 1 = the full windUpSquash pose. Reshape for a late snap-crouch, an early ease-in, or overshoot past 1 for a wobble.")]
+        [SerializeField] private AnimationCurve windUpSquashCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+        [FoldoutGroup("Squash & Stretch")]
+        [Tooltip("How fast the shell eases toward its current squash target (per second) — the FEEL knob for the stretch pop and the post-snap relax. High = crisp and snappy, low = soft and doughy.")]
+        [SerializeField, Range(1f, 30f)] private float squashEaseSpeed = 12f;
+
+        [FoldoutGroup("Squash & Stretch")]
+        [Tooltip("World units the BODY drops toward the ground at the peak of the wind-up — the physical crouch. The planted IK feet stay put, so lowering the body folds the legs into a loaded spring pose. Rides windUpSquashCurve, scaled by squashIntensity.")]
+        [SerializeField, Min(0f)] private float windUpCrouch = 0.3f;
+
+        [FoldoutGroup("Squash & Stretch")]
+        [Tooltip("Stance-splay multiplier pushed into the gait at the peak of the wind-up — >1 makes the feet visibly re-step OUTWARD into a wide brace as he loads. 1 = no stance change. Rides the same curve and intensity as the crouch.")]
+        [SerializeField, Range(1f, 3f)] private float windUpStanceSplay = 1.6f;
+
+        // =====================
         // Animation Coupling
         // =====================
 
@@ -226,6 +262,7 @@ namespace Submachina.Core
         private Vector2 _leapDirection;
         private int _liltDir = 1;
         private float _tilt;
+        private float _crouch;      // eased body-drop (world units) the hover spring subtracts during the wind-up
         private MaterialPropertyBlock _mpb;
         private float _flashAmount = -1f; // last value pushed to the shell; -1 forces the first write
         private static readonly int FlashAmountId = Shader.PropertyToID("_FlashAmount");
@@ -268,6 +305,7 @@ namespace Submachina.Core
 
             UpdateClaws();
             UpdateTilt();
+            UpdateSquash();
         }
 
         /** Falling: paddle-drift down, lilting to one side — and lunge at a close player mid-air. */
@@ -347,7 +385,7 @@ namespace Submachina.Core
         private void TickWindUp()
         {
             // A mid-air wind-up keeps falling and telegraphs faster; grounded plants and cocks.
-            float duration = _grounded ? windUpDuration : windUpDuration * 0.55f;
+            float duration = CurrentWindUpDuration();
             if (_grounded) Move(0f); else FallDrift();
             SetFlash(Mathf.Clamp01(_stateTimer / duration) * 0.5f);
 
@@ -387,7 +425,7 @@ namespace Submachina.Core
          */
         private void Move(float vx)
         {
-            float targetY = _groundY + hoverHeight;
+            float targetY = _groundY + hoverHeight - _crouch;
             float vy = Mathf.Clamp((targetY - transform.position.y) * heightSpring, -3f, 3f);
             Rb.linearVelocity = new Vector2(vx, vy);
         }
@@ -512,6 +550,59 @@ namespace Submachina.Core
         }
 
         // -------------------------------------------------------
+        // Squash & stretch — the snap anticipation
+        // -------------------------------------------------------
+
+        /** Effective wind-up length — the mid-air telegraph runs faster than the grounded one. */
+        private float CurrentWindUpDuration() => _grounded ? windUpDuration : windUpDuration * 0.55f;
+
+        /**
+         * Drives the whole snap anticipation from one clock: the shell's Squash
+         * (neutral → wind-up pose → snap stretch), the physical body CROUCH (the
+         * hover spring's target drops so the planted legs fold into a loaded
+         * spring), and the stance BRACE (gait splay widens so the feet re-step
+         * outward). All deviations scale with squashIntensity, all ride
+         * windUpSquashCurve, and everything EASES toward its target at
+         * squashEaseSpeed — so state changes mid-gesture relax instead of popping.
+         */
+        private void UpdateSquash()
+        {
+            // Resolve the anticipation weight for the current state: the curve builds
+            // it through the wind-up, and every other state collapses back to zero
+            // (the snap RELEASES the crouch — the body springs up as it lunges).
+            float windT = 0f;
+            Vector2 squashTarget = Vector2.one;
+            if (enableSquashStretch)
+            {
+                switch (_state)
+                {
+                    case AiState.WindUp:
+                        // e.g. default curve: the crouch builds smoothly toward the pounce peak.
+                        windT = windUpSquashCurve.Evaluate(Mathf.Clamp01(_stateTimer / CurrentWindUpDuration())) * squashIntensity;
+                        squashTarget = Vector2.LerpUnclamped(Vector2.one, windUpSquash, windT);
+                        break;
+                    case AiState.Snap:
+                        squashTarget = Vector2.LerpUnclamped(Vector2.one, snapSquash, squashIntensity);
+                        break;
+                }
+            }
+
+            float ease = 1f - Mathf.Exp(-squashEaseSpeed * Time.fixedDeltaTime);
+
+            // Shell pose.
+            if (shell != null)
+                shell.Squash = Vector2.Lerp(shell.Squash, squashTarget, ease);
+
+            // Body crouch: Move() subtracts this from the hover height, and the
+            // grounded feet stay planted — the leg fold is free IK.
+            _crouch = Mathf.Lerp(_crouch, windUpCrouch * windT, ease);
+
+            // Stance brace: widened home positions make the feet step out to plant.
+            if (gait != null)
+                gait.StanceSplayMultiplier = Mathf.Lerp(gait.StanceSplayMultiplier, Mathf.LerpUnclamped(1f, windUpStanceSplay, windT), ease);
+        }
+
+        // -------------------------------------------------------
         // Transitions
         // -------------------------------------------------------
 
@@ -600,6 +691,7 @@ namespace Submachina.Core
             // Legs stop stepping (gait off), claws droop, corpse settles under its own weight.
             if (gait != null) gait.enabled = false;
             SetFlash(0f);
+            if (shell != null) shell.Squash = Vector2.one;
             UpdateClaws();
         }
 

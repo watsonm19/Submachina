@@ -95,6 +95,13 @@ namespace Core.ProceduralAnimation
         [FoldoutGroup("Debug"), ReadOnly, ShowInInspector]
         public float GroundedFraction { get; private set; }
 
+        /**
+         * Runtime multiplier on stanceSplay — creature brains push this to widen or
+         * narrow the stance on the fly (e.g. a pre-pounce crouch brace). Moving the
+         * home positions makes the feet visibly re-step into the new stance.
+         */
+        public float StanceSplayMultiplier { get; set; } = 1f;
+
         // Per-leg gait state, parallel to the legs array.
         private Vector2[] _planted;
         private bool[] _grounded;
@@ -249,7 +256,7 @@ namespace Core.ProceduralAnimation
         private Vector2 HomeLocal(int i)
         {
             Vector2 hipLocal = transform.InverseTransformPoint(legs[i].HipWorld);
-            return hipLocal + new Vector2(hipLocal.x * stanceSplay, -legs[i].TotalReach * stanceDrop);
+            return hipLocal + new Vector2(hipLocal.x * stanceSplay * StanceSplayMultiplier, -legs[i].TotalReach * stanceDrop);
         }
 
         private void AllocateState()

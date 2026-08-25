@@ -77,6 +77,17 @@ namespace Core.ProceduralAnimation
         [Tooltip("Rotates the resolved head facing (degrees, CCW positive) — fan a bank of tentacles into a symmetric splay (e.g. ±15, ±40 across four tentacles) without needing dedicated rotated anchor transforms. Applies to every facing mode except None.")]
         [SerializeField, Range(-180f, 180f)] private float facingOffsetDegrees = 0f;
 
+        [FoldoutGroup("Anchor")]
+        [Tooltip("Hard cap (degrees/sec) on how fast the head facing may turn.\n\n" +
+                 "Matters most in Velocity mode: the direction of a velocity vector whips around " +
+                 "arbitrarily fast as its magnitude passes near zero, so a creature that decelerates " +
+                 "and reverses hands the solver a ~180° facing change in a single frame — and since " +
+                 "the first segment is clamped to the head facing, the whole body re-lays-out at once " +
+                 "and reads as the pose popping to a new shape. The cap turns that pop into a sweep.\n\n" +
+                 "540 (~0.33s for a full reversal) is invisible during normal swimming and only bites " +
+                 "on the snap. Lower for heavy, sluggish bodies. 0 = uncapped (the old instant behavior).")]
+        [SerializeField, Min(0f)] private float facingTurnRate = 540f;
+
         // Appended-only: Unity serializes enums by index, so new modes go on the end to avoid re-mapping prefabs.
         public enum FacingMode { Velocity, TransformRight, TransformUp, None, ReverseVelocity }
 
@@ -393,13 +404,18 @@ namespace Core.ProceduralAnimation
         }
 
         /**
-         * Adopts the resolved facing, easing into it while recovering from a frozen pose.
+         * Adopts the resolved facing, rate-capped so the head can never snap, and eased
+         * further while recovering from a frozen pose.
          *
          * A freeze holds the body completely static while the creature keeps moving, so by the
          * time it releases, the travel direction can point somewhere quite different from where
          * the body is aimed. Adopting that in one frame is what reads as popping into a new
          * pose, so the recovery blends there across limpRecoverDuration instead. The limp path
          * doesn't need this — it keeps solving throughout, so its pose never diverges as far.
+         *
+         * The facingTurnRate cap on top guards the everyday case the freeze ease never sees:
+         * a swimmer decelerating through zero and heading back the other way, whose velocity
+         * direction genuinely does invert in one frame.
          */
         private void UpdateFacing(float dt)
         {
@@ -411,11 +427,26 @@ namespace Core.ProceduralAnimation
             {
                 float t = 1f - Mathf.Exp(-(3f / limpRecoverDuration) * dt);
                 Vector2 eased = Vector2.Lerp(Facing, resolved, t);
-                Facing = eased.sqrMagnitude > 1e-6f ? eased.normalized : resolved;
-                return;
+                resolved = eased.sqrMagnitude > 1e-6f ? eased.normalized : resolved;
             }
 
-            Facing = resolved;
+            Facing = TurnFacingToward(resolved, dt);
+        }
+
+        /**
+         * Sweeps the current facing toward a target along the shortest arc, capped at
+         * facingTurnRate degrees this step. e.g. rate 540 turns a full 180° reversal into a
+         * 0.33s sweep instead of a one-frame flip, which is the difference between the body
+         * banking around and the pose visibly teleporting. Rate 0 adopts the target outright.
+         */
+        private Vector2 TurnFacingToward(Vector2 target, float dt)
+        {
+            if (facingTurnRate <= 0f || target.sqrMagnitude < 1e-6f) return target;
+
+            float current = Mathf.Atan2(Facing.y, Facing.x) * Mathf.Rad2Deg;
+            float desired = Mathf.Atan2(target.y, target.x) * Mathf.Rad2Deg;
+            float stepped = Mathf.MoveTowardsAngle(current, desired, facingTurnRate * dt) * Mathf.Deg2Rad;
+            return new Vector2(Mathf.Cos(stepped), Mathf.Sin(stepped));
         }
 
         /** Rigidly shifts every chain point, preserving the pose. Used while the pose is frozen. */
