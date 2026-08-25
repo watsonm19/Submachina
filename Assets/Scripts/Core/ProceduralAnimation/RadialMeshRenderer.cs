@@ -75,6 +75,7 @@ namespace Core.ProceduralAnimation
         [SerializeField, HideInInspector] private Vector2 bakedPivotUV = new Vector2(0.5f, 0.5f);
         [SerializeField, HideInInspector] private int bakedForSegments = -1;
         [SerializeField, HideInInspector] private Sprite bakedFromSprite;
+        [SerializeField, HideInInspector] private string bakedStateHash;
 
         private bool IsSpriteMode => silhouetteSource == SilhouetteSource.SpriteSilhouette;
         private bool HasBake => bakedRadii != null && bakedForSegments == ringSegments && bakedRadii.Length == ringSegments;
@@ -168,10 +169,11 @@ namespace Core.ProceduralAnimation
 
         private void OnValidate()
         {
-            // Auto-(re)bake when the sprite or ring resolution changed — edit-time only,
-            // so runtime never pays for texture reads (the bake is serialized data).
+            // Auto-(re)bake when the sprite, its source asset, or the ring resolution
+            // changed — edit-time only, so runtime never pays for texture reads (the
+            // bake is serialized data).
             if (!Application.isPlaying && IsSpriteMode && silhouetteSprite != null
-                && (!HasBake || bakedFromSprite != silhouetteSprite))
+                && (!HasBake || BakeIsStale()))
                 BakeSilhouette();
 
             if (isActiveAndEnabled && _mesh != null)
@@ -185,6 +187,16 @@ namespace Core.ProceduralAnimation
         {
             if (!Application.isPlaying)
             {
+#if UNITY_EDITOR
+                // Reimporting a PSB/PNG repacks its texture without firing OnValidate on
+                // components that reference its sprites — a throttled fingerprint compare
+                // here lets the bake self-heal right after the import lands.
+                if (UnityEditor.EditorApplication.timeSinceStartup > _nextStaleCheck)
+                {
+                    _nextStaleCheck = UnityEditor.EditorApplication.timeSinceStartup + 1.0;
+                    if (IsSpriteMode && silhouetteSprite != null && BakeIsStale()) BakeSilhouette();
+                }
+#endif
                 RebuildAll();
                 return;
             }
@@ -369,6 +381,11 @@ namespace Core.ProceduralAnimation
                 return;
             }
 
+#if UNITY_EDITOR
+            // Stamp the dependency fingerprint before baking — even a failed bake should
+            // not retry every editor frame until something it depends on actually changes.
+            bakedStateHash = SpriteStateFingerprint();
+#endif
             Texture2D readable = MakeReadableCopy(silhouetteSprite.texture);
             try
             {
@@ -415,6 +432,9 @@ namespace Core.ProceduralAnimation
                 bakedPivotUV = new Vector2(centerPx.x / texW, centerPx.y / texH);
                 bakedForSegments = n;
                 bakedFromSprite = silhouetteSprite;
+#if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(this);
+#endif
                 if (_mesh != null) RebuildAll();
             }
             finally
@@ -423,6 +443,37 @@ namespace Core.ProceduralAnimation
                 else DestroyImmediate(readable);
             }
         }
+
+        /**
+         * True when the serialized bake no longer matches the live sprite. A PSB/PSD
+         * reimport keeps the same Sprite reference but can repack the mosaic texture
+         * (new rect, pivot, texture size) or repaint its pixels — comparing a
+         * fingerprint of layout + source-asset hash catches what a reference check
+         * cannot. Runtime builds never see a stale bake (assets can't change), so
+         * this is editor-only and compiles to false in players.
+         */
+        private bool BakeIsStale()
+        {
+#if UNITY_EDITOR
+            return bakedFromSprite != silhouetteSprite || bakedStateHash != SpriteStateFingerprint();
+#else
+            return false;
+#endif
+        }
+
+#if UNITY_EDITOR
+        /** Fingerprint of everything the bake depends on: sprite layout in the texture, source asset content, threshold. */
+        private string SpriteStateFingerprint()
+        {
+            if (silhouetteSprite == null || silhouetteSprite.texture == null) return "";
+            Texture2D tex = silhouetteSprite.texture;
+            string assetHash = UnityEditor.AssetDatabase.GetAssetDependencyHash(
+                UnityEditor.AssetDatabase.GetAssetPath(silhouetteSprite)).ToString();
+            return $"{silhouetteSprite.rect}|{silhouetteSprite.pivot}|{tex.width}x{tex.height}|{assetHash}|{alphaThreshold:F3}";
+        }
+
+        private double _nextStaleCheck;
+#endif
 
         /** GPU round-trip copy so the source texture never needs Read/Write enabled in its importer. */
         private static Texture2D MakeReadableCopy(Texture2D src)
