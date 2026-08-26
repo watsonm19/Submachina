@@ -24,7 +24,9 @@ namespace Submachina.Core
      *   Drift  — gentle Perlin-noise wander with a slight upward buoyancy trend.
      *   Menace — a submarine wandered within menaceRadius: the heading slowly eases
      *            toward it instead. The jellyfish doesn't chase so much as drift with
-     *            intent — it stalks. Glow brightens as an extra danger telegraph.
+     *            intent — it stalks. The glow both brightens AND shifts hue on a slow
+     *            shared envelope, so the colour change reads as dread blooming in
+     *            rather than a light switch at the edge of the radius.
      *
      * The rim ripples with a traveling wave + per-vertex noise every tick (stronger
      * during Contract), and the trailing tentacles get a brief amplitude/frequency
@@ -174,12 +176,24 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float pulseGlowBoost = 1.2f;
 
         [FoldoutGroup("Glow")]
-        [Tooltip("Extra glow intensity added continuously while in Menace mode — a danger telegraph.")]
+        [Tooltip("Extra glow intensity added at full Menace — a danger telegraph. Eased in/out on the menace envelope rather than switched, so crossing the radius doesn't pop.")]
         [SerializeField, Min(0f)] private float menaceGlowBoost = 0.8f;
+
+        [FoldoutGroup("Glow")]
+        [Tooltip("Hue rotation (degrees) the glow drifts through as Menace ramps in — e.g. -60 drags a calm cyan bell toward an angry violet. 0 = colour holds and only brightness telegraphs.")]
+        [SerializeField, Range(-180f, 180f)] private float menaceHueShift = -60f;
+
+        [FoldoutGroup("Glow")]
+        [Tooltip("Saturation multiplier at full Menace — above 1 deepens the shifted hue into something venomous, below 1 washes it toward a sickly white.")]
+        [SerializeField, Range(0f, 3f)] private float menaceSaturation = 1.2f;
 
         [FoldoutGroup("Glow")]
         [Tooltip("Exponential ease rate (per second) the pulse-glow envelope rises/falls toward Contract's peak.")]
         [SerializeField, Range(0.5f, 20f)] private float glowEaseSpeed = 8f;
+
+        [FoldoutGroup("Glow")]
+        [Tooltip("Exponential ease rate (per second) the MENACE envelope rises/falls — drives the hue shift and the menace boost together. Deliberately slower than the pulse ease: dread that blooms in reads better than a switch flipping at the radius edge.")]
+        [SerializeField, Range(0.1f, 10f)] private float menaceEaseSpeed = 1.5f;
 
         // =====================
         // Death
@@ -229,6 +243,7 @@ namespace Submachina.Core
         private float _wanderAngle;
         private float _rimPhase;
         private float _glowPulseT;
+        private float _menaceT;     // eased 0..1 menace envelope — drives the hue shift and the glow boost together
         private float _noiseSeed;
         private Vector2 _heading = Vector2.up;
         private float _nextStingTime;
@@ -359,17 +374,47 @@ namespace Submachina.Core
             }
         }
 
-        /** Drives the bell's HDR emission through a property block — baseline + pulse-synced + menace telegraph. */
+        /**
+         * Drives the bell's HDR emission through a property block: baseline
+         * brightness + the pulse-synced squeeze flash + the menace telegraph, which
+         * shifts BOTH brightness and hue on one slow shared envelope.
+         */
         private void UpdateGlow()
         {
             if (bell == null || bell.Renderer == null) return;
 
-            float targetPulse = _state == PulseState.Contract ? 1f : 0f;
+            // Fast envelope: the flash that rides each Contract.
             float t = 1f - Mathf.Exp(-glowEaseSpeed * Time.fixedDeltaTime);
-            _glowPulseT = Mathf.Lerp(_glowPulseT, targetPulse, t);
+            _glowPulseT = Mathf.Lerp(_glowPulseT, _state == PulseState.Contract ? 1f : 0f, t);
 
-            float intensity = baseGlowIntensity + _glowPulseT * pulseGlowBoost + (_isMenace ? menaceGlowBoost : 0f);
-            SetGlow(glowColor * intensity);
+            // Slow envelope: dread blooming in (and bleeding back out) as a sub enters
+            // and leaves menaceRadius — eased, so grazing the boundary can't strobe.
+            float mt = 1f - Mathf.Exp(-menaceEaseSpeed * Time.fixedDeltaTime);
+            _menaceT = Mathf.Lerp(_menaceT, _isMenace ? 1f : 0f, mt);
+
+            float intensity = baseGlowIntensity + _glowPulseT * pulseGlowBoost + _menaceT * menaceGlowBoost;
+            SetGlow(MenaceTint(glowColor, _menaceT) * intensity);
+        }
+
+        /**
+         * Rotates the glow's hue (and deepens its saturation) by the menace envelope,
+         * leaving value alone so the intensity term stays the only brightness knob.
+         * e.g. a cyan bell (H≈0.53) with a -60° shift lands near indigo (H≈0.36) at
+         * full menace, sliding continuously through the in-between as it closes.
+         */
+        private Color MenaceTint(Color baseColor, float t)
+        {
+            if (t <= 0.001f) return baseColor;
+            if (Mathf.Approximately(menaceHueShift, 0f) && Mathf.Approximately(menaceSaturation, 1f)) return baseColor;
+
+            // RGBToHSV/HSVToRGB round-trip HDR safely: value carries the >1 range through.
+            Color.RGBToHSV(baseColor, out float h, out float s, out float v);
+            h = Mathf.Repeat(h + menaceHueShift / 360f * t, 1f);
+            s = Mathf.Clamp01(s * Mathf.Lerp(1f, menaceSaturation, t));
+
+            Color shifted = Color.HSVToRGB(h, s, v, true);
+            shifted.a = baseColor.a;
+            return shifted;
         }
 
         /** Eases the bell's Squash toward a target — the shared channel between animation and propulsion state. */
@@ -433,6 +478,7 @@ namespace Submachina.Core
             base.OnDeath();
 
             // Glow dies immediately — no more danger telegraph from a corpse.
+            _menaceT = 0f;
             SetGlow(Color.black);
 
             // Tentacles go fully slack — no more wave drive.

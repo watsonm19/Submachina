@@ -14,6 +14,12 @@ namespace Core.ProceduralAnimation
      *   • RimOffsets — per-vertex radial push (rim wobble, tentacle bumps)
      *   • UniformScale — whole-body scale (growth, breathing)
      *
+     * Squash/scale happen around Deform Pivot (local space, default = the mesh
+     * center), so a mantle can squeeze *down from the head* instead of equally in
+     * both directions. Attached art (eyes, fins, siphons) rides the deformation via
+     * RadialMeshAnchor, which queries DeformLocalPoint()/DeformNormal() below —
+     * the same math the rim vertices use, so anchors can never drift off the body.
+     *
      * UV0 maps the local bounding square to 0..1 for body textures. UV1 carries the
      * shared generated-mesh edge contract (see Mesh2DLitSpecular.shader): xy = outward
      * dir, z = normalized edge distance, w = world-unit edge distance — approximate on
@@ -39,6 +45,18 @@ namespace Core.ProceduralAnimation
         [FoldoutGroup("Shape")]
         [Tooltip("Radius multiplier by angle (x: 0..1 = 0°..360° counter-clockwise from +X). Author domes, teardrops, mantles here. Constant 1 = circle.")]
         [SerializeField] private AnimationCurve radiusProfile = AnimationCurve.Constant(0f, 1f, 1f);
+
+        // =====================
+        // Deformation
+        // =====================
+
+        [FoldoutGroup("Deformation")]
+        [Tooltip("Local-space point that Squash and Uniform Scale pivot around. (0,0) = the mesh center / sprite pivot, so the body squeezes symmetrically. Push it up to the head of a mantle and a squash pulls the TAIL in while the head stays put — the anchored-squash look. Animatable at runtime via the DeformPivot property.")]
+        [SerializeField] private Vector2 deformPivot = Vector2.zero;
+
+        [FoldoutGroup("Deformation")]
+        [Tooltip("Draw the pivot and the rest silhouette as gizmos while this object is selected.")]
+        [SerializeField] private bool drawDeformGizmos = true;
 
         // =====================
         // Sprite Silhouette
@@ -124,6 +142,13 @@ namespace Core.ProceduralAnimation
             }
         }
 
+        /**
+         * Local-space point Squash/UniformScale pivot around — (0,0) is the mesh
+         * center. Settable at runtime so a brain can slide the squash anchor around
+         * (e.g. pivot at the impact point when the body takes a hit).
+         */
+        public Vector2 DeformPivot { get => deformPivot; set => deformPivot = value; }
+
         /** Number of rim vertices. */
         public int RingSegments => ringSegments;
 
@@ -132,6 +157,64 @@ namespace Core.ProceduralAnimation
 
         /** Local-space position of rim vertex i with all current deformation applied. */
         public Vector2 GetRimLocalPoint(int i) => RimLocal(i);
+
+        /** Undeformed local position of rim vertex i — the authored/baked silhouette. */
+        public Vector2 GetRimRestPoint(int i)
+        {
+            float angle = i / (float)ringSegments * Mathf.PI * 2f;
+            return new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * RestRadius(i);
+        }
+
+        /** Rest silhouette radius at an arbitrary angle (degrees CCW from +X), interpolated between rim samples. */
+        public float GetRestRadiusAtAngle(float angleDegrees) => SampleRestRadius(angleDegrees / 360f);
+
+        // -------------------------------------------------------
+        // Anchor queries — attaching art to a deforming body
+        // -------------------------------------------------------
+
+        /**
+         * Maps any REST-space local point through the body's live deformation, so
+         * attached art (eyes, fins, beaks) travels exactly with the surface it sits
+         * on instead of floating over a squashing body.
+         *
+         * Rim wobble is applied by normalized radius: a point out on the silhouette
+         * rides the full ripple, one at the pivot ignores it, and anything between
+         * gets a proportional share — e.g. an eye at 60% of the body radius takes
+         * 60% of the local rim offset. wobbleWeight scales that whole contribution.
+         */
+        public Vector2 DeformLocalPoint(Vector2 restLocal, float wobbleWeight = 1f)
+        {
+            float len = restLocal.magnitude;
+
+            // Blend in the rim ripple, weighted by how far out toward the silhouette the point sits.
+            if (len > 0.0001f && wobbleWeight > 0f && _rimOffsets != null && _rimOffsets.Length > 0)
+            {
+                float angle01 = Mathf.Atan2(restLocal.y, restLocal.x) / (Mathf.PI * 2f);
+                float restRadius = SampleRestRadius(angle01);
+                float radial01 = restRadius > 0.0001f ? Mathf.Clamp01(len / restRadius) : 0f;
+                restLocal += restLocal / len * (SampleRimOffset(angle01) * radial01 * wobbleWeight);
+            }
+
+            return ApplyDeform(restLocal);
+        }
+
+        /**
+         * Transforms a rest-space direction (a surface normal, a fin's "out" axis)
+         * into the deformed body. Normals transform by the INVERSE scale — squashing
+         * a circle flat tips its normals toward vertical, not horizontal — so this
+         * divides by Squash where DeformLocalPoint multiplies.
+         */
+        public Vector2 DeformNormal(Vector2 restNormal)
+        {
+            Vector2 s = Squash;
+            Vector2 n = new Vector2(
+                restNormal.x / Mathf.Max(0.0001f, Mathf.Abs(s.x)) * Mathf.Sign(s.x == 0f ? 1f : s.x),
+                restNormal.y / Mathf.Max(0.0001f, Mathf.Abs(s.y)) * Mathf.Sign(s.y == 0f ? 1f : s.y));
+            return n.sqrMagnitude > 0.0000001f ? n.normalized : restNormal;
+        }
+
+        /** Per-axis scale the deformation currently applies — what attached art multiplies its own scale by to squash along with the body. */
+        public Vector2 DeformScale => Squash * UniformScale;
 
         private MeshFilter _filter;
         private MeshRenderer _renderer;
@@ -311,8 +394,11 @@ namespace Core.ProceduralAnimation
                 _vertices[i] = p;
                 _uv0[i] = spriteUVs ? bakedRimUVs[i] : p * uvScale + new Vector2(0.5f, 0.5f);
             }
-            _vertices[n] = Vector3.zero;
-            _uv0[n] = spriteUVs ? bakedPivotUV : new Vector2(0.5f, 0.5f);
+            // The fan's center vertex is the rest origin pushed through the same
+            // deformation — off-center pivots move it, so the triangles stay fair.
+            Vector2 center = ApplyDeform(Vector2.zero);
+            _vertices[n] = center;
+            _uv0[n] = spriteUVs ? bakedPivotUV : center * uvScale + new Vector2(0.5f, 0.5f);
 
             if (pushStatic)
             {
@@ -347,9 +433,37 @@ namespace Core.ProceduralAnimation
         {
             float angle = i / (float)ringSegments * Mathf.PI * 2f;
             Vector2 dir = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-            float r = RestRadius(i) * UniformScale;
+            float r = RestRadius(i);
             if (_rimOffsets != null && i < _rimOffsets.Length) r += _rimOffsets[i];
-            return Vector2.Scale(dir * r, Squash);
+            return ApplyDeform(dir * r);
+        }
+
+        /**
+         * The single deformation step every point in this mesh goes through:
+         * uniform scale then non-uniform squash, both measured FROM the deform pivot
+         * rather than the mesh center. e.g. pivot (0, 0.4) with Squash (0.8, 1.2)
+         * keeps the head at y≈0.4 fixed while the rest of the body stretches away
+         * from it — the anchored squash-and-stretch.
+         */
+        private Vector2 ApplyDeform(Vector2 restLocal)
+            => deformPivot + Vector2.Scale((restLocal - deformPivot) * UniformScale, Squash);
+
+        /** Rest radius at a fractional angle (0..1 = 0°..360°), lerped between the two nearest rim samples. */
+        private float SampleRestRadius(float angle01)
+        {
+            int n = ringSegments;
+            float f = Mathf.Repeat(angle01, 1f) * n;
+            int i0 = Mathf.Clamp((int)f, 0, n - 1);
+            return Mathf.Lerp(RestRadius(i0), RestRadius((i0 + 1) % n), f - i0);
+        }
+
+        /** Live rim offset at a fractional angle, lerped between the two nearest rim samples. */
+        private float SampleRimOffset(float angle01)
+        {
+            int n = _rimOffsets.Length;
+            float f = Mathf.Repeat(angle01, 1f) * n;
+            int i0 = Mathf.Clamp((int)f, 0, n - 1);
+            return Mathf.Lerp(_rimOffsets[i0], _rimOffsets[(i0 + 1) % n], f - i0);
         }
 
         private void ApplySorting()
@@ -505,5 +619,25 @@ namespace Core.ProceduralAnimation
 
         private MaterialPropertyBlock _texBlock;
         private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
+
+        /** Scene-view aid: the squash pivot (cross) and the undeformed silhouette (wire loop) art is authored against. */
+        private void OnDrawGizmosSelected()
+        {
+            if (!drawDeformGizmos) return;
+
+            Gizmos.matrix = transform.localToWorldMatrix;
+
+            // Rest silhouette — where anchored art sits before any deformation.
+            Gizmos.color = new Color(0.4f, 0.9f, 1f, 0.35f);
+            for (int i = 0; i < ringSegments; i++)
+                Gizmos.DrawLine(GetRimRestPoint(i), GetRimRestPoint((i + 1) % ringSegments));
+
+            // Pivot cross — everything scales/squashes away from this point.
+            Gizmos.color = new Color(1f, 0.75f, 0.2f, 0.9f);
+            float tick = baseRadius * 0.15f;
+            Gizmos.DrawLine(deformPivot + Vector2.left * tick, deformPivot + Vector2.right * tick);
+            Gizmos.DrawLine(deformPivot + Vector2.down * tick, deformPivot + Vector2.up * tick);
+            Gizmos.matrix = Matrix4x4.identity;
+        }
     }
 }

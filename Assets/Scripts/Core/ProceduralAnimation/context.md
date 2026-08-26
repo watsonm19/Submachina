@@ -101,7 +101,10 @@ artifact — currently just the eel body. Jellyfish and squid tentacles are
   rim ring + center fan, silhouette authored as a radius-by-angle curve OR baked
   from an authored transparent PNG (see Sprite silhouettes below). Runtime
   deform channels: `Squash` (Vector2), `UniformScale`, `RimOffsets[]`
-  (per-vertex radial push). Same UV1 edge-distance convention.
+  (per-vertex radial push), all pivoting around `DeformPivot` (see Deform pivot &
+  anchors below). Same UV1 edge-distance convention.
+- **RadialMeshAnchor** (`[DefaultExecutionOrder(65)]`) — pins a Transform to a
+  point on a RadialMeshRenderer so attached art rides the deformation.
 - **IKLeg** (`[DefaultExecutionOrder(55)]`) — analytic 2-bone leg (hip/knee/foot,
   published as 5 points for a smooth knee bend). Something sets `FootTarget`
   world-space each tick — LegGaitController for walking, or a brain directly
@@ -130,6 +133,44 @@ pushed into `_MainTex` via property block so many creatures share one material.
 Shapes should be roughly star-convex around the pivot (each outward ray crosses
 the silhouette once); re-bake is automatic on sprite change, or via the Bake
 button. `Art/Creatures/SilhouetteTest_Mantle.png` is a generated test shape.
+
+## Deform pivot & anchors
+
+Two halves of the same problem — "the body squashes, what happens to everything
+attached to it?"
+
+**Deform Pivot** (RadialMeshRenderer, Deformation foldout) is the local-space
+point `Squash`/`UniformScale` measure from. Default (0,0) is the mesh center /
+sprite pivot, which squeezes symmetrically. Move it to the head of a mantle and
+a squash pulls the *tail* in while the head stays put — the squash reads as the
+creature's body compressing toward its head instead of the whole thing shrinking
+in place. `ApplyDeform()` is the single funnel every vertex (rim *and* the fan's
+center) goes through, so the pivot can't disagree with the mesh, and
+`DeformPivot` is settable at runtime for animated pivots. A scene gizmo shows
+the pivot plus the rest silhouette.
+
+**RadialMeshAnchor** rides that same math from the outside. It stores where its
+art sits on the *undeformed* silhouette, then each LateUpdate maps that point
+through `RadialMeshRenderer.DeformLocalPoint()` — the identical squash + pivot +
+rim-wobble path the vertices take, so anchored art can never drift off the body.
+Rim wobble is applied by normalized radius (a point at 60% of the body radius
+takes 60% of the local ripple), which is what makes an interior anchor like an
+eye look embedded rather than glued to the outline.
+
+- **Rest Point** mode = a raw local offset, captured from wherever the art was
+  dragged ("Capture From Transform"; also auto-captured when the component is
+  added). Right for eyes and anything inside the body.
+- **Polar** mode = angle + fraction of the silhouette radius there, so fins and
+  spines stay glued to the same part of the outline across silhouette re-bakes.
+- Weights: `followWeight` (partial follow), `wobbleWeight`, `inheritSquash`
+  (art scales with the local squash — 0 for a rigid eyeball, 1 for soft skin
+  markings), `orientToSurface` + `rotationOffset` (art's +Y along the DEFORMED
+  normal, which uses the *inverse* squash — flattening a body tips its normals
+  toward vertical, not horizontal).
+
+Body auto-resolve deliberately searches siblings too, not just ancestors:
+creature art is usually parented as `Visual/{Mantle, Eye, ...}`, so the eye is a
+sibling of the mesh rather than a child of it.
 
 ## Rendering
 
