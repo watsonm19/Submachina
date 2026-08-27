@@ -34,7 +34,8 @@ namespace Submachina.Core
      *         body moves on one rhythm.
      *
      * Behavior loop (unchanged):
-     *   Lurk → Hover → Aim (telegraph + chromatophore flicker) → Jet (locked ram)
+     *   Lurk → Hover → Aim (telegraph; the aim sweeps onto the player at
+     *   aimTurnRate and the jet fires along wherever it ends up) → Jet (locked ram)
      *   → Recover, with InkEscape as the panic response. Jet/InkEscape set velocity
      *   directly and can aim the body fully along the burst (burstsFaceTravel).
      */
@@ -73,7 +74,7 @@ namespace Submachina.Core
         [SerializeField, Min(0.5f)] private float preferredRange = 5f;
 
         [FoldoutGroup("Movement")]
-        [Tooltip("Deadzone around preferredRange: inside this band the squid neither approaches nor backs off, and (off cooldown) commits to Aim.")]
+        [Tooltip("Deadzone around preferredRange: inside this band the squid neither approaches nor backs off while hovering. (Attack commitment is governed by the Attack foldout's range band + facing gate.)")]
         [SerializeField, Min(0.1f)] private float rangeTolerance = 1f;
 
         [FoldoutGroup("Movement")]
@@ -161,6 +162,14 @@ namespace Submachina.Core
         [SerializeField, Min(0.05f)] private float pulseFrequency = 0.9f;
 
         [FoldoutGroup("Propulsion")]
+        [Tooltip("Pulse-clock scale while lurking: the entire swim rhythm (kicks, mantle, tentacles, bob, sway) runs at this fraction of Pulse Frequency when nobody is in sensory range — a lazier, more relaxed cadence. 1 = no slowdown.")]
+        [SerializeField, Range(0.1f, 1f)] private float lurkPulseFrequencyScale = 0.6f;
+
+        [FoldoutGroup("Propulsion")]
+        [Tooltip("How fast the live pulse rate eases between the lurk and engaged cadences (per second) — the rhythm shifts gear smoothly instead of jumping the beat.")]
+        [SerializeField, Range(0.5f, 10f)] private float pulseRateEaseSpeed = 2f;
+
+        [FoldoutGroup("Propulsion")]
         [Tooltip("Fraction of each cycle spent GATHERING — mantle inflates, tentacles still their wave and physically pull in toward the body.")]
         [SerializeField, Range(0.05f, 0.9f)] private float gatherFraction = 0.35f;
 
@@ -201,6 +210,10 @@ namespace Submachina.Core
         [SerializeField, Range(0f, 0.9f)] private float pulseTentacleLengthRetract = 0.5f;
 
         [FoldoutGroup("Propulsion")]
+        [Tooltip("Beats the tentacles are held RETRACTED in — length eases toward the pulled-in value across each masked beat and back to full across unmasked ones. Gather+Pause is the classic load-up (pull in on the wind-up, shove out on the burst); Burst-only inverts the rhythm so the arms snap IN with each kick.")]
+        [SerializeField, EnumToggleButtons] private PulseBeatMask retractDuring = PulseBeatMask.Gather | PulseBeatMask.Pause;
+
+        [FoldoutGroup("Propulsion")]
         [Tooltip("Tentacle wave-amplitude multiplier (relative to the state baseline) at the end of the gather — stills the undulation while drawn in. A subtle layer next to the length retract above.")]
         [SerializeField, Range(0f, 1f)] private float pulseTentacleRetract = 0.35f;
 
@@ -213,12 +226,16 @@ namespace Submachina.Core
         // =====================
 
         [FoldoutGroup("Tentacle Reach")]
-        [Tooltip("Peak drift force (world units/sec at the tip) throwing the tentacles toward the reach target during the enabled beats. 0 = off. Lives alongside the length retract — combine or alternate them freely. NOT scaled by the propulsion blend, so it can be explored in glide mode too.")]
+        [Tooltip("Peak drift force (world units/sec at the tip) throwing the tentacles toward the reach target during the enabled beats. 0 = off. Lives alongside the length retract — combine or alternate them freely. NOT scaled by the propulsion blend, so it can be explored in glide mode too. Inverted beats use the Inverted Reach set below instead.")]
         [SerializeField, Min(0f)] private float reachStrength = 5f;
 
         [FoldoutGroup("Tentacle Reach")]
         [Tooltip("Beats of the pulse cycle the reach force is live in. Burst = thrown with the push (classic strike-reach); Gather instead reaches during the wind-up; combine for a sustained grasp.")]
         [SerializeField, EnumToggleButtons] private PulseBeatMask reachDuring = PulseBeatMask.Burst;
+
+        [FoldoutGroup("Tentacle Reach")]
+        [Tooltip("Beats where the reach direction is INVERTED — the arms sweep AWAY from the target, like oars stroking water to pull the body toward it. Classic combo: Reach During = Gather + Burst with invert on Burst — reach out toward prey on the wind-up, then whip backwards on the push as if the flick itself is the propulsion. None = plain reach, never inverted.")]
+        [SerializeField, EnumToggleButtons] private PulseBeatMask reachInvertDuring = 0;
 
         [FoldoutGroup("Tentacle Reach")]
         [Tooltip("What the tentacles reach toward — the travel aim, or straight at the player (falls back to aim while lurking).")]
@@ -232,9 +249,34 @@ namespace Submachina.Core
         [Tooltip("Tip weighting exponent along each tentacle (ChainSimulator.ExternalForceTipPower). 1 = linear head→tip ramp; 2-3 concentrates the throw in the tips so the body trails behind — more 'reaching fingers'.")]
         [SerializeField, Range(0.5f, 4f)] private float reachTipBias = 2f;
 
+        [FoldoutGroup("Tentacle Reach")]
+        [Title("Inverted Reach")]
+        [Tooltip("Peak drift force for INVERTED beats — the backwards oar stroke gets its own power, tuned independently of the forward reach. 0 = inverted beats apply no force.")]
+        [SerializeField, Min(0f)] private float invertedReachStrength = 5f;
+
+        [FoldoutGroup("Tentacle Reach")]
+        [Tooltip("Flick envelope for inverted beats: 0 = flat sustained pull across the whole beat, 1 = a sharp stroke at the beat's start that fully decays by its end.")]
+        [SerializeField, Range(0f, 1f)] private float invertedReachFlick = 0.6f;
+
+        [FoldoutGroup("Tentacle Reach")]
+        [Tooltip("Tip weighting exponent for inverted beats — e.g. set lower than the forward bias so the whole arm sweeps like an oar blade instead of just the tips whipping.")]
+        [SerializeField, Range(0.5f, 4f)] private float invertedReachTipBias = 2f;
+
         // =====================
         // Attack
         // =====================
+
+        [FoldoutGroup("Attack")]
+        [Tooltip("Distance band (min..max) to the player inside which the squid will commit to an attack — min keeps the jet a RANGED strike (closer than min = keep repositioning), max is the farthest it will open fire from. Keep the Hover preferred range inside this band or attacks will rarely trigger.")]
+        [SerializeField, MinMaxSlider(0f, 30f, true)] private Vector2 attackRange = new Vector2(4f, 10f);
+
+        [FoldoutGroup("Attack")]
+        [Tooltip("The head must point within this many degrees of the player before an attack can start — stops the squid from telegraphing a shot it is facing away from. 180 = no facing requirement (FixedPosture squids usually want that, since their head never turns to face travel).")]
+        [SerializeField, Range(1f, 180f)] private float attackFacingAngle = 45f;
+
+        [FoldoutGroup("Attack")]
+        [Tooltip("ON: the aim keeps turning toward the player through the whole aim duration (a tracking telegraph — long durations read as the squid spinning to follow). OFF: the aim LOCKS the moment the telegraph starts and the duration becomes a pure pre-fire delay, so the dodge direction is honest from the first frame.")]
+        [SerializeField] private bool aimTracksDuringTelegraph = true;
 
         [FoldoutGroup("Attack")]
         [Tooltip("Telegraph duration before the jet fires — the player's dodge window.")]
@@ -414,6 +456,7 @@ namespace Submachina.Core
         private float _stateTimer;
         private float _strafePhase;
         private float _pulsePhase;          // 0..1 swim-rhythm clock: [0, gatherFraction) = gather, kick fires at gatherFraction, rest = coast
+        private float _pulseRateCurrent;    // eased pulses/sec the clock actually advances at — slower while lurking
         private float _bobWeight;           // eased 0..1 — fades the cosmetic bob in while swimming, out otherwise
         private float _flickerSeed;
         private Vector2 _lurkTarget;
@@ -464,6 +507,7 @@ namespace Submachina.Core
             // Random clock phases so multiple squids don't pulse/sway in lockstep.
             _strafePhase = Random.value * Mathf.PI * 2f;
             _pulsePhase = Random.value;
+            _pulseRateCurrent = pulseFrequency * lurkPulseFrequencyScale; // spawns lurking, so start on the relaxed cadence
 
             // Rest aim = wherever the head points at spawn, so the first turn starts from the pose.
             _aimAngle = neutralPostureAngle + headAngle;
@@ -526,8 +570,10 @@ namespace Submachina.Core
             float dist = DistanceToPlayer();
             if (dist > loseInterestRadius) { Enter(AiState.Lurk); return; }
 
-            // Comfortably at range and off cooldown — commit to the telegraph.
-            if (Mathf.Abs(dist - preferredRange) < rangeTolerance && Time.time >= _nextAttackTime)
+            // Commit to the telegraph: inside the attack band, roughly facing the
+            // target, and off cooldown — otherwise keep repositioning below.
+            if (dist >= attackRange.x && dist <= attackRange.y
+                && Time.time >= _nextAttackTime && FacingWithin(attackFacingAngle))
             {
                 Enter(AiState.Aim);
                 return;
@@ -552,6 +598,21 @@ namespace Submachina.Core
         {
             BleedToStop();
 
+            // Tracking telegraph (optional): the aim keeps sweeping toward the player
+            // at the normal aimTurnRate, and the jet fires along wherever it reached.
+            // With tracking OFF the aim stays frozen where Aim entry left it, making
+            // the duration a pure pre-fire delay — the facing gate already ensured
+            // the telegraph starts roughly on target.
+            if (aimTracksDuringTelegraph)
+            {
+                Vector2 toPlayer = DirectionToPlayer();
+                if (toPlayer.sqrMagnitude > 0.0001f)
+                {
+                    float desiredAngle = Mathf.Atan2(toPlayer.y, toPlayer.x) * Mathf.Rad2Deg;
+                    _aimAngle = Mathf.MoveTowardsAngle(_aimAngle, desiredAngle, aimTurnRate * Time.fixedDeltaTime);
+                }
+            }
+
             float t = Mathf.Clamp01(_stateTimer / aimDuration);
             if (mantle != null) mantle.Squash = Vector2.Lerp(Vector2.one, aimSquash, t);
             onAimCharging?.Invoke(t);
@@ -568,8 +629,9 @@ namespace Submachina.Core
 
             if (_stateTimer >= aimDuration)
             {
-                // Direction locks now, aimed THROUGH the player's current position — a dash-past ram, not a stop-and-poke.
-                _jetDirection = DirectionToPlayer();
+                // The jet fires along the aim AS-IS — locked from here on; TickJet
+                // never re-steers, so the whole burst rides this one bearing.
+                _jetDirection = AimDirection;
                 Enter(AiState.Jet);
                 onJet?.Invoke();
             }
@@ -627,9 +689,14 @@ namespace Submachina.Core
         {
             float dt = Time.fixedDeltaTime;
 
+            // Rhythm gear-shift: lurking runs the clock at a relaxed fraction of the
+            // engaged rate, eased so re-engaging spins the rhythm up instead of snapping it.
+            float targetRate = pulseFrequency * (_state == AiState.Lurk ? lurkPulseFrequencyScale : 1f);
+            _pulseRateCurrent = Mathf.Lerp(_pulseRateCurrent, targetRate, 1f - Mathf.Exp(-pulseRateEaseSpeed * dt));
+
             // Advance the rhythm clock and resolve which beat of the cycle we're in.
             float prevPhase = _pulsePhase;
-            _pulsePhase += dt * pulseFrequency;
+            _pulsePhase += dt * _pulseRateCurrent;
             if (_pulsePhase >= 1f) _pulsePhase -= 1f;
             PulseBeat beat = ResolveBeat(_pulsePhase, out float beatT);
 
@@ -669,7 +736,7 @@ namespace Submachina.Core
             if (beat == PulseBeat.Burst && propulsionBlend > 0f)
             {
                 GetBeatFractions(out float _g, out float _p, out float b);
-                float burstDuration = b / pulseFrequency;
+                float burstDuration = b / Mathf.Max(_pulseRateCurrent, 0.01f); // beat length follows the live rate, so kick strength stays consistent
                 if (_aimSpeed > 0.05f && burstDuration > 0f)
                     Rb.linearVelocity += AimDirection * (_aimSpeed * pulseKick * propulsionBlend * alignScale * dt / burstDuration);
             }
@@ -710,6 +777,29 @@ namespace Submachina.Core
         /** PulseBeatMask flag for a beat — the enums share ordering, so it's a bit shift. */
         private static PulseBeatMask ToBeatMask(PulseBeat beat) => (PulseBeatMask)(1 << (int)beat);
 
+        /** Length the retract channel heads toward during a beat: pulled in if the beat is masked, full otherwise. */
+        private float RetractTargetFor(PulseBeat beat, float retracted) =>
+            (retractDuring & ToBeatMask(beat)) != 0 ? retracted : 1f;
+
+        /**
+         * The beat preceding a beat in cycle order, skipping zero-length beats —
+         * e.g. with pauseFraction 0 the Burst's predecessor is the Gather, so a
+         * beat hand-off can never reference a beat that was never actually visited.
+         */
+        private PulseBeat PreviousBeat(PulseBeat beat)
+        {
+            GetBeatFractions(out float g, out float p, out float b);
+            float coast = 1f - g - p - b;
+            int i = (int)beat;
+            for (int step = 0; step < 4; step++)
+            {
+                i = (i + 3) % 4; // walk backward around the cycle
+                float len = i == 0 ? g : i == 1 ? p : i == 2 ? b : coast;
+                if (len > 0.0001f) return (PulseBeat)i;
+            }
+            return beat;
+        }
+
         /**
          * FaceTravel only: 0..1 thrust authorization from how far the head currently
          * points off the DESIRED course. Deliberately measured against the desired
@@ -732,6 +822,23 @@ namespace Submachina.Core
 
             float align = 1f - Mathf.Clamp01((misalign - burstAlignAngle) / burstAlignFalloff);
             return Mathf.Lerp(1f, align, burstAlignLimit);
+        }
+
+        /**
+         * True when the head currently points within `degrees` of the player — the
+         * attack gate that keeps a wrong-facing squid repositioning instead of
+         * telegraphing a shot it would have to spin into. Measured off the visible
+         * head facing (falls back to the internal aim with no visualRoot).
+         */
+        private bool FacingWithin(float degrees)
+        {
+            if (degrees >= 180f) return true;
+            Vector2 toPlayer = DirectionToPlayer();
+            if (toPlayer.sqrMagnitude < 0.0001f) return true;
+
+            float headWorldAngle = visualRoot != null ? visualRoot.eulerAngles.z + headAngle : _aimAngle;
+            float targetAngle = Mathf.Atan2(toPlayer.y, toPlayer.x) * Mathf.Rad2Deg;
+            return Mathf.Abs(Mathf.DeltaAngle(headWorldAngle, targetAngle)) <= degrees;
         }
 
         /**
@@ -778,18 +885,15 @@ namespace Submachina.Core
             }
             EaseTentacleAmplitude(_tentacleBaseAmp * Mathf.Lerp(1f, wave, propulsionBlend));
 
-            // Tentacle length: the REAL pull-in. Segment lengths shrink through the
-            // gather and shove back out across the burst — the chain solver drags the
-            // points, so the re-extension IS the visible push of each kick.
+            // Tentacle length: the REAL pull-in, gated by retractDuring — masked
+            // beats ease toward the retracted length, unmasked beats ease back to full,
+            // and every beat starts from the previous beat's target, so any mask
+            // combination stays snap-free. The chain solver drags the points, so the
+            // re-extension IS the visible push of each kick.
             float retracted = 1f - pulseTentacleLengthRetract;
-            float length;
-            switch (beat)
-            {
-                case PulseBeat.Gather: length = Mathf.Lerp(1f, retracted, ease); break;
-                case PulseBeat.Pause: length = retracted; break;
-                case PulseBeat.Burst: length = Mathf.Lerp(retracted, 1f, ease); break;
-                default: length = 1f; break;
-            }
+            float lengthFrom = RetractTargetFor(PreviousBeat(beat), retracted);
+            float lengthTo = RetractTargetFor(beat, retracted);
+            float length = Mathf.Lerp(lengthFrom, lengthTo, ease);
             SetTentacleLength(Mathf.Lerp(1f, length, propulsionBlend));
         }
 
@@ -802,23 +906,34 @@ namespace Submachina.Core
          */
         private void ApplyTentacleReach(PulseBeat beat, float beatT)
         {
+            // Inverted beats swap in their own tuning set — the backwards oar stroke
+            // usually wants different power/snap/tip feel than the forward reach.
+            bool inverted = (reachInvertDuring & ToBeatMask(beat)) != 0;
+            float strength = inverted ? invertedReachStrength : reachStrength;
+            float flick = inverted ? invertedReachFlick : reachFlick;
+            float tipBias = inverted ? invertedReachTipBias : reachTipBias;
+
             Vector2 force = Vector2.zero;
 
-            if (reachStrength > 0f && (reachDuring & ToBeatMask(beat)) != 0)
+            if (strength > 0f && (reachDuring & ToBeatMask(beat)) != 0)
             {
                 // Flick envelope: flat sustained hold blended toward a sharp spike that
-                // decays across the beat — e.g. reachFlick 1 is dead by the beat's end.
-                float envelope = Mathf.Lerp(1f, (1f - beatT) * (1f - beatT), reachFlick);
+                // decays across the beat — e.g. flick 1 is dead by the beat's end.
+                float envelope = Mathf.Lerp(1f, (1f - beatT) * (1f - beatT), flick);
 
                 // Player-directed reach only makes sense while engaged; lurking falls back to the aim.
                 bool atPlayer = reachTarget == ReachTarget.Player && _state != AiState.Lurk;
                 Vector2 dir = atPlayer ? DirectionToPlayer()
                     : _aimSpeed > 0.05f ? AimDirection : Vector2.zero;
 
-                force = dir * (reachStrength * envelope);
+                // Inverted beats flip the throw: the arms stroke OPPOSITE the target like
+                // oar blades, selling the flick as a swim stroke pulling the squid along.
+                if (inverted) dir = -dir;
+
+                force = dir * (strength * envelope);
             }
 
-            SetTentacleReachForce(force);
+            SetTentacleReachForce(force, tipBias);
         }
 
         /** Eases the Rigidbody and the aim speed to a stop — used by the Aim telegraph. The aim angle holds. */
@@ -938,14 +1053,14 @@ namespace Submachina.Core
         }
 
         /** Pushes the reach force + tip bias into every tentacle — the gesture channel. */
-        private void SetTentacleReachForce(Vector2 force)
+        private void SetTentacleReachForce(Vector2 force, float tipPower)
         {
             if (tentacles == null) return;
             for (int i = 0; i < tentacles.Length; i++)
             {
                 if (tentacles[i] == null) continue;
                 tentacles[i].ExternalForce = force;
-                tentacles[i].ExternalForceTipPower = reachTipBias;
+                tentacles[i].ExternalForceTipPower = tipPower;
             }
         }
 
@@ -953,7 +1068,7 @@ namespace Submachina.Core
         private void ResetTentaclePulseChannels()
         {
             SetTentacleLength(1f);
-            SetTentacleReachForce(Vector2.zero);
+            SetTentacleReachForce(Vector2.zero, reachTipBias);
         }
 
         /** Snaps the amplitude channel on every tentacle — used for kick push-outs and the jet-launch spike. */
@@ -1025,6 +1140,14 @@ namespace Submachina.Core
                     RotateToward(Mathf.Atan2(vel.y, vel.x) * Mathf.Rad2Deg - headAngle, visualTurnSpeed);
                     return;
                 }
+            }
+
+            // Aim telegraph: in FaceTravel the head tracks the live aim even though the
+            // body has bled to a stop — the pose IS the player's read on the jet's bearing.
+            if (_state == AiState.Aim && postureMode == PostureMode.FaceTravel)
+            {
+                RotateToward(_aimAngle - headAngle, visualTurnSpeed);
+                return;
             }
 
             // FaceTravel: head along the rate-limited aim (falls through to neutral near rest).
@@ -1101,6 +1224,9 @@ namespace Submachina.Core
             Gizmos.DrawWireSphere(transform.position, detectionRadius);
             Gizmos.color = new Color(1f, 0.3f, 0.6f, 0.5f);
             Gizmos.DrawWireSphere(transform.position, preferredRange);
+            Gizmos.color = new Color(1f, 0.85f, 0.2f, 0.5f);
+            Gizmos.DrawWireSphere(transform.position, attackRange.x);
+            Gizmos.DrawWireSphere(transform.position, attackRange.y);
         }
     }
 }

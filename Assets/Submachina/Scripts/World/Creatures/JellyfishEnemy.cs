@@ -84,6 +84,14 @@ namespace Submachina.Core
         [SerializeField, Min(0f)] private float pulseImpulse = 3.5f;
 
         [FoldoutGroup("Pulse Cycle")]
+        [Tooltip("Pulse-cycle speed multiplier at full Menace — the whole gather/contract/coast rhythm quickens this much while stalking a submarine, eased in on the menace envelope. 1 = wandering and stalking pulse at the same relaxed pace.")]
+        [SerializeField, Min(0.1f)] private float menacePulseRateScale = 1.4f;
+
+        [FoldoutGroup("Pulse Cycle")]
+        [Tooltip("Impulse multiplier at full Menace — each stalking squeeze pushes this much harder, eased in on the menace envelope. 1 = no extra push.")]
+        [SerializeField, Min(0f)] private float menaceImpulseScale = 1.25f;
+
+        [FoldoutGroup("Pulse Cycle")]
         [Tooltip("Per-tick velocity multiplier while coasting (0-1). Closer to 1 = glides further before drag settles it.")]
         [SerializeField, Range(0f, 1f)] private float coastDamping = 0.985f;
 
@@ -192,7 +200,7 @@ namespace Submachina.Core
         [SerializeField, Range(0.5f, 20f)] private float glowEaseSpeed = 8f;
 
         [FoldoutGroup("Glow")]
-        [Tooltip("Exponential ease rate (per second) the MENACE envelope rises/falls — drives the hue shift and the menace boost together. Deliberately slower than the pulse ease: dread that blooms in reads better than a switch flipping at the radius edge.")]
+        [Tooltip("Exponential ease rate (per second) the MENACE envelope rises/falls — drives the hue shift, the glow boost, and the pulse pace/impulse scaling together. Deliberately slower than the pulse ease: dread that blooms in reads better than a switch flipping at the radius edge.")]
         [SerializeField, Range(0.1f, 10f)] private float menaceEaseSpeed = 1.5f;
 
         // =====================
@@ -277,9 +285,11 @@ namespace Submachina.Core
 
         protected override void UpdateAI()
         {
-            _stateTimer += Time.fixedDeltaTime;
-
             UpdateHeading();
+
+            // The pulse clock quickens on the menace envelope — a stalking jelly pumps
+            // faster and harder, while a wandering one keeps the relaxed baseline pace.
+            _stateTimer += Time.fixedDeltaTime * Mathf.Lerp(1f, menacePulseRateScale, _menaceT);
 
             switch (_state)
             {
@@ -327,6 +337,13 @@ namespace Submachina.Core
             Vector2 wanderDir = (new Vector2(Mathf.Cos(_wanderAngle), Mathf.Sin(_wanderAngle)) + Vector2.up * buoyancyBias).normalized;
 
             _isMenace = DistanceToPlayer() < menaceRadius;
+
+            // Slow menace envelope: dread blooming in (and bleeding back out) as a sub
+            // enters and leaves menaceRadius — eased, so grazing the boundary can't strobe.
+            // Lives here (not in the glow) because pulse pace and impulse ride it too.
+            float menaceEase = 1f - Mathf.Exp(-menaceEaseSpeed * Time.fixedDeltaTime);
+            _menaceT = Mathf.Lerp(_menaceT, _isMenace ? 1f : 0f, menaceEase);
+
             Vector2 desired = _isMenace ? DirectionToPlayer() : wanderDir;
 
             float t = 1f - Mathf.Exp(-headingEaseSpeed * Time.fixedDeltaTime);
@@ -387,11 +404,6 @@ namespace Submachina.Core
             float t = 1f - Mathf.Exp(-glowEaseSpeed * Time.fixedDeltaTime);
             _glowPulseT = Mathf.Lerp(_glowPulseT, _state == PulseState.Contract ? 1f : 0f, t);
 
-            // Slow envelope: dread blooming in (and bleeding back out) as a sub enters
-            // and leaves menaceRadius — eased, so grazing the boundary can't strobe.
-            float mt = 1f - Mathf.Exp(-menaceEaseSpeed * Time.fixedDeltaTime);
-            _menaceT = Mathf.Lerp(_menaceT, _isMenace ? 1f : 0f, mt);
-
             float intensity = baseGlowIntensity + _glowPulseT * pulseGlowBoost + _menaceT * menaceGlowBoost;
             SetGlow(MenaceTint(glowColor, _menaceT) * intensity);
         }
@@ -448,7 +460,7 @@ namespace Submachina.Core
             {
                 // The impulse fires in the same instant the squeeze animation begins —
                 // movement and animation are the same event, not two synced systems.
-                Rb.AddForce(_heading * pulseImpulse, ForceMode2D.Impulse);
+                Rb.AddForce(_heading * (pulseImpulse * Mathf.Lerp(1f, menaceImpulseScale, _menaceT)), ForceMode2D.Impulse);
                 onPulse?.Invoke();
             }
         }

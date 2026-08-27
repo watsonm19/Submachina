@@ -140,6 +140,22 @@ namespace Submachina.Core
         [SerializeField, Range(1f, 30f)] private float bodyLanguageEaseSpeed = 8f;
 
         [FoldoutGroup("Animation Coupling")]
+        [Tooltip("Body wave frequency multiplier while lurking — the relaxed, unbothered baseline undulation.")]
+        [SerializeField, Min(0f)] private float lurkWaveFrequency = 0.8f;
+
+        [FoldoutGroup("Animation Coupling")]
+        [Tooltip("Body wave amplitude multiplier while lurking.")]
+        [SerializeField, Min(0f)] private float lurkWaveAmplitude = 1f;
+
+        [FoldoutGroup("Animation Coupling")]
+        [Tooltip("Body wave frequency multiplier while hunting — urgency reads through the faster undulation.")]
+        [SerializeField, Min(0f)] private float huntWaveFrequency = 1.4f;
+
+        [FoldoutGroup("Animation Coupling")]
+        [Tooltip("Body wave amplitude multiplier while hunting.")]
+        [SerializeField, Min(0f)] private float huntWaveAmplitude = 1.2f;
+
+        [FoldoutGroup("Animation Coupling")]
         [Tooltip("Wave frequency multiplier at the peak of the wind-up coil.")]
         [SerializeField, Min(1f)] private float windUpWaveBoost = 3f;
 
@@ -386,11 +402,11 @@ namespace Submachina.Core
             switch (next)
             {
                 case AiState.Lurk:
-                    SetBodyLanguage(freq: 1f, amp: 1f); SetFlash(0f);
+                    SetBodyLanguage(lurkWaveFrequency, lurkWaveAmplitude); SetFlash(0f);
                     _lurkTarget = (Vector2)SpawnPosition + Random.insideUnitCircle * lurkRadius;
                     break;
                 case AiState.Hunt:
-                    SetBodyLanguage(freq: 1.4f, amp: 1.2f); SetFlash(0f);
+                    SetBodyLanguage(huntWaveFrequency, huntWaveAmplitude); SetFlash(0f);
                     break;
                 case AiState.WindUp:
                     SetBodyLanguage(freq: windUpWaveBoost, amp: 1.6f);
